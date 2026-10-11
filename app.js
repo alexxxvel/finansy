@@ -25,6 +25,7 @@
     laptop: '<path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/>',
     gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>',
     dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
+    wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
     right: '<path d="m9 6 6 6-6 6"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
@@ -62,6 +63,7 @@
   // ---------- состояние ----------
   var st = {
     month: F.monthOf(F.today()), months: [], ops: [], sum: F.summarize([]),
+    carry: 0, partial: false, // остаток на начало месяца: доходы минус траты всех прошлых месяцев
     tab: 'month', more: false, shown: 0, loaded: false, error: ''
   };
   var store = null;
@@ -162,10 +164,11 @@
     add(spent, el('p', 'spent__label', 'Потрачено'), sumEl);
 
     // шкала: дорожка = доход (при перерасходе и без дохода — сами траты); не больше трёх сегментов
-    var base = Math.max(s.income, s.spent, 1);
+    var avail = s.income + st.carry, left = avail - s.spent; // доступно в этом месяце: доход и остаток с прошлых
+    var base = Math.max(avail, s.spent, 1);
     var bar = el('div', 'spent__bar');
     bar.setAttribute('role', 'img');
-    bar.setAttribute('aria-label', s.income ? 'Потрачено ' + Math.round(s.spent / s.income * 100) + ' процентов дохода' : 'Доход ещё не внесён');
+    bar.setAttribute('aria-label', avail > 0 ? 'Потрачено ' + Math.round(s.spent / avail * 100) + ' процентов доступного' : 'Доход ещё не внесён');
     var segs = [];
     if (s.cats.length <= 3) { segs = s.cats.map(function (c) { return c.sum; }); }
     else { segs = [s.cats[0].sum, s.cats[1].sum, s.spent - s.cats[0].sum - s.cats[1].sum]; }
@@ -173,9 +176,11 @@
     segs.forEach(function (v) { var i = el('i'); i.style.width = (v / base * 100).toFixed(2) + '%'; fill.appendChild(i); });
     bar.appendChild(fill);
     var legend = el('div', 'spent__legend');
-    if (!s.income) { add(legend, el('span', '', s.spent ? 'доход ещё не внесён' : 'записей в этом месяце нет')); }
-    else if (s.left < 0) { add(legend, el('span', '', 'из' + F.NB + F.fmt(s.income)), el('span', 'is-over', 'перерасход ' + F.fmt(-s.left))); }
-    else { add(legend, el('span', '', 'из' + F.NB + F.fmt(s.income)), el('span', '', 'осталось ' + F.fmt(s.left))); }
+    if (!s.income && !st.carry) { add(legend, el('span', '', s.spent ? 'доход ещё не внесён' : 'записей в этом месяце нет')); }
+    else {
+      add(legend, el('span', '', avail > 0 ? 'из' + F.NB + F.fmt(avail) : (s.income ? 'из' + F.NB + F.fmt(s.income) : 'доход ещё не внесён')));
+      add(legend, left < 0 ? el('span', 'is-over', 'перерасход ' + F.fmt(-left)) : el('span', '', 'осталось ' + F.fmt(left)));
+    }
     add(spent, bar, legend);
 
     var sheet = el('div', 'sheet');
@@ -211,10 +216,16 @@
     }
     var srcs = el('section', 'cats cats--in');
     srcs.appendChild(el('h2', '', 'Откуда пришло'));
-    if (!s.srcs.length) {
+    if (!s.srcs.length && !st.carry) {
       srcs.appendChild(el('p', 'empty', 'Доходов в этом месяце ещё нет.'));
     } else {
       var plain = el('ul', 'plain');
+      if (st.carry) { // перешло с прошлых месяцев: плюсом остаток, минусом перерасход
+        var cr = el('li', 'plain__carry');
+        cr.id = 'carryRow';
+        add(cr, icon('wallet'), el('span', '', 'Остаток на начало месяца'), el('data', '', F.fmt(st.carry)));
+        plain.appendChild(cr);
+      }
       s.srcs.forEach(function (c) {
         var li = el('li'), name = el('span', '', c.name);
         if (c.note) { name.appendChild(rowNote(c.note)); }
@@ -228,6 +239,7 @@
     add(copy, el('span', '', 'Копия данных'), icon('right'));
     copy.addEventListener('click', openBackup);
     add(sheet, cats, srcs, copy);
+    if (st.partial) { sheet.appendChild(el('p', 'note', 'Часть записей прошлых месяцев не читается: остаток на начало месяца может быть неточным.')); }
     if (store && store.kind === 'local') { sheet.appendChild(el('p', 'note', 'Пробный режим вне Telegram: записи хранятся только в этом браузере.')); }
 
     clear(view);
@@ -288,18 +300,17 @@
 
   // ---------- загрузка ----------
   function reload(animate, done) {
-    store.months(function (err, months) {
-      if (err) { st.error = explain(err); st.loaded = true; paint(false); if (done) { done(err); } return; }
-      st.months = months;
-      store.load(st.month, function (err2, ops) {
-        st.loaded = true;
-        if (err2) { st.error = explain(err2); paint(false); if (done) { done(err2); } return; }
-        st.error = '';
-        st.ops = ops;
-        st.sum = F.summarize(ops);
-        paint(animate);
-        if (done) { done(null); }
-      });
+    store.view(st.month, function (err, v) {
+      st.loaded = true;
+      if (err) { st.error = explain(err); paint(false); if (done) { done(err); } return; }
+      st.error = '';
+      st.months = v.months;
+      st.ops = v.ops;
+      st.carry = v.carry;
+      st.partial = v.partial;
+      st.sum = F.summarize(v.ops);
+      paint(animate);
+      if (done) { done(null); }
     });
   }
 
@@ -533,8 +544,8 @@
     if (!e.edit) { // строка сверху отвечает на ввод: сколько останется после этой записи
       var same = F.monthOf(e.date) === st.month, s = st.sum, text = '', val = 0;
       if (same) {
-        var left = s.left + (minor ? (e.kind === 'e' ? -byn : byn) : 0);
-        if (!s.income && e.kind === 'e') { text = minor ? 'Будет потрачено' : 'Потрачено'; val = s.spent + (minor ? byn : 0); }
+        var left = s.left + st.carry + (minor ? (e.kind === 'e' ? -byn : byn) : 0);
+        if (!s.income && !st.carry && e.kind === 'e') { text = minor ? 'Будет потрачено' : 'Потрачено'; val = s.spent + (minor ? byn : 0); }
         else if (left < 0) { text = 'Перерасход'; val = -left; }
         else { text = minor ? (e.kind === 'e' ? 'Останется' : 'Станет') : 'Осталось'; val = left; }
       }

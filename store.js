@@ -139,6 +139,32 @@
         });
       },
       load: function (month, cb) { chunks(month, function (err, list) { cb(err, err ? null : flat(list)); }); },
+      /** всё для экрана месяца одним чтением: месяцы с записями, записи месяца и остаток на его начало
+          (доходы минус траты всех прошлых месяцев, в копейках). Нечитаемый кусок чужого месяца не мешает открыть текущий: partial = true */
+      view: function (month, cb) {
+        ad.keys(function (err, keys) {
+          if (err) { cb(err); return; }
+          var mine = keys.map(function (k) { var p = parseKey(k); return p ? { key: k, month: p.month, i: p.i } : null; }).filter(Boolean)
+            .sort(function (a, b) { return a.month === b.month ? a.i - b.i : (a.month < b.month ? -1 : 1); });
+          ad.get(mine.map(function (c) { return c.key; }), function (err2, values) {
+            if (err2) { cb(err2); return; }
+            var months = {}, ops = [], carry = 0, partial = false, seen = {};
+            for (var n = 0; n < mine.length; n++) {
+              var c = mine[n], list = decode(values[c.key], c.month);
+              if (list === null) { if (c.month === month) { cb('corrupt'); return; } partial = true; continue; }
+              for (var j = 0; j < list.length; j++) {
+                var op = list[j];
+                if (seen[op.id]) { continue; }
+                seen[op.id] = 1;
+                months[c.month] = 1;
+                if (c.month === month) { ops.push(op); }
+                else if (c.month < month) { carry += (op.k === 'i' ? 1 : -1) * F.bynOf(op); }
+              }
+            }
+            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial });
+          });
+        });
+      },
       add: function (op, cb) {
         if (!F.validOp(op)) { cb('invalid'); return; }
         append(F.monthOf(op.d), [op], function (err) { cb(err); });
