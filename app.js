@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '5faf069ec5'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '0a8e9ea3fd'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -83,19 +83,35 @@
   modal.setAttribute('aria-hidden', 'true');
   toastEl.setAttribute('role', 'status');
 
-  function fitHeight() { // высота окна: в Telegram берём его «устойчивую» высоту (без прыжков при сворачивании шапки), но не больше видимого окна
-    var h = window.innerHeight;
-    if (inTg && tg.viewportStableHeight && tg.viewportStableHeight < h) { h = tg.viewportStableHeight; }
+  var sim = null; // только для теста: изображает клавиатуру телефона
+  /** Высота окна и клавиатура телефона — одним расчётом. Клавиатура ведёт себя по-разному:
+      iPhone в Telegram сообщает приложению уменьшенную высоту окна (страница сама становится ниже), обычный браузер кладёт клавиатуру поверх страницы,
+      Android сжимает само окно. Поэтому лист поднимается ровно на ту часть страницы, которая осталась под клавиатурой: нижний край страницы минус нижний край видимой области.
+      11.10.2026 обе поправки применялись сразу, и от листа цели на iPhone оставалась полоска. */
+  function fit() {
+    var inner = window.innerHeight, vv = window.visualViewport;
+    var visible = vv ? vv.offsetTop + vv.height : inner;
+    var stable = inTg && tg.viewportStableHeight ? tg.viewportStableHeight : inner;
+    if (sim) { // режимы: 'overlay' клавиатура поверх страницы, 'tg' Telegram уменьшил высоту окна сам
+      visible = inner - sim.px;
+      if (sim.mode === 'tg') { stable = inner - sim.px; }
+    }
+    var h = Math.min(inner, stable);
     document.documentElement.style.setProperty('--vh', h + 'px');
-    if (ui.open) { ui.h = modal.offsetHeight; }
+    // большой лист (добавление) держит высоту, которая была до клавиатуры: иначе, пока печатают заметку, страница становится ниже и сумма наезжает на категории
+    if (!typing()) { root.style.setProperty('--full', (h - 10) + 'px'); }
+    var kb = Math.max(0, Math.round(root.getBoundingClientRect().top + h - visible));
+    root.style.setProperty('--kb', (kb > 40 ? kb : 0) + 'px');
+    if (ui.open) { ui.h = modal.offsetHeight; reveal(visible); }
   }
-  /** клавиатура телефона ложится поверх страницы (iPhone): короткий лист поднимается над ней, иначе его кнопки не видно и не нажать */
-  function fitKeyboard(forced) {
-    var vv = window.visualViewport, kb = 0;
-    if (typeof forced === 'number') { kb = forced; }
-    else if (vv) { kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)); }
-    root.style.setProperty('--kb', (kb > 80 ? kb : 0) + 'px');
-    if (ui.open) { ui.h = modal.offsetHeight; }
+  /** поле, в которое печатают, должно быть видно над клавиатурой: прокручиваем к нему содержимое листа */
+  function reveal(visible) {
+    var a = document.activeElement;
+    if (!typing() || !a.closest) { return; }
+    var pick = a.closest('.pick');
+    if (!pick) { return; }
+    var pr = pick.getBoundingClientRect(), ar = a.getBoundingClientRect(), bottom = Math.min(pr.bottom, visible);
+    if (ar.bottom > bottom - 12 || ar.top < pr.top + 4) { pick.scrollTop += ar.top - pr.top - Math.max(8, (bottom - pr.top - ar.height) / 3); }
   }
   function typing() { var a = document.activeElement; return !!a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.type !== 'date'; }
 
@@ -378,7 +394,7 @@
     var g = st.cfg.goal || null;
     haptic();
     openModal('list', false, function (m) {
-      var box = el('div', 'pick');
+      var box = el('div', 'pick pick--goal');
       var info = el('p', 'pick__info', 'Накоплено считается по всем записям: доходы минус траты. Сейчас это ' + F.fmt(Math.max(0, st.balance)) + F.NB + 'BYN.');
       info.id = 'goalInfo';
       var sum = el('input', 'field');
@@ -1025,7 +1041,7 @@
     tgTry(function () { if (tg.setBottomBarColor) { tg.setBottomBarColor('#FFFFFF'); } });
     tgTry(function () { if (tg.disableVerticalSwipes) { tg.disableVerticalSwipes(); } }); // иначе жест «вниз» сворачивает всё приложение вместо листа
     tgTry(function () { tg.BackButton.onClick(function () { closeModal(0); }); });
-    tgTry(function () { tg.onEvent('viewportChanged', fitHeight); });
+    tgTry(function () { tg.onEvent('viewportChanged', fit); });
 
     store = S.create(inTg ? S.cloudAdapter(tg.CloudStorage) : S.localAdapter('fin_'));
 
@@ -1042,12 +1058,15 @@
       if (f && /^(INPUT|TEXTAREA)$/.test(f.tagName) && f.type !== 'date') { lastBlur = Date.now(); }
     }, true);
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', function () { fitKeyboard(); });
-      window.visualViewport.addEventListener('scroll', function () { fitKeyboard(); });
+      window.visualViewport.addEventListener('resize', fit);
+      window.visualViewport.addEventListener('scroll', fit);
     }
-    window.addEventListener('resize', fitHeight);
+    window.addEventListener('resize', fit);
+    // пока печатают, пояснение в листе цели прячется: место нужно полям и кнопке
+    document.addEventListener('focusin', function () { root.className = typing() ? 'is-typing' : ''; setTimeout(fit, 60); });
+    document.addEventListener('focusout', function () { setTimeout(function () { root.className = typing() ? 'is-typing' : ''; fit(); }, 60); });
     document.addEventListener('visibilitychange', function () { if (!document.hidden && !ui.open && st.loaded) { reload(false); } }); // записи мог добавить второй телефон
-    fitHeight();
+    fit();
     paintDock();
     view.appendChild(el('p', 'boot', 'Открываем записи'));
     reload(true);
@@ -1058,6 +1077,6 @@
     if (!st.loaded) { fail('Не получилось открыть учёт', 'Закройте окно и откройте его ещё раз. Для разработчика: ' + String(e.message || '').replace(/[<>&]/g, '').slice(0, 120)); }
   });
 
-  window.FINAPP = { state: st, reload: reload, version: VERSION, setKeyboard: fitKeyboard };
+  window.FINAPP = { state: st, reload: reload, version: VERSION, setKeyboard: function (px, mode) { sim = px ? { px: px, mode: mode || 'overlay' } : null; fit(); } };
   boot();
 })();
