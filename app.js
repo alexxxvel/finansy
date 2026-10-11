@@ -11,6 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var VERSION = '0b4d566fac'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -69,6 +70,7 @@
   var store = null;
   var ui = { y: 0, h: 0, raf: 0, open: false, kind: '' };
   var entry = null; // состояние листа добавления
+  var lastBlur = 0; // когда поле ввода последний раз потеряло фокус
 
   // ---------- каркас ----------
   var stage = el('div', 'stage');
@@ -80,17 +82,35 @@
   modal.setAttribute('aria-hidden', 'true');
   toastEl.setAttribute('role', 'status');
 
-  function fitHeight() { // высота окна: в Telegram берём его «устойчивую» высоту (без прыжков при сворачивании шапки)
-    var h = (inTg && tg.viewportStableHeight) || window.innerHeight;
+  function fitHeight() { // высота окна: в Telegram берём его «устойчивую» высоту (без прыжков при сворачивании шапки), но не больше видимого окна
+    var h = window.innerHeight;
+    if (inTg && tg.viewportStableHeight && tg.viewportStableHeight < h) { h = tg.viewportStableHeight; }
     document.documentElement.style.setProperty('--vh', h + 'px');
     if (ui.open) { ui.h = modal.offsetHeight; }
   }
+  /** клавиатура телефона ложится поверх страницы (iPhone): короткий лист поднимается над ней, иначе его кнопки не видно и не нажать */
+  function fitKeyboard(forced) {
+    var vv = window.visualViewport, kb = 0;
+    if (typeof forced === 'number') { kb = forced; }
+    else if (vv) { kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)); }
+    root.style.setProperty('--kb', (kb > 80 ? kb : 0) + 'px');
+    if (ui.open) { ui.h = modal.offsetHeight; }
+  }
+  function typing() { var a = document.activeElement; return !!a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.type !== 'date'; }
 
-  function toast(text) {
-    toastEl.textContent = text;
-    toastEl.className = 'toast is-on';
+  /** сообщение внизу; с кнопкой — это отмена только что сделанного (случайную запись убрать одним касанием) */
+  function toast(text, action, fn) {
+    clear(toastEl);
+    toastEl.appendChild(el('span', '', text));
+    if (action) {
+      var b = btn('toast__act', action);
+      b.id = 'toastAct';
+      b.addEventListener('click', function () { toastEl.className = 'toast'; fn(); });
+      toastEl.appendChild(b);
+    }
+    toastEl.className = 'toast is-on' + (action ? ' toast--act' : '');
     clearTimeout(toast.t);
-    toast.t = setTimeout(function () { toastEl.className = 'toast'; }, 3800);
+    toast.t = setTimeout(function () { toastEl.className = 'toast'; }, action ? 7000 : 3800);
   }
   function explain(err) {
     if (err === 'timeout') { return 'Нет ответа от Telegram. Проверьте связь и повторите.'; }
@@ -150,7 +170,7 @@
     })(t0);
   }
 
-  function rowNote(text) { return text ? el('small', '', text) : null; }
+  function rowNote(parent, text) { if (text) { parent.appendChild(document.createTextNode(' ')); parent.appendChild(el('small', '', text)); } }
 
   function paintMonth(animate) {
     var s = st.sum, was = st.shown;
@@ -194,7 +214,7 @@
       (all ? s.cats : s.cats.slice(0, 4)).forEach(function (c, n) {
         var li = el('li');
         var name = el('span', '', c.name);
-        if (c.note) { name.appendChild(rowNote(c.note)); }
+        rowNote(name, c.note);
         var track = el('i'), f = el('b');
         f.style.transform = 'scaleX(' + (c.sum / s.spent).toFixed(4) + ')';
         f.style.opacity = String([1, 0.76, 0.56][n] || 0.45);
@@ -228,7 +248,7 @@
       }
       s.srcs.forEach(function (c) {
         var li = el('li'), name = el('span', '', c.name);
-        if (c.note) { name.appendChild(rowNote(c.note)); }
+        rowNote(name, c.note);
         add(li, icon(c.icon), name, el('data', '', F.fmt(c.sum)));
         plain.appendChild(li);
       });
@@ -262,6 +282,7 @@
     var sheet = el('div', 'sheet sheet--full');
     var days = F.byDays(st.ops);
     if (!days.length) { sheet.appendChild(el('p', 'empty', 'В этом месяце записей нет.')); }
+    else { sheet.appendChild(el('p', 'hint', 'Нажмите на запись, чтобы изменить или удалить её.')); }
     days.forEach(function (day) {
       var sec = el('section', 'day');
       sec.appendChild(el('h2', '', F.dayLabel(day.date)));
@@ -271,7 +292,8 @@
         var li = el('li'), b = btn('op');
         b.setAttribute('data-id', op.id);
         var name = el('span', '', dict.name);
-        if (op.u !== 'BYN') { name.appendChild(rowNote(F.fmtShort(op.a) + F.NB + op.u)); }
+        var extra = [op.n || '', op.u !== 'BYN' ? F.fmtShort(op.a) + F.NB + op.u : ''].filter(Boolean).join(', ');
+        rowNote(name, extra);
         add(b, icon(dict.icon), name, el('data', op.k === 'i' ? 'is-plus' : '', (op.k === 'i' ? '+' : '') + F.fmt(F.bynOf(op))));
         b.addEventListener('click', function () { openEntry(op); });
         li.appendChild(b);
@@ -340,6 +362,7 @@
 
   function openModal(kind, full, build) {
     ui.kind = kind;
+    toastEl.className = 'toast'; // сообщение не должно лежать поверх клавиш листа
     clear(modal);
     modal.className = 'modal' + (full ? ' modal--full' : '') + ' modal--' + kind;
     var grab = el('div', 'grab');
@@ -412,6 +435,7 @@
       cur: op ? op.u : 'BYN',
       cat: op ? op.c : '',
       date: op ? op.d : F.today(),
+      note: op && op.n ? op.n : '',
       busy: false
     };
     haptic();
@@ -437,10 +461,18 @@
       });
 
       var strip = el('div', 'strip');
-      entry.left = el('span', 'strip__left');
-      entry.del = btn('strip__del', 'Удалить запись');
-      entry.del.id = 'delBtn';
-      entry.del.addEventListener('click', removeEntry);
+      // заметка: обычное поле телефона. Стоит вверху листа, поэтому клавиатура телефона его не закрывает
+      entry.noteInput = el('input', 'note-in');
+      entry.noteInput.type = 'text';
+      entry.noteInput.id = 'noteInput';
+      entry.noteInput.maxLength = 40;
+      entry.noteInput.placeholder = 'Заметка';
+      entry.noteInput.value = entry.note;
+      entry.noteInput.setAttribute('aria-label', 'Заметка');
+      entry.noteInput.setAttribute('enterkeyhint', 'done');
+      entry.noteInput.setAttribute('autocomplete', 'off');
+      entry.noteInput.addEventListener('input', function () { if (entry) { entry.note = entry.noteInput.value; } });
+      entry.noteInput.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { entry.noteInput.blur(); } });
       // дата: настоящее поле телефона под подписью. Создаётся один раз и не пересоздаётся, пока лист открыт (иначе календарь iPhone закрывается сам)
       var dateWrap = el('label', 'date');
       entry.dateText = el('span');
@@ -458,7 +490,7 @@
       });
       dateWrap.addEventListener('click', function () { try { if (entry.dateInput.showPicker) { entry.dateInput.showPicker(); } } catch (e) { /* откроется обычным нажатием */ } });
       add(dateWrap, entry.dateText, icon('down'), entry.dateInput);
-      add(strip, op ? entry.del : entry.left, dateWrap);
+      add(strip, entry.noteInput, dateWrap);
 
       var box = el('section', 'entry');
       var row = el('div', 'entry__row');
@@ -475,9 +507,9 @@
         paintEntry();
       });
       add(row, entry.sum, entry.curBtn);
-      entry.conv = el('p', 'entry__conv');
-      entry.conv.id = 'entryConv';
-      add(box, row, entry.conv);
+      entry.hint = el('p', 'entry__conv'); // под суммой: пересчёт валюты или сколько останется после этой записи
+      entry.hint.id = 'entryHint';
+      add(box, row, entry.hint);
 
       entry.chips = el('ul', 'chips');
       var keys = el('div', 'keys');
@@ -500,6 +532,12 @@
       entry.go = btn('btn');
       entry.go.id = 'goBtn';
       entry.go.addEventListener('click', submitEntry);
+      if (op) { // правка: удаление стоит рядом с «Сохранить», а не спрятано
+        entry.del = btn('btn btn--del', 'Удалить');
+        entry.del.id = 'delBtn';
+        entry.del.addEventListener('click', removeEntry);
+        foot.appendChild(entry.del);
+      }
       foot.appendChild(entry.go);
       add(m, screen, foot);
       paintChips();
@@ -538,19 +576,17 @@
     e.sum.className = 'entry__sum' + (e.digits ? ' is-on' : '') + (len > 7 ? ' is-s' : len > 5 ? ' is-m' : '');
     e.curText.textContent = e.cur;
     e.curBtn.setAttribute('aria-label', 'Валюта: ' + e.cur + '. Нажмите, чтобы сменить');
-    e.conv.textContent = e.cur === 'BYN' ? '' : (minor ? 'это ' + F.fmt(byn) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[e.cur]) : 'курс ' + F.fmtRate(F.RATES[e.cur]) + F.NB + 'BYN за' + F.NB + '1' + F.NB + e.cur);
     e.dateText.textContent = F.dayLabel(e.date);
 
-    if (!e.edit) { // строка сверху отвечает на ввод: сколько останется после этой записи
-      var same = F.monthOf(e.date) === st.month, s = st.sum, text = '', val = 0;
-      if (same) {
-        var left = s.left + st.carry + (minor ? (e.kind === 'e' ? -byn : byn) : 0);
-        if (!s.income && !st.carry && e.kind === 'e') { text = minor ? 'Будет потрачено' : 'Потрачено'; val = s.spent + (minor ? byn : 0); }
-        else if (left < 0) { text = 'Перерасход'; val = -left; }
-        else { text = minor ? (e.kind === 'e' ? 'Останется' : 'Станет') : 'Осталось'; val = left; }
-      }
-      clear(e.left);
-      if (text) { add(e.left, document.createTextNode(text + ' '), el('b', '', F.fmt(val))); }
+    clear(e.hint);
+    if (e.cur !== 'BYN') {
+      e.hint.textContent = minor ? 'это ' + F.fmt(byn) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[e.cur]) : 'курс ' + F.fmtRate(F.RATES[e.cur]) + F.NB + 'BYN за' + F.NB + '1' + F.NB + e.cur;
+    } else if (!e.edit && F.monthOf(e.date) === st.month) { // сколько останется после этой записи
+      var s = st.sum, text, val, left = s.left + st.carry + (minor ? (e.kind === 'e' ? -byn : byn) : 0);
+      if (!s.income && !st.carry && e.kind === 'e') { text = minor ? 'Будет потрачено' : 'Потрачено'; val = s.spent + (minor ? byn : 0); }
+      else if (left < 0) { text = 'Перерасход'; val = -left; }
+      else { text = minor ? (e.kind === 'e' ? 'Останется' : 'Станет') : 'Осталось'; val = left; }
+      add(e.hint, document.createTextNode(text + ' '), el('b', '', F.fmt(val)));
     }
 
     var label, off = true;
@@ -561,36 +597,45 @@
     e.go.textContent = label;
     e.go.className = 'btn' + (off ? ' btn--off' : '');
     e.go.setAttribute('aria-disabled', String(off));
+    if (e.del) { e.del.setAttribute('aria-disabled', String(!!e.busy)); }
   }
 
-  function afterWrite(err, date) {
+  function afterWrite(err, date, said) {
     if (!entry) { return; }
     if (err) { entry.busy = false; paintEntry(); haptic('err'); toast(explain(err)); return; }
     haptic('ok');
     st.month = date ? F.monthOf(date) : st.month;
     closeModal(0);
-    reload(true);
+    reload(true, said);
   }
+  function undone(err) { if (err) { toast(explain(err)); } else { haptic(); reload(true); } }
   function submitEntry() {
     var e = entry;
     if (!e || e.busy) { return; }
     var minor = F.parseTyped(e.digits);
     if (!minor || !e.cat) { haptic('err'); return; }
-    var op = F.makeOp(e.kind, e.cat, minor, e.cur, e.date, e.edit ? e.edit.id : null);
+    var op = F.makeOp(e.kind, e.cat, minor, e.cur, e.date, e.edit ? e.edit.id : null, e.note);
     if (e.edit && e.edit.u === e.cur && e.edit.r) { op.r = e.edit.r; } // правка не меняет курс, по которому запись была внесена
     e.busy = true;
     paintEntry();
-    if (e.edit) { store.update(op, F.monthOf(e.edit.d), function (err) { afterWrite(err, op.d); }); }
-    else { store.add(op, function (err) { afterWrite(err, op.d); }); }
+    if (e.edit) { store.update(op, F.monthOf(e.edit.d), function (err) { afterWrite(err, op.d); }); return; }
+    store.add(op, function (err) {
+      afterWrite(err, op.d, function () { // случайную запись можно убрать сразу, не заходя в «Историю»
+        toast(op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), undone); });
+      });
+    });
   }
   function removeEntry() {
     var e = entry;
     if (!e || !e.edit || e.busy) { return; }
+    var old = e.edit;
     function go(yes) {
       if (!yes || !entry) { return; }
       entry.busy = true;
       paintEntry();
-      store.remove(e.edit.id, F.monthOf(e.edit.d), function (err) { afterWrite(err, null); });
+      store.remove(old.id, F.monthOf(old.d), function (err) {
+        afterWrite(err, null, function () { toast('Запись удалена', 'Вернуть', function () { store.add(old, undone); }); });
+      });
     }
     if (inTg && tg.showConfirm) { try { tg.showConfirm('Удалить эту запись?', go); return; } catch (x) { /* спросим обычным окном */ } }
     go(window.confirm('Удалить эту запись?'));
@@ -627,57 +672,146 @@
   }
 
   // ---------- копия данных ----------
+  function refit() { if (ui.open) { ui.h = modal.offsetHeight; } }
+  function copyText(area, text) { // копирование прямо в ответ на касание: иначе iPhone его не разрешает
+    var ok = false;
+    area.focus();
+    area.select();
+    try { area.setSelectionRange(0, text.length); } catch (e) { /* выделено обычным способом */ }
+    try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(function () {}, function () {}); ok = true; } } catch (e3) { /* осталось выделение */ }
+    area.blur();
+    return ok;
+  }
   function openBackup() {
     haptic();
     openModal('list', false, function (m) {
       var box = el('div', 'pick');
-      var area = el('textarea', 'pick__area');
-      area.id = 'backupText';
-      area.setAttribute('aria-label', 'Текст копии');
-      area.setAttribute('autocapitalize', 'none');
-      area.setAttribute('autocorrect', 'off');
-      area.spellcheck = false;
-      area.hidden = true;
-      var info = el('p', 'pick__info', 'Записи хранятся в облаке Telegram и привязаны к этому боту. Копия — текст со всеми записями: сохраните его в «Избранное» или в заметки.');
-      var out = btn('btn', 'Скопировать все записи');
-      out.id = 'exportBtn';
-      var inp = btn('btn btn--quiet', 'Восстановить из копии');
-      inp.id = 'importBtn';
-      out.addEventListener('click', function () {
-        store.exportAll(function (err, res) {
-          if (err) { toast(explain(err)); return; }
-          area.hidden = false;
-          area.readOnly = true;
-          area.value = res.text;
-          area.focus();
-          area.select();
-          var ok = false;
-          try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-          if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(res.text).then(function () { said(true); }, function () { said(ok); }); } else { said(ok); }
-          function said(done) { info.textContent = (done ? 'Скопировано: ' : 'Выделите текст ниже и скопируйте: ') + res.count + ' ' + F.plural(res.count, 'запись', 'записи', 'записей') + '. Вставьте в «Избранное» или в заметки.'; }
-        });
+      m.appendChild(box);
+      backupMenu(box);
+    });
+  }
+  function backupMenu(box) {
+    clear(box);
+    var out = btn('btn', 'Сделать копию');
+    out.id = 'exportBtn';
+    var inp = btn('btn btn--quiet', 'Восстановить из копии');
+    inp.id = 'importBtn';
+    out.addEventListener('click', function () {
+      store.exportAll(function (err, res) { if (err) { toast(explain(err)); } else { backupExport(box, res); } });
+    });
+    inp.addEventListener('click', function () { backupImport(box); });
+    add(box, el('h2', '', 'Копия данных'),
+      el('p', 'pick__info', 'Записи хранятся в облаке Telegram и привязаны к этому боту. Копия — текст со всеми записями: его можно сохранить в «Избранное» или в заметки.'),
+      out, inp,
+      el('p', 'pick__ver', 'Версия ' + VERSION + ', ' + (store.kind === 'cloud' ? 'записи в облаке Telegram' : 'записи в этом браузере')));
+    refit();
+  }
+  function backupExport(box, res) {
+    clear(box);
+    var words = res.count + ' ' + F.plural(res.count, 'запись', 'записи', 'записей');
+    var info = el('p', 'pick__info', 'В копии ' + words + '. Нажмите «Скопировать текст» и вставьте его в «Избранное» или в заметки.');
+    info.id = 'backupInfo';
+    var area = el('textarea', 'pick__area');
+    area.id = 'backupText';
+    area.readOnly = true;
+    area.value = res.text;
+    area.setAttribute('aria-label', 'Текст копии');
+    var copy = btn('btn', 'Скопировать текст');
+    copy.id = 'copyBtn';
+    copy.addEventListener('click', function () {
+      var ok = copyText(area, res.text);
+      haptic(ok ? 'ok' : 'err');
+      info.textContent = ok ? 'Скопировано: ' + words + '. Вставьте текст в «Избранное» или в заметки.' : 'Не получилось скопировать. Выделите текст в поле и скопируйте его сами.';
+    });
+    var done = btn('btn btn--quiet', 'Готово');
+    done.addEventListener('click', function () { closeModal(0); });
+    add(box, el('h2', '', 'Копия данных'), info, area, copy, done);
+    refit();
+  }
+  function backupImport(box) {
+    clear(box);
+    var text = '';
+    var info = el('p', 'pick__info', 'Скопируйте текст копии, затем нажмите «Вставить из буфера». Существующие записи не изменятся, добавятся только недостающие.');
+    info.id = 'backupInfo';
+    var area = el('textarea', 'pick__area');
+    area.id = 'backupText';
+    area.placeholder = 'Вставьте сюда текст копии';
+    area.setAttribute('aria-label', 'Текст копии');
+    area.setAttribute('autocapitalize', 'none');
+    area.setAttribute('autocorrect', 'off');
+    area.spellcheck = false;
+    area.hidden = true;
+    var paste = btn('btn', 'Вставить из буфера');
+    paste.id = 'pasteBtn';
+    var manual = btn('btn btn--quiet', 'Вставить вручную');
+    manual.id = 'manualBtn';
+    var go = btn('btn', '');
+    go.id = 'restoreBtn';
+    go.hidden = true;
+    var busy = false;
+
+    function accept(raw, fromField) {
+      var parsed = F.parseBackup(raw);
+      if (parsed) {
+        text = raw;
+        info.textContent = 'В копии ' + parsed.count + ' ' + F.plural(parsed.count, 'запись', 'записи', 'записей') + '. Нажмите кнопку ниже.';
+        go.textContent = 'Восстановить ' + parsed.count + ' ' + F.plural(parsed.count, 'запись', 'записи', 'записей');
+        go.hidden = false;
+        paste.hidden = true;
+        manual.hidden = true;
+        if (typing()) { document.activeElement.blur(); } // убрать клавиатуру: под ней кнопку не видно
+        haptic('ok');
+      } else {
+        text = '';
+        go.hidden = true;
+        var empty = !String(raw || '').replace(/\s/g, '');
+        if (!(fromField && empty)) { info.textContent = empty ? 'В буфере пусто. Скопируйте текст копии целиком и нажмите ещё раз.' : 'Это не похоже на копию записей. Скопируйте текст целиком: от первой фигурной скобки до последней.'; }
+        if (!fromField) { showField(false); }
+      }
+      refit();
+    }
+    function showField(focus) {
+      area.hidden = false;
+      manual.hidden = true;
+      refit();
+      if (focus) { area.focus(); }
+    }
+    paste.addEventListener('click', function () {
+      var p = null;
+      try { p = navigator.clipboard && navigator.clipboard.readText ? navigator.clipboard.readText() : null; } catch (e) { p = null; }
+      if (!p || !p.then) { info.textContent = 'Телефон не дал прочитать буфер. Вставьте текст в поле: удерживайте в нём палец и выберите «Вставить».'; showField(true); return; }
+      p.then(function (raw) { accept(raw, false); }, function () {
+        info.textContent = 'Телефон не дал прочитать буфер. Вставьте текст в поле: удерживайте в нём палец и выберите «Вставить».';
+        showField(true);
       });
-      inp.addEventListener('click', function () {
-        if (area.hidden || area.readOnly) {
-          area.hidden = false;
-          area.readOnly = false;
-          area.value = '';
-          area.placeholder = 'Вставьте сюда текст копии';
-          info.textContent = 'Вставьте текст копии и нажмите «Восстановить из копии» ещё раз. Существующие записи не изменятся, добавятся только недостающие.';
-          area.focus();
+    });
+    manual.addEventListener('click', function () {
+      info.textContent = 'Вставьте текст в поле: удерживайте в нём палец и выберите «Вставить».';
+      showField(true);
+    });
+    area.addEventListener('input', function () { accept(area.value, true); });
+    go.addEventListener('click', function () {
+      if (busy || !text) { return; }
+      busy = true;
+      go.textContent = 'Восстанавливаем';
+      go.className = 'btn btn--off';
+      store.importAll(text, function (err, added) {
+        if (err) {
+          busy = false;
+          go.className = 'btn';
+          go.textContent = 'Повторить';
+          info.textContent = err === 'format' ? 'Это не похоже на копию записей.' : explain(err);
+          haptic('err');
           return;
         }
-        store.importAll(area.value, function (err, added) {
-          if (err === 'format' || err === 'empty') { info.textContent = 'Это не похоже на копию записей. Вставьте текст целиком, от первой скобки до последней.'; return; }
-          if (err) { toast(explain(err)); return; }
-          closeModal(0);
-          reload(true);
-          toast(added ? 'Добавлено записей: ' + added : 'Все записи из копии уже на месте');
-        });
+        haptic('ok');
+        closeModal(0);
+        reload(true, function () { toast(added ? 'Добавлено записей: ' + added : 'Все записи из копии уже на месте'); });
       });
-      add(box, el('h2', '', 'Копия данных'), info, area, out, inp);
-      m.appendChild(box);
     });
+    add(box, el('h2', '', 'Восстановить из копии'), info, area, paste, manual, go);
+    refit();
   }
 
   // ---------- запуск ----------
@@ -705,7 +839,19 @@
     clear(root);
     add(stage, view, dock);
     add(root, stage, scrim, modal, toastEl);
-    scrim.addEventListener('click', function () { if (!entry || !entry.busy) { closeModal(0); } });
+    scrim.addEventListener('click', function () {
+      if (typing()) { document.activeElement.blur(); return; } // первое касание мимо поля только убирает клавиатуру, лист не закрывает
+      if (Date.now() - lastBlur < 700) { return; } // телефон снимает фокус с поля раньше, чем сообщает о касании: это то же самое касание
+      if (!entry || !entry.busy) { closeModal(0); }
+    });
+    document.addEventListener('focusout', function (e) {
+      var f = e.target;
+      if (f && /^(INPUT|TEXTAREA)$/.test(f.tagName) && f.type !== 'date') { lastBlur = Date.now(); }
+    }, true);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', function () { fitKeyboard(); });
+      window.visualViewport.addEventListener('scroll', function () { fitKeyboard(); });
+    }
     window.addEventListener('resize', fitHeight);
     document.addEventListener('visibilitychange', function () { if (!document.hidden && !ui.open && st.loaded) { reload(false); } }); // записи мог добавить второй телефон
     fitHeight();
@@ -719,6 +865,6 @@
     if (!st.loaded) { fail('Не получилось открыть учёт', 'Закройте окно и откройте его ещё раз. Для разработчика: ' + String(e.message || '').replace(/[<>&]/g, '').slice(0, 120)); }
   });
 
-  window.FINAPP = { state: st, reload: reload };
+  window.FINAPP = { state: st, reload: reload, version: VERSION, setKeyboard: fitKeyboard };
   boot();
 })();

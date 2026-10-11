@@ -6,7 +6,7 @@
   'use strict';
 
   var F = g.FIN;
-  var LIMIT = 3900; // запас до 4096 знаков
+  var LIMIT = 3900; // запас до предела Telegram в 4096; считаем в байтах: заметки пишут кириллицей, а она вдвое длиннее
   var WAIT = 12000; // хранилище молчит дольше — считаем, что не сохранилось
 
   /** обёртка: ответ один раз, молчание = ошибка */
@@ -59,6 +59,7 @@
     return m ? { month: m[1] + '-' + m[2], i: m[3] ? +m[3] : 0 } : null;
   }
   function encode(ops) { return JSON.stringify(ops.map(F.pack)); }
+  function size(ops) { return F.utf8len(encode(ops)); }
   function decode(text, month) {
     var arr;
     try { arr = JSON.parse(text || '[]'); } catch (e) { return null; } // null = кусок не читается: писать поверх него нельзя
@@ -94,7 +95,7 @@
     function write(month, chunk, cb) {
       if (!chunk.ops.length) { ad.del([chunkKey(month, chunk.i)], cb); return; }
       var text = encode(chunk.ops);
-      if (text.length > 4096) { cb('too long'); return; }
+      if (F.utf8len(text) > 4096) { cb('too long'); return; }
       ad.set(chunkKey(month, chunk.i), text, cb);
     }
     /** добавить записи в месяц: в последний кусок, пока помещаются, иначе в новый. Каждый шаг — одна запись одного ключа */
@@ -108,9 +109,9 @@
         (function next() {
           if (!fresh.length) { cb(null, added); return; }
           var last = list.length ? list[list.length - 1] : null;
-          var target = last && encode(last.ops.concat([fresh[0]])).length <= LIMIT ? last : null;
+          var target = last && size(last.ops.concat([fresh[0]])) <= LIMIT ? last : null;
           if (!target) { target = { i: last ? last.i + 1 : 0, ops: [] }; list.push(target); }
-          while (fresh.length && encode(target.ops.concat([fresh[0]])).length <= LIMIT) { target.ops.push(fresh.shift()); }
+          while (fresh.length && size(target.ops.concat([fresh[0]])) <= LIMIT) { target.ops.push(fresh.shift()); }
           if (!target.ops.length) { cb('too long'); return; }
           write(month, target, function (err2) { if (err2) { cb(err2); } else { next(); } });
         })();
@@ -208,16 +209,9 @@
       },
       /** восстановление из копии: только добавляет недостающие записи, существующие не трогает и ничего не удаляет */
       importAll: function (text, cb) {
-        var data;
-        try { data = JSON.parse(String(text || '').trim()); } catch (e) { cb('format'); return; }
-        if (!data || data.app !== 'finansy' || !data.months || typeof data.months !== 'object') { cb('format'); return; }
-        var jobs = [];
-        Object.keys(data.months).forEach(function (month) {
-          if (!F.isMonth(month)) { return; }
-          var ops = decode(JSON.stringify(data.months[month]), month);
-          if (ops && ops.length) { jobs.push({ month: month, ops: ops }); }
-        });
-        if (!jobs.length) { cb('empty'); return; }
+        var data = F.parseBackup(text);
+        if (!data) { cb('format'); return; }
+        var jobs = Object.keys(data.months).sort().map(function (month) { return { month: month, ops: data.months[month] }; });
         var total = 0;
         (function next() {
           if (!jobs.length) { cb(null, total); return; }

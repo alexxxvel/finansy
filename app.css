@@ -41,6 +41,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .btn--off { background: #E3E3E8; color: #636368; }
 .btn--off:active { transform: none; }
 .btn--quiet { margin-top: 8px; background: var(--fill); color: var(--ink); }
+.btn--del { flex: none; width: auto; padding: 0 20px; background: var(--fill); color: var(--ink); }
+.btn[hidden] { display: none; }
 
 /* ---------- главная ---------- */
 .spent { flex: none; padding: 12px 0 22px; }
@@ -70,7 +72,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .shares svg { grid-row: 1 / span 2; }
 .shares span, .plain span, .op span { font: 500 17px/1.25 var(--font); letter-spacing: -.015em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shares data, .plain data, .op data { font: 600 17px/1.25 var(--font); letter-spacing: -.015em; }
-.shares small, .plain small, .op small { margin-left: 6px; font: 500 15px/1 var(--font); letter-spacing: 0; color: var(--muted); }
+.shares small, .plain small, .op small { margin-left: 2px; font: 500 15px/1 var(--font); letter-spacing: 0; color: var(--muted); }
 .shares i { grid-column: 2 / -1; height: 5px; border-radius: 3px; background: var(--fill); overflow: hidden; }
 .shares b { display: block; height: 100%; border-radius: 3px; background: var(--ink); transform-origin: 0 50%; }
 .plain li { display: grid; grid-template-columns: 34px 1fr auto; column-gap: 12px; align-items: center; padding: 6px 0; }
@@ -82,6 +84,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .more--copy { margin-top: 14px; padding-left: 0; border-top: 1px solid var(--line); }
 
 /* ---------- история ---------- */
+.hint { margin: 0 0 12px; font: 400 15px/1.4 var(--font); color: var(--muted); }
 .day + .day { margin-top: 14px; }
 .ops { margin-top: 4px; }
 .op { display: grid; grid-template-columns: 34px 1fr auto; column-gap: 12px; align-items: center; width: 100%; min-height: 48px; padding: 6px 0; text-align: left; }
@@ -102,20 +105,24 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .scrim { display: none; position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 5; background: rgba(29,29,31,.36); opacity: 0; }
 .modal { display: none; position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; flex-direction: column; max-height: calc(100% - 10px); background: var(--bg); border-radius: 28px 28px 0 0; box-shadow: 0 -12px 40px -20px rgba(30,30,60,.4); will-change: transform; }
 .modal--full { height: calc(100% - 10px); }
+/* короткий лист поднимается над клавиатурой телефона (--kb ставит app.js): иначе кнопки под ней не видно */
+.modal--list { bottom: var(--kb, 0px); max-height: calc(100% - 10px - var(--kb, 0px)); }
 /* ручка: за неё лист тянется вниз; зона шире самой чёрточки */
 .grab { flex: none; display: grid; place-items: center; height: 24px; touch-action: none; cursor: grab; }
 .grab i { width: 36px; height: 5px; border-radius: 3px; background: #C7C7CC; }
 .screen { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 20px; }
-.modal__dock { flex: none; padding: 10px 20px max(20px, var(--safe-b)); }
+.modal__dock { flex: none; display: flex; gap: 8px; padding: 10px 20px max(20px, var(--safe-b)); }
 
 /* переключатель-капсула «Трата / Доход» */
 .seg { flex: none; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border-radius: 999px; background: var(--fill); }
 .seg button { min-height: 44px; padding: 0 12px; border-radius: 999px; font: 600 15px/1 var(--font); color: var(--muted); transition: color 140ms var(--ease-out), background-color 140ms var(--ease-out); }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(60,60,80,.1), 0 2px 6px rgba(60,60,80,.08); }
 
-.strip { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; margin-top: 6px; font: 500 15px/1.2 var(--font); color: var(--muted); white-space: nowrap; }
-.strip b { margin-left: 2px; font-weight: 600; color: var(--ink); word-spacing: .06em; font-variant-numeric: tabular-nums; }
-.strip__del { min-height: 44px; font: 600 15px/1 var(--font); color: var(--ink); }
+.strip { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; margin-top: 6px; }
+/* заметка: поле телефона; шрифт не меньше 16 px, иначе iPhone приближает страницу при вводе */
+.note-in { flex: 1; min-width: 0; height: 44px; margin: 0; padding: 0 16px; border: 0; border-radius: 999px; background: var(--fill); color: var(--ink); font: 500 17px/1 var(--font); letter-spacing: -.01em; -webkit-appearance: none; appearance: none; }
+.note-in::placeholder { color: var(--muted); opacity: 1; }
+.note-in:focus { outline: 3px solid rgba(0,113,227,.45); outline-offset: 1px; }
 .date { position: relative; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; font: 600 15px/1 var(--font); color: var(--ink); cursor: pointer; }
 .date svg { width: 18px; height: 18px; color: var(--muted); }
 /* настоящее поле даты лежит поверх подписи и невидимо: нажатие открывает календарь телефона */
@@ -129,7 +136,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .entry__sum.is-s { font-size: var(--sum-s); }
 .cur { flex: none; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 10px 0 14px; border-radius: 999px; background: var(--fill); font: 600 15px/1 var(--font); color: var(--ink); }
 .cur svg { width: 18px; height: 18px; color: var(--muted); }
-.entry__conv { min-height: 20px; font: 500 15px/1.3 var(--font); color: var(--muted); text-align: center; }
+.entry__conv { min-height: 20px; font: 500 15px/1.3 var(--font); color: var(--muted); text-align: center; white-space: nowrap; }
+.entry__conv b { margin-left: 2px; font-weight: 600; color: var(--ink); word-spacing: .06em; font-variant-numeric: tabular-nums; }
 
 /* метки категорий: высота блока постоянная (три ряда), метки прижаты к клавиатуре — она не прыгает при переключении «Трата / Доход» */
 .chips { flex: none; display: grid; grid-template-columns: repeat(3, 1fr); align-content: end; gap: 6px; min-height: calc(var(--chip-h) * 3 + 12px + var(--chip-gap)); padding: 0 0 var(--chip-gap); }
@@ -152,13 +160,16 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .pick__info { margin: 8px 0 14px; color: var(--muted); max-width: 40ch; }
 .pick__area { display: block; width: 100%; height: 96px; margin: 0 0 12px; padding: 12px 14px; border: 0; border-radius: 18px; background: var(--surface); color: var(--ink); font: 400 16px/1.35 var(--font); resize: none; }
 .pick__area[hidden] { display: none; }
+.pick__ver { margin-top: 14px; font: 400 15px/1.4 var(--font); color: var(--muted); }
 
 .fail { padding: 40px 20px; max-width: 36ch; }
 .fail h2 { font: 700 28px/1.15 var(--font); letter-spacing: -.03em; color: var(--ink); }
 .fail p { margin: 10px 0 20px; color: var(--muted); }
 
-.toast { position: absolute; left: 20px; right: 20px; bottom: calc(96px + var(--safe-b)); z-index: 8; padding: 14px 18px; border-radius: 18px; background: var(--ink); color: #FFFFFF; font: 500 15px/1.35 var(--font); opacity: 0; transform: translateY(8px) scale(.98); pointer-events: none; transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
+.toast { position: absolute; left: 20px; right: 20px; bottom: calc(96px + var(--safe-b)); z-index: 8; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 4px 18px; border-radius: 18px; background: var(--ink); color: #FFFFFF; font: 500 15px/1.35 var(--font); opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
 .toast.is-on { opacity: 1; transform: none; }
+.toast--act.is-on { pointer-events: auto; }
+.toast__act { flex: none; min-height: 44px; padding: 0 6px; font: 600 15px/1 var(--font); color: #FFFFFF; text-decoration: underline; text-underline-offset: 3px; }
 
 /* появление данных: полосы растут один раз при открытии месяца и после новой записи */
 .spent__fill.is-in { animation: reveal 520ms var(--ease-out) both; }
@@ -174,5 +185,5 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 /* низкие экраны: лист обязан поместиться целиком, без прокрутки */
 @media (max-height: 720px) { :root { --key-h: 48px; --chip-gap: 20px; } }
 @media (max-height: 680px) { :root { --key-h: 44px; --chip-gap: 14px; --sum: 52px; --sum-m: 44px; --sum-s: 34px; } .modal__dock .btn { min-height: 52px; } }
-@media (max-height: 620px) { :root { --key-h: 40px; --chip-h: 40px; --chip-gap: 10px; } .strip { margin-top: 2px; } .grab { height: 18px; } .entry { gap: 2px; } .entry__conv { min-height: 18px; } .cur, .seg button { min-height: 40px; } .modal__dock { padding-top: 8px; } .modal__dock .btn { min-height: 48px; } }
+@media (max-height: 620px) { :root { --key-h: 40px; --chip-h: 40px; --chip-gap: 10px; } .strip { margin-top: 2px; min-height: 40px; } .note-in { height: 40px; } .grab { height: 18px; } .entry { gap: 2px; } .entry__conv { min-height: 18px; } .cur, .seg button { min-height: 40px; } .modal__dock { padding-top: 8px; } .modal__dock .btn { min-height: 48px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }

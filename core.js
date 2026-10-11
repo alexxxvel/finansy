@@ -86,31 +86,70 @@
   function toByn(minor, cur, rate) { return cur === 'BYN' ? minor : Math.round(minor * rate); }
   function bynOf(op) { return toByn(op.a, op.u, op.r || RATES[op.u] || 1); }
 
+  /** заметка к записи: одна строка до 40 знаков, без переводов строк и служебных символов */
+  function cleanNote(s) {
+    return String(s === undefined || s === null ? '' : s).replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, ' ').replace(/\s+/g, ' ').replace(/^ | $/g, '').slice(0, 40);
+  }
+  /** длина строки в байтах UTF-8: по ней считается предел хранилища (кириллица занимает два байта) */
+  function utf8len(s) {
+    var n = 0, c;
+    for (var i = 0; i < s.length; i++) { c = s.charCodeAt(i); n += c < 0x80 ? 1 : c < 0x800 ? 2 : (c >= 0xD800 && c <= 0xDBFF) ? (i++, 4) : 3; }
+    return n;
+  }
+
   function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function find(list, id) { for (var i = 0; i < list.length; i++) { if (list[i].id === id) { return list[i]; } } return null; }
 
-  /** запись: d дата, k 'e' трата или 'i' доход, c категория или источник, a сумма в копейках исходной валюты, u валюта, r курс (если не BYN) */
-  function makeOp(kind, cat, minor, cur, date, id) {
+  /** запись: d дата, k 'e' трата или 'i' доход, c категория или источник, a сумма в копейках исходной валюты, u валюта, r курс (если не BYN), n заметка (если есть) */
+  function makeOp(kind, cat, minor, cur, date, id, note) {
     var op = { id: id || newId(), d: date, k: kind === 'i' ? 'i' : 'e', c: cat, a: Math.round(minor), u: cur };
     if (cur !== 'BYN') { op.r = RATES[cur]; }
+    note = cleanNote(note);
+    if (note) { op.n = note; }
     return op;
   }
   function validOp(op) {
     return !!op && typeof op.id === 'string' && /^[a-z0-9]{4,24}$/.test(op.id) && isDate(op.d) && (op.k === 'e' || op.k === 'i')
       && !!find(op.k === 'e' ? CATS : SRCS, op.c) && typeof op.a === 'number' && isFinite(op.a) && op.a > 0 && op.a === Math.round(op.a) && op.a < 1e11
-      && CURS.indexOf(op.u) >= 0 && (op.u === 'BYN' || (typeof op.r === 'number' && op.r > 0 && op.r < 1000));
+      && CURS.indexOf(op.u) >= 0 && (op.u === 'BYN' || (typeof op.r === 'number' && op.r > 0 && op.r < 1000))
+      && (op.n === undefined || (typeof op.n === 'string' && op.n.length > 0 && op.n.length <= 40));
   }
   /** запись → короткий массив для хранения (день вместо полной даты: месяц уже в ключе) */
   function pack(op) {
     var a = [op.id, +op.d.slice(8, 10), op.k === 'i' ? 1 : 0, op.c, op.a, CURS.indexOf(op.u)];
     if (op.u !== 'BYN') { a.push(op.r); }
+    if (op.n) { if (op.u === 'BYN') { a.push(0); } a.push(op.n); } // заметка всегда восьмая: у рублёвой записи на месте курса ноль
     return a;
   }
   function unpack(a, month) {
     if (!a || typeof a.length !== 'number' || a.length < 6 || !isMonth(month)) { return null; }
     var op = { id: a[0], d: month + '-' + pad(+a[1] || 0), k: a[2] === 1 ? 'i' : 'e', c: a[3], a: a[4], u: CURS[a[5]] };
     if (op.u !== 'BYN') { op.r = a[6]; }
+    if (typeof a[7] === 'string') { var note = cleanNote(a[7]); if (note) { op.n = note; } }
     return validOp(op) ? op : null;
+  }
+
+  /** текст копии → записи по месяцам. Терпит то, что делает с текстом телефон и мессенджеры: «умные» кавычки, невидимые символы, лишний текст вокруг */
+  function parseBackup(text) {
+    var s = String(text || '').replace(/[\u200B-\u200D\uFEFF]/g, ''), data = null;
+    var i = s.indexOf('{'), j = s.lastIndexOf('}');
+    if (i < 0 || j <= i) { return null; }
+    s = s.slice(i, j + 1);
+    try { data = JSON.parse(s); } catch (e) {
+      // телефон или мессенджер заменил прямые кавычки «умными» и пробелы неразрывными: чиним и пробуем ещё раз
+      try { data = JSON.parse(s.replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB\u2033]/g, '"').replace(/\u00A0/g, ' ')); } catch (e2) { return null; }
+    }
+    if (!data || data.app !== 'finansy' || !data.months || typeof data.months !== 'object') { return null; }
+    var months = {}, count = 0, seen = {};
+    Object.keys(data.months).forEach(function (month) {
+      var arr = data.months[month];
+      if (!isMonth(month) || !arr || typeof arr.length !== 'number') { return; }
+      for (var n = 0; n < arr.length; n++) {
+        var op = unpack(arr[n], month);
+        if (op && !seen[op.id]) { seen[op.id] = 1; (months[month] = months[month] || []).push(op); count++; }
+      }
+    });
+    return count ? { months: months, count: count } : null;
   }
 
   function plural(n, one, few, many) {
@@ -163,7 +202,7 @@
     NB: NB, CATS: CATS, SRCS: SRCS, CURS: CURS, RATES: RATES,
     today: today, monthOf: monthOf, isDate: isDate, isMonth: isMonth, shiftDay: shiftDay,
     fmt: fmt, fmtParts: fmtParts, fmtShort: fmtShort, fmtRate: fmtRate, parseTyped: parseTyped, typed: typed, press: press,
-    toByn: toByn, bynOf: bynOf, find: find, makeOp: makeOp, validOp: validOp, pack: pack, unpack: unpack,
+    toByn: toByn, bynOf: bynOf, find: find, makeOp: makeOp, validOp: validOp, pack: pack, unpack: unpack, cleanNote: cleanNote, utf8len: utf8len, parseBackup: parseBackup,
     plural: plural, summarize: summarize, byDays: byDays, dayLabel: dayLabel, monthLabel: monthLabel
   };
 })(window);
