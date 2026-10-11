@@ -28,6 +28,7 @@
   var RATES = { BYN: 1, USD: 3.06, EUR: 3.43 };
 
   var MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+  var MONTHS_PRE = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'];
   var MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
   function pad(n) { return n < 10 ? '0' + n : String(n); }
@@ -149,7 +150,8 @@
         if (op && !seen[op.id]) { seen[op.id] = 1; (months[month] = months[month] || []).push(op); count++; }
       }
     });
-    return count ? { months: months, count: count } : null;
+    var cfg = data.cfg && validGoal(data.cfg.goal) ? { goal: data.cfg.goal } : null;
+    return count ? { months: months, count: count, cfg: cfg } : null;
   }
 
   function plural(n, one, few, many) {
@@ -198,11 +200,80 @@
     return MONTHS[+p[1] - 1] + (p[0] === today().slice(0, 4) ? '' : NB + p[0]);
   }
 
+  function prevMonth(month) { var p = month.split('-'), y = +p[0], m = +p[1] - 1; if (m < 1) { m = 12; y--; } return y + '-' + pad(m); }
+  /** «в сентябре» */
+  function inMonth(month) {
+    var p = month.split('-');
+    return 'в' + NB + MONTHS_PRE[+p[1] - 1] + (p[0] === today().slice(0, 4) ? '' : NB + p[0]);
+  }
+  /** сколько дней осталось в месяце, считая сегодня; для прошедших и будущих месяцев 0 */
+  function daysLeft(month, now) {
+    now = now || today();
+    if (monthOf(now) !== month) { return 0; }
+    var p = now.split('-');
+    return new Date(+p[0], +p[1], 0).getDate() - (+p[2]) + 1;
+  }
+  /** сколько можно тратить в день (копейки), чтобы остатка хватило до конца месяца */
+  function perDay(left, days) { return days > 0 && left > 0 ? Math.floor(left / days) : 0; }
+  function fmtDay(minor) { return minor >= 100 ? group(String(Math.floor(minor / 100))) : fmt(minor); }
+
+  /** частые записи за последние три месяца: одинаковые категория, сумма, валюта и заметка, внесённые хотя бы дважды */
+  function frequent(all, kind, limit, now) {
+    now = now || today();
+    var from = shiftDay(now, -92), map = {}, list = [];
+    Object.keys(all || {}).forEach(function (m) {
+      all[m].forEach(function (op) {
+        if (op.k !== kind || op.d < from || op.d > now) { return; }
+        var key = [op.c, op.a, op.u, (op.n || '').toLowerCase()].join('|'), it = map[key];
+        if (!it) { it = map[key] = { k: kind, c: op.c, a: op.a, u: op.u, n: op.n || '', count: 0, last: '' }; list.push(it); }
+        it.count++;
+        if (op.d > it.last) { it.last = op.d; }
+      });
+    });
+    return list.filter(function (it) { return it.count >= 2; }).sort(function (x, y) { return y.count - x.count || (x.last < y.last ? 1 : -1); }).slice(0, limit);
+  }
+
+  /** цель накопления: a сумма в копейках, n название (не обязательно) */
+  function validGoal(goal) {
+    return !!goal && typeof goal.a === 'number' && goal.a === Math.round(goal.a) && goal.a > 0 && goal.a < 1e12
+      && (goal.n === undefined || (typeof goal.n === 'string' && goal.n.length > 0 && goal.n.length <= 40));
+  }
+  /** сумма, набранная на клавиатуре телефона: «2000», «2 000,50», «2000.5» → копейки; непонятное → 0 */
+  function parseAmount(text) {
+    var s = String(text || '').replace(/\s/g, '').replace('.', ',');
+    return /^\d{1,9}(,\d{1,2})?$/.test(s) ? parseTyped(s) : 0;
+  }
+  function balance(all) {
+    var sum = 0;
+    Object.keys(all || {}).forEach(function (m) { all[m].forEach(function (op) { sum += (op.k === 'i' ? 1 : -1) * bynOf(op); }); });
+    return sum;
+  }
+
+  /** все записи таблицей: sep '\t' для вставки в Excel из буфера, ';' для файла CSV */
+  function table(all, sep) {
+    function num(minor) { return Math.floor(minor / 100) + ',' + pad(minor % 100); }
+    var rows = [['Дата', 'Вид', 'Категория', 'Сумма', 'Валюта', 'Сумма в BYN', 'Заметка']], ops = [];
+    Object.keys(all || {}).forEach(function (m) { ops = ops.concat(all[m]); });
+    ops.sort(function (x, y) { return x.d === y.d ? (x.id < y.id ? -1 : 1) : (x.d < y.d ? -1 : 1); });
+    ops.forEach(function (op) {
+      var d = op.d.split('-'), dict = find(op.k === 'e' ? CATS : SRCS, op.c), note = op.n || '';
+      if (/^[=+\-@]/.test(note)) { note = "'" + note; } // Excel принял бы такую заметку за формулу
+      rows.push([d[2] + '.' + d[1] + '.' + d[0], op.k === 'e' ? 'Трата' : 'Доход', dict ? dict.name : op.c, num(op.a), op.u, num(bynOf(op)), note]);
+    });
+    return rows.map(function (r) {
+      return r.map(function (cell) {
+        cell = String(cell).replace(/[\t\r\n]/g, ' ');
+        return sep === ';' ? '"' + cell.replace(/"/g, '""') + '"' : cell;
+      }).join(sep);
+    }).join('\r\n');
+  }
+
   g.FIN = {
     NB: NB, CATS: CATS, SRCS: SRCS, CURS: CURS, RATES: RATES,
     today: today, monthOf: monthOf, isDate: isDate, isMonth: isMonth, shiftDay: shiftDay,
     fmt: fmt, fmtParts: fmtParts, fmtShort: fmtShort, fmtRate: fmtRate, parseTyped: parseTyped, typed: typed, press: press,
     toByn: toByn, bynOf: bynOf, find: find, makeOp: makeOp, validOp: validOp, pack: pack, unpack: unpack, cleanNote: cleanNote, utf8len: utf8len, parseBackup: parseBackup,
-    plural: plural, summarize: summarize, byDays: byDays, dayLabel: dayLabel, monthLabel: monthLabel
+    plural: plural, summarize: summarize, byDays: byDays, dayLabel: dayLabel, monthLabel: monthLabel,
+    prevMonth: prevMonth, inMonth: inMonth, daysLeft: daysLeft, perDay: perDay, fmtDay: fmtDay, frequent: frequent, validGoal: validGoal, parseAmount: parseAmount, balance: balance, table: table
   };
 })(window);

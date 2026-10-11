@@ -69,6 +69,15 @@
     return out;
   }
 
+  /** настройки (пока одна: цель накопления) лежат отдельным ключом cfg */
+  function readCfg(text) {
+    var o = null;
+    try { o = JSON.parse(text || '{}'); } catch (e) { o = null; }
+    var out = {};
+    if (o && F.validGoal(o.goal)) { out.goal = { a: o.goal.a }; if (o.goal.n) { out.goal.n = o.goal.n; } }
+    return out;
+  }
+
   function Store(ad) {
     /** куски месяца: [{i, ops}] по возрастанию номера */
     function chunks(month, cb) {
@@ -147,9 +156,9 @@
           if (err) { cb(err); return; }
           var mine = keys.map(function (k) { var p = parseKey(k); return p ? { key: k, month: p.month, i: p.i } : null; }).filter(Boolean)
             .sort(function (a, b) { return a.month === b.month ? a.i - b.i : (a.month < b.month ? -1 : 1); });
-          ad.get(mine.map(function (c) { return c.key; }), function (err2, values) {
+          ad.get(mine.map(function (c) { return c.key; }).concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
-            var months = {}, ops = [], carry = 0, partial = false, seen = {};
+            var months = {}, ops = [], carry = 0, partial = false, seen = {}, all = {};
             for (var n = 0; n < mine.length; n++) {
               var c = mine[n], list = decode(values[c.key], c.month);
               if (list === null) { if (c.month === month) { cb('corrupt'); return; } partial = true; continue; }
@@ -158,11 +167,12 @@
                 if (seen[op.id]) { continue; }
                 seen[op.id] = 1;
                 months[c.month] = 1;
+                (all[c.month] = all[c.month] || []).push(op);
                 if (c.month === month) { ops.push(op); }
                 else if (c.month < month) { carry += (op.k === 'i' ? 1 : -1) * F.bynOf(op); }
               }
             }
-            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial });
+            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial, all: all, cfg: readCfg(values.cfg) });
           });
         });
       },
@@ -188,12 +198,17 @@
         });
       },
       remove: function (id, month, cb) { removeFrom(month, id, cb); },
+      setCfg: function (cfg, cb) {
+        var text = JSON.stringify(readCfg(JSON.stringify(cfg || {})));
+        if (F.utf8len(text) > 4096) { cb('too long'); return; }
+        ad.set('cfg', text, cb);
+      },
       /** копия всех записей текстом */
       exportAll: function (cb) {
         ad.keys(function (err, keys) {
           if (err) { cb(err); return; }
           var mine = keys.filter(parseKey).sort();
-          ad.get(mine, function (err2, values) {
+          ad.get(mine.concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
             var months = {}, count = 0, bad = false;
             mine.forEach(function (k) {
@@ -203,7 +218,9 @@
               count += ops.length;
             });
             if (bad) { cb('corrupt'); return; }
-            cb(null, { text: JSON.stringify({ app: 'finansy', v: 1, at: new Date().toISOString(), months: months }), count: count });
+            var out = { app: 'finansy', v: 1, at: new Date().toISOString(), months: months }, cfg = readCfg(values.cfg);
+            if (cfg.goal) { out.cfg = cfg; }
+            cb(null, { text: JSON.stringify(out), count: count });
           });
         });
       },
@@ -213,8 +230,15 @@
         if (!data) { cb('format'); return; }
         var jobs = Object.keys(data.months).sort().map(function (month) { return { month: month, ops: data.months[month] }; });
         var total = 0;
+        function goal() { // цель из копии возвращается, только если своей цели сейчас нет
+          if (!data.cfg) { cb(null, total); return; }
+          ad.get(['cfg'], function (err, values) {
+            if (err || readCfg(values.cfg).goal) { cb(null, total); return; }
+            ad.set('cfg', JSON.stringify(readCfg(JSON.stringify(data.cfg))), function () { cb(null, total); });
+          });
+        }
         (function next() {
-          if (!jobs.length) { cb(null, total); return; }
+          if (!jobs.length) { goal(); return; }
           var job = jobs.shift();
           append(job.month, job.ops, function (err, added) { if (err) { cb(err); return; } total += added; next(); });
         })();

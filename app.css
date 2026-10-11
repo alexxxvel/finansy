@@ -10,7 +10,7 @@
   --accent: #0071E3; --on-accent: #FFFFFF;
   --safe-b: max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px));
   /* размеры листа: уменьшаются на низких экранах (см. в конце файла) */
-  --key-h: 52px; --chip-h: 44px; --chip-gap: 28px; --sum: 68px; --sum-m: 52px; --sum-s: 44px;
+  --key-h: 52px; --chip-h: 44px; --chip-gap: 16px; --chip-top: 12px; --sum: 68px; --sum-m: 52px; --sum-s: 44px;
 }
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
@@ -28,7 +28,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .boot { padding: 28px 20px; color: var(--muted); }
 .stage { position: relative; display: flex; flex-direction: column; height: 100%; background: var(--bg); transform-origin: 50% 0; }
 .view { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px 20px 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-.view h2, .pick h2 { font: 600 15px/1.3 var(--font); letter-spacing: -.005em; color: var(--muted); }
+.view h2 { font: 600 15px/1.3 var(--font); letter-spacing: -.005em; color: var(--muted); }
+.pick h2 { font: 600 17px/1.3 var(--font); letter-spacing: -.015em; color: var(--ink); }
 
 .bar { flex: none; display: flex; align-items: center; min-height: 48px; }
 .month { display: inline-flex; align-items: center; gap: 4px; min-height: 48px; font: 700 34px/1.1 var(--font); letter-spacing: -.035em; font-variation-settings: "opsz" 32; }
@@ -48,7 +49,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .spent { flex: none; padding: 12px 0 22px; }
 .spent__label { font: 500 15px/1.3 var(--font); color: var(--muted); }
 .spent__sum { display: flex; align-items: baseline; margin-top: 6px; font: 700 68px/1 var(--font); letter-spacing: -.05em; font-variation-settings: "opsz" 32; word-spacing: .1em; font-variant-numeric: proportional-nums; white-space: nowrap; }
-.spent__sum i { font-style: normal; font-size: 34px; letter-spacing: -.035em; color: var(--muted); margin-left: -2px; }
+.spent__sum i { font-style: normal; font-size: 34px; letter-spacing: -.035em; color: var(--muted); }
 .spent__sum abbr { margin-left: 10px; font: 600 17px/1 var(--font); letter-spacing: 0; color: var(--muted); text-decoration: none; }
 /* шкала: вся дорожка = доход; сегментов не больше трёх: две крупнейшие категории и остальное */
 .spent__bar { height: 10px; margin-top: 20px; border-radius: 5px; background: var(--fill); overflow: hidden; }
@@ -59,6 +60,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .spent__fill i:last-child { border-radius: 0 5px 5px 0; }
 .spent__legend { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; font: 500 15px/1.3 var(--font); color: var(--muted); white-space: nowrap; }
 .spent__legend .is-over { color: var(--ink); font-weight: 600; }
+.spent__day { margin-top: 4px; text-align: right; font: 500 15px/1.3 var(--font); color: var(--muted); white-space: nowrap; }
 
 .sheet { flex: 1 0 auto; margin: 0 -20px; padding: 18px 20px calc(104px + var(--safe-b)); background: var(--surface); border-radius: 28px 28px 0 0; }
 .sheet--full { padding-top: 14px; }
@@ -66,34 +68,53 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .shares, .plain { margin-top: 4px; }
 .empty { padding: 10px 0 14px; color: var(--muted); max-width: 32ch; }
 .note { margin-top: 12px; font: 400 15px/1.4 var(--font); color: var(--muted); }
-/* строка категории: значок в круге, название, сумма, под ними доля от всех трат */
-.shares li { display: grid; grid-template-columns: 34px 1fr auto; column-gap: 12px; align-items: center; row-gap: 5px; padding: 6px 0; }
-.shares svg, .plain svg, .op svg { width: 34px; height: 34px; padding: 8px; border-radius: 999px; background: #F0F0F3; }
-.shares svg { grid-row: 1 / span 2; }
-.shares span, .plain span, .op span { font: 500 17px/1.25 var(--font); letter-spacing: -.015em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.shares data, .plain data, .op data { font: 600 17px/1.25 var(--font); letter-spacing: -.015em; }
-.shares small, .plain small, .op small { margin-left: 2px; font: 500 15px/1 var(--font); letter-spacing: 0; color: var(--muted); }
-.shares i { grid-column: 2 / -1; height: 5px; border-radius: 3px; background: var(--fill); overflow: hidden; }
-.shares b { display: block; height: 100%; border-radius: 3px; background: var(--ink); transform-origin: 0 50%; }
-.plain li { display: grid; grid-template-columns: 34px 1fr auto; column-gap: 12px; align-items: center; padding: 6px 0; }
+.cats__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.cats__head > span { font: 500 15px/1.3 var(--font); color: var(--muted); white-space: nowrap; }
+/* строка категории или источника — кнопка: значок в круге, название, сумма, стрелка; под ними доля от всех трат */
+.share { display: grid; grid-template-columns: 34px 1fr auto 14px; column-gap: 10px; align-items: center; row-gap: 5px; width: 100%; min-height: 46px; padding: 6px 0; text-align: left; }
+.share > svg:first-child, .plain__carry > svg, .op > svg:first-child { width: 34px; height: 34px; padding: 8px; border-radius: 999px; background: #F0F0F3; }
+.shares .share > svg:first-child { grid-row: 1 / span 2; }
+.share__go { width: 14px; height: 14px; color: #AEAEB2; }
+.share:active { opacity: .6; }
+.share span, .plain__carry span, .op span { font: 500 17px/1.25 var(--font); letter-spacing: -.015em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share data, .plain__carry data, .op data { font: 600 17px/1.25 var(--font); letter-spacing: -.015em; }
+.share small, .op small { margin-left: 2px; font: 500 15px/1 var(--font); letter-spacing: 0; color: var(--muted); }
+.share i { grid-column: 2 / 4; height: 5px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.share i b { display: block; height: 100%; border-radius: 3px; background: var(--ink); transform-origin: 0 50%; }
+.plain__carry { display: grid; grid-template-columns: 34px 1fr auto 14px; column-gap: 10px; align-items: center; min-height: 46px; padding: 6px 0; }
 .plain__carry span, .plain__carry data { color: var(--muted); }
+/* цель накопления: сколько накоплено из задуманного */
+.goal { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.goal__btn { display: block; width: 100%; text-align: left; }
+.goal__btn:active { opacity: .6; }
+.goal__pct { display: inline-flex; align-items: center; gap: 10px; }
+.goal__btn .cats__head > .goal__title { font: 600 15px/1.3 var(--font); letter-spacing: -.005em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.goal__line { display: block; margin-top: 6px; font: 500 17px/1.25 var(--font); letter-spacing: -.015em; color: var(--muted); word-spacing: .06em; font-variant-numeric: tabular-nums; }
+.goal__line b { font-weight: 600; color: var(--ink); }
+.goal__bar { display: block; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.goal__bar b { display: block; height: 100%; border-radius: 3px; background: var(--ink); transform-origin: 0 50%; }
+.goal__rest { display: block; margin-top: 8px; font: 500 15px/1.3 var(--font); color: var(--muted); }
 /* остальные категории одной строкой и вход в «Копию данных» */
-.more { display: grid; grid-template-columns: 1fr auto 20px; align-items: center; column-gap: 6px; width: 100%; min-height: 44px; padding-left: 46px; text-align: left; color: var(--muted); }
+.more { display: grid; grid-template-columns: 1fr auto 14px; align-items: center; column-gap: 10px; width: 100%; min-height: 44px; padding-left: 44px; text-align: left; color: var(--muted); }
 .more span, .more data { font: 500 17px/1.25 var(--font); letter-spacing: -.015em; }
-.more svg { width: 20px; height: 20px; grid-column: 3; }
+.more svg { width: 14px; height: 14px; grid-column: 3; color: #AEAEB2; }
 .more--copy { margin-top: 14px; padding-left: 0; border-top: 1px solid var(--line); }
+.more--copy + .more--copy { margin-top: 0; }
 
 /* ---------- история ---------- */
 .hint { margin: 0 0 12px; font: 400 15px/1.4 var(--font); color: var(--muted); }
 .day + .day { margin-top: 14px; }
 .ops { margin-top: 4px; }
-.op { display: grid; grid-template-columns: 34px 1fr auto; column-gap: 12px; align-items: center; width: 100%; min-height: 48px; padding: 6px 0; text-align: left; }
+.op { display: grid; grid-template-columns: 34px 1fr auto 14px; column-gap: 10px; align-items: center; width: 100%; min-height: 48px; padding: 6px 0; text-align: left; }
+.op--bare { grid-template-columns: 1fr auto 14px; }
 .op data { font-weight: 500; }
 .op data.is-plus { font-weight: 600; }
 .op:active { opacity: .6; }
 
 /* ---------- низ как в iOS 26: вкладки из стекла и отдельная кнопка действия ---------- */
-.dock { position: absolute; left: 12px; right: 12px; bottom: max(18px, var(--safe-b)); display: flex; align-items: center; gap: 8px; }
+.dock { position: absolute; z-index: 2; left: 12px; right: 12px; bottom: max(18px, var(--safe-b)); display: flex; align-items: center; gap: 8px; }
+.stage::after { content: ""; position: absolute; z-index: 1; left: 0; right: 0; bottom: 0; height: calc(max(18px, var(--safe-b)) + 92px); pointer-events: none;
+  background: linear-gradient(to top, var(--surface) max(18px, var(--safe-b)), rgba(255,255,255,0)); }
 .tabs { flex: 1; display: grid; grid-template-columns: 1fr 1fr; padding: 4px; border-radius: 999px;
   background: rgba(240,240,244,.72); -webkit-backdrop-filter: blur(24px) saturate(1.8); backdrop-filter: blur(24px) saturate(1.8);
   box-shadow: inset 1px 1px 0 rgba(255,255,255,.9), inset 0 0 0 1px rgba(60,60,67,.08), 0 16px 32px -16px rgba(30,30,60,.32); }
@@ -120,7 +141,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 
 .strip { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; margin-top: 6px; }
 /* заметка: поле телефона; шрифт не меньше 16 px, иначе iPhone приближает страницу при вводе */
-.note-in { flex: 1; min-width: 0; height: 44px; margin: 0; padding: 0 16px; border: 0; border-radius: 999px; background: var(--fill); color: var(--ink); font: 500 17px/1 var(--font); letter-spacing: -.01em; -webkit-appearance: none; appearance: none; }
+.note-in { flex: 1; min-width: 0; height: 44px; margin: 0; padding: 0 16px; border: 0; border-radius: 999px; background: var(--surface); color: var(--ink); font: 500 17px/1 var(--font); letter-spacing: -.01em; -webkit-appearance: none; appearance: none; }
 .note-in::placeholder { color: var(--muted); opacity: 1; }
 .note-in:focus { outline: 3px solid rgba(0,113,227,.45); outline-offset: 1px; }
 .date { position: relative; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; font: 600 15px/1 var(--font); color: var(--ink); cursor: pointer; }
@@ -137,10 +158,18 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .cur { flex: none; display: inline-flex; align-items: center; gap: 2px; min-height: 44px; padding: 0 10px 0 14px; border-radius: 999px; background: var(--fill); font: 600 15px/1 var(--font); color: var(--ink); }
 .cur svg { width: 18px; height: 18px; color: var(--muted); }
 .entry__conv { min-height: 20px; font: 500 15px/1.3 var(--font); color: var(--muted); text-align: center; white-space: nowrap; }
+/* частые записи: кнопки под суммой, пока она пустая */
+.quick { display: flex; justify-content: center; gap: 6px; width: 100%; min-width: 0; overflow: hidden; }
+.quick[hidden], .entry__conv[hidden] { display: none; }
+.quick__btn { display: inline-flex; flex: none; max-width: 100%; align-items: center; gap: 4px; min-width: 0; min-height: 44px; padding: 0 14px 0 10px; border-radius: 999px; background: var(--fill); font: 500 15px/1 var(--font); color: var(--ink); white-space: nowrap; transition: transform 140ms var(--ease-out); }
+.quick__btn:active { transform: scale(.97); }
+.quick__btn svg { flex: none; width: 16px; height: 16px; color: var(--muted); }
+.quick__btn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.quick__btn b { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
 .entry__conv b { margin-left: 2px; font-weight: 600; color: var(--ink); word-spacing: .06em; font-variant-numeric: tabular-nums; }
 
 /* метки категорий: высота блока постоянная (три ряда), метки прижаты к клавиатуре — она не прыгает при переключении «Трата / Доход» */
-.chips { flex: none; display: grid; grid-template-columns: repeat(3, 1fr); align-content: end; gap: 6px; min-height: calc(var(--chip-h) * 3 + 12px + var(--chip-gap)); padding: 0 0 var(--chip-gap); }
+.chips { flex: none; display: grid; grid-template-columns: repeat(3, 1fr); align-content: end; gap: 6px; min-height: calc(var(--chip-h) * 3 + 12px + var(--chip-gap) + var(--chip-top)); padding: var(--chip-top) 0 var(--chip-gap); }
 .chips--two { grid-template-columns: repeat(2, 1fr); }
 .chips__wide { grid-column: span 2; }
 .chips button { width: 100%; min-height: var(--chip-h); border-radius: 999px; background: var(--surface); font: 500 15px/1 var(--font); white-space: nowrap; transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out); }
@@ -152,14 +181,27 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .keys svg { width: 28px; height: 28px; }
 
 /* короткие листы: выбор месяца и копия данных */
-.pick { padding: 4px 20px max(24px, var(--safe-b)); overflow-y: auto; overscroll-behavior: contain; }
+.pick { position: relative; flex: 1 1 auto; min-height: 0; padding: 4px 20px max(24px, var(--safe-b)); overflow-y: auto; overscroll-behavior: contain; }
+/* поле ввода в коротком листе; шрифт не меньше 16 px, иначе iPhone приближает страницу */
+.field { display: block; width: 100%; height: 52px; margin: 0 0 12px; padding: 0 16px; border: 0; border-radius: 18px; background: var(--surface); color: var(--ink); font: 500 17px/1 var(--font); letter-spacing: -.01em; -webkit-appearance: none; appearance: none; }
+.field::placeholder { color: var(--muted); opacity: 1; }
+.field:focus { outline: 3px solid rgba(0,113,227,.45); outline-offset: 1px; }
+.field + .btn { margin-top: 4px; }
 .pick__list { margin-top: 4px; }
 .pick__row { display: flex; align-items: center; width: 100%; min-height: 52px; border-bottom: 1px solid var(--line); font: 500 17px/1.25 var(--font); text-align: left; }
 .pick__list li:last-child .pick__row { border-bottom: 0; }
 .pick__row[aria-current="true"] { font-weight: 700; }
-.pick__info { margin: 8px 0 14px; color: var(--muted); max-width: 40ch; }
+.pick__info { margin: 6px 0 14px; font: 400 15px/1.4 var(--font); color: var(--muted); max-width: 44ch; }
+/* лист категории: название и сумма крупно, сравнение строкой под ними */
+.pick__big { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.pick__big h2, .pick__big data { font: 700 28px/1.15 var(--font); letter-spacing: -.03em; font-variation-settings: "opsz" 32; color: var(--ink); white-space: nowrap; }
+.pick__big h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lbl { display: block; margin: 0 0 6px; font: 500 15px/1.3 var(--font); color: var(--muted); }
 .pick__area { display: block; width: 100%; height: 96px; margin: 0 0 12px; padding: 12px 14px; border: 0; border-radius: 18px; background: var(--surface); color: var(--ink); font: 400 16px/1.35 var(--font); resize: none; }
 .pick__area[hidden] { display: none; }
+.pick__area--table { white-space: pre; overflow: auto; font-size: 16px; }
+/* текст для копирования лежит в невидимом поле: из него телефон копирует по касанию */
+.pick__area--ghost { position: absolute; left: 20px; bottom: 0; width: 1px; height: 1px; margin: 0; padding: 0; opacity: 0; pointer-events: none; }
 .pick__ver { margin-top: 14px; font: 400 15px/1.4 var(--font); color: var(--muted); }
 
 .fail { padding: 40px 20px; max-width: 36ch; }
@@ -173,7 +215,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 
 /* появление данных: полосы растут один раз при открытии месяца и после новой записи */
 .spent__fill.is-in { animation: reveal 520ms var(--ease-out) both; }
-.sheet.is-in .shares b { animation: grow 520ms var(--ease-out) both; }
+.sheet.is-in .share i b, .sheet.is-in .goal__bar b { animation: grow 520ms var(--ease-out) both; }
 @keyframes reveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes grow { from { transform: scaleX(0); } }
 
@@ -183,7 +225,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   .keys button:hover, .pick__row:hover { background-color: var(--fill); }
 }
 /* низкие экраны: лист обязан поместиться целиком, без прокрутки */
-@media (max-height: 720px) { :root { --key-h: 48px; --chip-gap: 20px; } }
-@media (max-height: 680px) { :root { --key-h: 44px; --chip-gap: 14px; --sum: 52px; --sum-m: 44px; --sum-s: 34px; } .modal__dock .btn { min-height: 52px; } }
-@media (max-height: 620px) { :root { --key-h: 40px; --chip-h: 40px; --chip-gap: 10px; } .strip { margin-top: 2px; min-height: 40px; } .note-in { height: 40px; } .grab { height: 18px; } .entry { gap: 2px; } .entry__conv { min-height: 18px; } .cur, .seg button { min-height: 40px; } .modal__dock { padding-top: 8px; } .modal__dock .btn { min-height: 48px; } }
+@media (max-height: 720px) { :root { --key-h: 48px; --chip-gap: 12px; --chip-top: 4px; } .entry { gap: 4px; } }
+@media (max-height: 680px) { :root { --key-h: 44px; --chip-gap: 10px; --chip-top: 4px; --sum: 52px; --sum-m: 44px; --sum-s: 34px; } .modal__dock .btn { min-height: 52px; } }
+@media (max-height: 620px) { :root { --key-h: 40px; --chip-h: 40px; --chip-gap: 8px; --chip-top: 2px; --sum: 44px; --sum-m: 44px; } .strip { margin-top: 2px; min-height: 40px; } .note-in { height: 40px; } .grab { height: 18px; } .entry { gap: 2px; } .entry__conv { min-height: 18px; } .cur, .seg button { min-height: 40px; } .modal__dock { padding-top: 8px; } .modal__dock .btn { min-height: 48px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
