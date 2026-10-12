@@ -170,7 +170,10 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 
 /* метки категорий: высота блока постоянная (три ряда), метки прижаты к клавиатуре — она не прыгает при переключении «Трата / Доход» */
 .chips { flex: none; display: grid; grid-template-columns: repeat(3, 1fr); align-content: end; gap: 6px; min-height: calc(var(--chip-h) * 3 + 12px + var(--chip-gap) + var(--chip-top)); padding: var(--chip-top) 0 var(--chip-gap); }
+.chips { grid-auto-flow: row dense; }
 .chips--two { grid-template-columns: repeat(2, 1fr); }
+/* метка, которая листает категории: серая, чтобы не путать её с категорией */
+.chips .chips__nav button { background: var(--fill); color: var(--muted); font-weight: 600; }
 .chips__wide { grid-column: span 2; }
 .chips button { width: 100%; min-height: var(--chip-h); border-radius: 999px; background: var(--surface); font: 500 15px/1 var(--font); white-space: nowrap; transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out); }
 .chips button[aria-pressed="true"] { background: var(--ink); color: #FFFFFF; }

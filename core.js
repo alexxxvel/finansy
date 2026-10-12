@@ -23,6 +23,8 @@
     { id: 'gift', name: 'Подарки', icon: 'gift' },
     { id: 'oth', name: 'Другое', icon: 'dots' }
   ];
+  // списки можно заменить своими (настройки cfg.cats и cfg.srcs): массивы меняются на месте, поэтому ссылки F.CATS и F.SRCS остаются верными
+  var BASE_CATS = CATS.slice(), BASE_SRCS = SRCS.slice();
   var CURS = ['BYN', 'USD', 'EUR'];
   // закреплённый курс (решение 11.10.2026): в записи хранится курс на момент ввода, поэтому смена числа здесь не трогает прошлые записи
   var RATES = { BYN: 1, USD: 3.06, EUR: 3.43 };
@@ -98,6 +100,34 @@
     return n;
   }
 
+  /** свой список категорий или источников: [[id, название, значок], …], до 40 строк, id не повторяются */
+  function validList(list) {
+    if (!list || typeof list.length !== 'number' || !list.length || list.length > 40) { return null; }
+    var out = [], seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      if (!c || typeof c.length !== 'number' || typeof c[0] !== 'string' || !/^[a-z0-9_]{1,12}$/.test(c[0]) || seen[c[0]]) { return null; }
+      var name = cleanNote(c[1]).slice(0, 24), ic = typeof c[2] === 'string' && /^[a-z-]{1,16}$/.test(c[2]) ? c[2] : 'dots';
+      if (!name) { return null; }
+      seen[c[0]] = 1;
+      out.push([c[0], name, ic]);
+    }
+    return out;
+  }
+  function setList(target, base, packed) {
+    var next = packed ? packed.map(function (c) { return { id: c[0], name: c[1], icon: c[2], wide: c[1].length > 11 }; }) : base;
+    target.splice.apply(target, [0, target.length].concat(next));
+  }
+  /** применить настройки: свои категории и источники, если они заданы, иначе встроенные */
+  function useCfg(cfg) {
+    setList(CATS, BASE_CATS, cfg ? validList(cfg.cats) : null);
+    setList(SRCS, BASE_SRCS, cfg ? validList(cfg.srcs) : null);
+  }
+  /** категория записи по id. Записи с категорией, которой нет в списке (список сменили), не теряются: они «без категории» */
+  function dict(kind, id) {
+    return find(kind === 'i' ? SRCS : CATS, id) || { id: id, name: 'Без категории', icon: 'dots' };
+  }
+
   function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function find(list, id) { for (var i = 0; i < list.length; i++) { if (list[i].id === id) { return list[i]; } } return null; }
 
@@ -111,7 +141,7 @@
   }
   function validOp(op) {
     return !!op && typeof op.id === 'string' && /^[a-z0-9]{4,24}$/.test(op.id) && isDate(op.d) && (op.k === 'e' || op.k === 'i')
-      && !!find(op.k === 'e' ? CATS : SRCS, op.c) && typeof op.a === 'number' && isFinite(op.a) && op.a > 0 && op.a === Math.round(op.a) && op.a < 1e11
+      && typeof op.c === 'string' && /^[a-z0-9_]{1,12}$/.test(op.c) && typeof op.a === 'number' && isFinite(op.a) && op.a > 0 && op.a === Math.round(op.a) && op.a < 1e11
       && CURS.indexOf(op.u) >= 0 && (op.u === 'BYN' || (typeof op.r === 'number' && op.r > 0 && op.r < 1000))
       && (op.n === undefined || (typeof op.n === 'string' && op.n.length > 0 && op.n.length <= 40));
   }
@@ -150,7 +180,14 @@
         if (op && !seen[op.id]) { seen[op.id] = 1; (months[month] = months[month] || []).push(op); count++; }
       }
     });
-    var cfg = data.cfg && validGoal(data.cfg.goal) ? { goal: data.cfg.goal } : null;
+    var cfg = null;
+    if (data.cfg && typeof data.cfg === 'object') { // вместе с записями копия несёт цель и свои списки категорий
+      cfg = {};
+      if (validGoal(data.cfg.goal)) { cfg.goal = data.cfg.goal; }
+      if (validList(data.cfg.cats)) { cfg.cats = validList(data.cfg.cats); }
+      if (validList(data.cfg.srcs)) { cfg.srcs = validList(data.cfg.srcs); }
+      if (!cfg.goal && !cfg.cats && !cfg.srcs) { cfg = null; }
+    }
     return count ? { months: months, count: count, cfg: cfg } : null;
   }
 
@@ -171,9 +208,9 @@
       row.sum += b;
       if (op.u !== 'BYN') { row.foreign[op.u] = (row.foreign[op.u] || 0) + op.a; }
     });
-    function rows(bucket, dict) {
-      return dict.filter(function (c) { return bucket[c.id]; }).map(function (c) {
-        var r = bucket[c.id];
+    function rows(bucket, list) {
+      return Object.keys(bucket).map(function (id) {
+        var c = find(list, id) || { id: id, name: 'Без категории', icon: 'dots' }, r = bucket[id];
         return { id: c.id, name: c.name, icon: c.icon, sum: r.sum, note: CURS.filter(function (u) { return r.foreign[u]; }).map(function (u) { return fmtShort(r.foreign[u]) + NB + u; }).join(', ') };
       }).sort(function (x, y) { return y.sum - x.sum; });
     }
@@ -256,9 +293,9 @@
     Object.keys(all || {}).forEach(function (m) { ops = ops.concat(all[m]); });
     ops.sort(function (x, y) { return x.d === y.d ? (x.id < y.id ? -1 : 1) : (x.d < y.d ? -1 : 1); });
     ops.forEach(function (op) {
-      var d = op.d.split('-'), dict = find(op.k === 'e' ? CATS : SRCS, op.c), note = op.n || '';
+      var d = op.d.split('-'), note = op.n || '';
       if (/^[=+\-@]/.test(note)) { note = "'" + note; } // Excel принял бы такую заметку за формулу
-      rows.push([d[2] + '.' + d[1] + '.' + d[0], op.k === 'e' ? 'Трата' : 'Доход', dict ? dict.name : op.c, num(op.a), op.u, num(bynOf(op)), note]);
+      rows.push([d[2] + '.' + d[1] + '.' + d[0], op.k === 'e' ? 'Трата' : 'Доход', dict(op.k, op.c).name, num(op.a), op.u, num(bynOf(op)), note]);
     });
     return rows.map(function (r) {
       return r.map(function (cell) {
@@ -274,6 +311,7 @@
     fmt: fmt, fmtParts: fmtParts, fmtShort: fmtShort, fmtRate: fmtRate, parseTyped: parseTyped, typed: typed, press: press,
     toByn: toByn, bynOf: bynOf, find: find, makeOp: makeOp, validOp: validOp, pack: pack, unpack: unpack, cleanNote: cleanNote, utf8len: utf8len, parseBackup: parseBackup,
     plural: plural, summarize: summarize, byDays: byDays, dayLabel: dayLabel, monthLabel: monthLabel,
-    prevMonth: prevMonth, inMonth: inMonth, daysLeft: daysLeft, perDay: perDay, fmtDay: fmtDay, frequent: frequent, validGoal: validGoal, parseAmount: parseAmount, balance: balance, table: table
+    prevMonth: prevMonth, inMonth: inMonth, daysLeft: daysLeft, perDay: perDay, fmtDay: fmtDay, frequent: frequent, validGoal: validGoal, parseAmount: parseAmount, balance: balance, table: table,
+    validList: validList, useCfg: useCfg, dict: dict
   };
 })(window);

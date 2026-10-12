@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '0a8e9ea3fd'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'a50f2fb344'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -27,6 +27,15 @@
     gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5A4.8 8 0 0 1 12 8a4.8 8 0 0 1 4.5-5 2.5 2.5 0 0 1 0 5"/>',
     dots: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
     wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+    home: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    card: '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>',
+    heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+    bus: '<path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/>',
+    users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    paw: '<circle cx="11" cy="4" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="20" cy="16" r="2"/><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.84 1.045Q6.52 17.48 4.46 16.84A3.5 3.5 0 0 1 5.5 10Z"/>',
+    box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+    cash: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
+    star: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
     right: '<path d="m9 6 6 6-6 6"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
@@ -191,7 +200,7 @@
 
   /** строка записи: в «Истории» со значком и названием категории, в листе категории — с датой */
   function opRow(op, bare) {
-    var dict = F.find(op.k === 'e' ? F.CATS : F.SRCS, op.c), b = btn('op' + (bare ? ' op--bare' : ''));
+    var dict = F.dict(op.k, op.c), b = btn('op' + (bare ? ' op--bare' : ''));
     b.setAttribute('data-id', op.id);
     var name = el('span', '', bare ? F.dayLabel(op.d) : dict.name);
     rowNote(name, [op.u !== 'BYN' ? F.fmtShort(op.a) + F.NB + op.u : '', op.n || ''].filter(Boolean).join(', ')); // сумма в валюте первой: длинную заметку строка обрежет, а её нет
@@ -366,7 +375,7 @@
 
   // ---------- записи одной категории и сравнение с прошлым месяцем ----------
   function openCategory(kind, id) {
-    var dict = F.find(kind === 'e' ? F.CATS : F.SRCS, id), prev = F.prevMonth(st.month);
+    var dict = F.dict(kind, id), prev = F.prevMonth(st.month);
     var ops = st.ops.filter(function (op) { return op.k === kind && op.c === id; }).sort(function (x, y) { return x.d === y.d ? (x.id < y.id ? 1 : -1) : (x.d < y.d ? 1 : -1); });
     var sum = 0, was = 0;
     ops.forEach(function (op) { sum += F.bynOf(op); });
@@ -417,8 +426,10 @@
       name.setAttribute('enterkeyhint', 'done');
       name.setAttribute('autocomplete', 'off');
       [sum, name].forEach(function (f) { f.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { f.blur(); } }); });
-      function write(cfg) {
-        store.setCfg(cfg, function (err) {
+      function write(goal) { // остальные настройки (свои категории) остаются как были
+        var next = { cats: st.cfg.cats, srcs: st.cfg.srcs };
+        if (goal) { next.goal = goal; }
+        store.setCfg(next, function (err) {
           if (err) { toast(explain(err)); return; }
           haptic('ok');
           closeModal(0);
@@ -430,13 +441,13 @@
       go.addEventListener('click', function () {
         var a = F.parseAmount(sum.value), n = F.cleanNote(name.value);
         if (!a) { info.textContent = 'Введите сумму цели цифрами, например 2000.'; haptic('err'); return; }
-        write({ goal: n ? { a: a, n: n } : { a: a } });
+        write(n ? { a: a, n: n } : { a: a });
       });
       var drop = null;
       if (g) {
         drop = btn('btn btn--quiet', 'Убрать цель');
         drop.id = 'goalDrop';
-        drop.addEventListener('click', function () { write({}); });
+        drop.addEventListener('click', function () { write(null); });
       }
       var l1 = el('label', 'lbl', 'Сколько накопить, BYN'), l2 = el('label', 'lbl', 'Название');
       l1.setAttribute('for', 'goalSum');
@@ -473,6 +484,7 @@
       st.partial = v.partial;
       st.all = v.all;
       st.cfg = v.cfg || {};
+      F.useCfg(st.cfg); // свои категории, если заданы: до подсчёта сводок
       st.prev = F.summarize(v.all[F.prevMonth(st.month)] || []);
       st.balance = F.balance(v.all);
       st.sum = F.summarize(v.ops);
@@ -597,6 +609,7 @@
           if (!entry || entry.kind === k[0]) { return; }
           entry.kind = k[0];
           entry.cat = '';
+          entry.page = 0;
           haptic();
           paintChips();
           paintEntry();
@@ -694,13 +707,36 @@
     paintEntry(); // лист уже на экране: теперь можно измерить, помещаются ли кнопки частых записей
   }
 
+  /** На листе три ряда меток. Категорий может быть больше, чем мест: тогда они делятся на страницы, а последняя метка листает («Ещё», на последней странице «Назад»).
+      Трата: три колонки, длинное название занимает две. Доход: две колонки. */
+  function chipPages(list, cols) {
+    function rows(items, nav) {
+      var wide = 0, single = nav ? 1 : 0;
+      items.forEach(function (c) { if (cols === 3 && c.wide) { wide++; } else { single++; } });
+      return cols === 3 ? wide + Math.ceil(Math.max(0, single - wide) / 3) : Math.ceil(single / 2);
+    }
+    if (rows(list, false) <= 3) { return [list]; }
+    var pages = [], page = [];
+    list.forEach(function (c) {
+      if (page.length && rows(page.concat([c]), true) > 3) { pages.push(page); page = []; }
+      page.push(c);
+    });
+    if (page.length) { pages.push(page); }
+    return pages;
+  }
   function paintChips() {
-    var list = entry.kind === 'e' ? F.CATS : F.SRCS;
+    var list = entry.kind === 'e' ? F.CATS : F.SRCS, cols = entry.kind === 'i' ? 2 : 3;
+    var pages = chipPages(list, cols);
+    if (entry.page === undefined) { // при правке открыть страницу, на которой стоит категория записи
+      entry.page = 0;
+      pages.forEach(function (pg, n) { if (F.find(pg, entry.cat)) { entry.page = n; } });
+    }
+    if (entry.page >= pages.length) { entry.page = 0; }
     clear(entry.chips);
-    entry.chips.className = 'chips' + (entry.kind === 'i' ? ' chips--two' : '');
+    entry.chips.className = 'chips' + (cols === 2 ? ' chips--two' : '');
     entry.chips.setAttribute('aria-label', entry.kind === 'e' ? 'Категория' : 'Источник');
-    entry.chipBtns = list.map(function (c) {
-      var li = el('li', c.wide ? 'chips__wide' : ''), b = btn('', c.name);
+    entry.chipBtns = pages[entry.page].map(function (c) {
+      var li = el('li', c.wide && cols === 3 ? 'chips__wide' : ''), b = btn('', c.name);
       b.setAttribute('data-cat', c.id);
       b.addEventListener('click', function () {
         if (!entry || entry.busy) { return; }
@@ -712,6 +748,20 @@
       entry.chips.appendChild(li);
       return b;
     });
+    if (pages.length > 1) {
+      var last = entry.page === pages.length - 1, nav = btn('', last ? 'Назад' : 'Ещё'), navLi = el('li', 'chips__nav');
+      nav.id = 'chipsNav';
+      nav.setAttribute('aria-label', last ? 'К первым категориям' : 'Остальные категории');
+      nav.addEventListener('click', function () {
+        if (!entry || entry.busy) { return; }
+        entry.page = last ? 0 : entry.page + 1;
+        haptic();
+        paintChips();
+        paintEntry();
+      });
+      navLi.appendChild(nav);
+      entry.chips.appendChild(navLi);
+    }
   }
 
   /** обновляет лист на месте: поля не пересоздаются */
@@ -732,7 +782,7 @@
     e.quick.hidden = !often.length;
     e.hint.hidden = !!often.length;
     often.forEach(function (it) {
-      var dict = F.find(it.k === 'e' ? F.CATS : F.SRCS, it.c), b = btn('quick__btn'), label = it.n || dict.name, money = F.fmtShort(it.a) + (it.u === 'BYN' ? '' : F.NB + it.u);
+      var dict = F.dict(it.k, it.c), b = btn('quick__btn'), label = it.n || dict.name, money = F.fmtShort(it.a) + (it.u === 'BYN' ? '' : F.NB + it.u);
       b.setAttribute('aria-label', 'Добавить: ' + label + ' ' + money);
       add(b, icon('plus'), el('span', '', label), el('b', '', money));
       b.addEventListener('click', function () { quickAdd(it); });

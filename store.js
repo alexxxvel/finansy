@@ -69,12 +69,14 @@
     return out;
   }
 
-  /** настройки (пока одна: цель накопления) лежат отдельным ключом cfg */
+  /** настройки лежат отдельным ключом cfg: цель накопления, свои категории трат (cats) и источники дохода (srcs) */
   function readCfg(text) {
     var o = null;
     try { o = JSON.parse(text || '{}'); } catch (e) { o = null; }
     var out = {};
     if (o && F.validGoal(o.goal)) { out.goal = { a: o.goal.a }; if (o.goal.n) { out.goal.n = o.goal.n; } }
+    if (o && F.validList(o.cats)) { out.cats = F.validList(o.cats); }
+    if (o && F.validList(o.srcs)) { out.srcs = F.validList(o.srcs); }
     return out;
   }
 
@@ -149,8 +151,9 @@
         });
       },
       load: function (month, cb) { chunks(month, function (err, list) { cb(err, err ? null : flat(list)); }); },
-      /** всё для экрана месяца одним чтением: месяцы с записями, записи месяца и остаток на его начало
-          (доходы минус траты всех прошлых месяцев, в копейках). Нечитаемый кусок чужого месяца не мешает открыть текущий: partial = true */
+      /** всё для экрана месяца одним чтением: месяцы с записями, записи месяца и остаток на его начало (в копейках).
+          Остаток = доходы минус траты прошлых месяцев, начиная с первого месяца, где записан доход: если человек вёл только траты,
+          эти месяцы не превращаются в долг. Нечитаемый кусок чужого месяца не мешает открыть текущий: partial = true */
       view: function (month, cb) {
         ad.keys(function (err, keys) {
           if (err) { cb(err); return; }
@@ -158,7 +161,7 @@
             .sort(function (a, b) { return a.month === b.month ? a.i - b.i : (a.month < b.month ? -1 : 1); });
           ad.get(mine.map(function (c) { return c.key; }).concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
-            var months = {}, ops = [], carry = 0, partial = false, seen = {}, all = {};
+            var months = {}, ops = [], carry = 0, partial = false, seen = {}, all = {}, net = {}, first = '';
             for (var n = 0; n < mine.length; n++) {
               var c = mine[n], list = decode(values[c.key], c.month);
               if (list === null) { if (c.month === month) { cb('corrupt'); return; } partial = true; continue; }
@@ -169,9 +172,11 @@
                 months[c.month] = 1;
                 (all[c.month] = all[c.month] || []).push(op);
                 if (c.month === month) { ops.push(op); }
-                else if (c.month < month) { carry += (op.k === 'i' ? 1 : -1) * F.bynOf(op); }
+                net[c.month] = (net[c.month] || 0) + (op.k === 'i' ? 1 : -1) * F.bynOf(op);
+                if (op.k === 'i' && (!first || c.month < first)) { first = c.month; }
               }
             }
+            Object.keys(net).forEach(function (m) { if (first && m >= first && m < month) { carry += net[m]; } });
             cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial, all: all, cfg: readCfg(values.cfg) });
           });
         });
@@ -219,7 +224,7 @@
             });
             if (bad) { cb('corrupt'); return; }
             var out = { app: 'finansy', v: 1, at: new Date().toISOString(), months: months }, cfg = readCfg(values.cfg);
-            if (cfg.goal) { out.cfg = cfg; }
+            if (cfg.goal || cfg.cats || cfg.srcs) { out.cfg = cfg; }
             cb(null, { text: JSON.stringify(out), count: count });
           });
         });
@@ -230,11 +235,14 @@
         if (!data) { cb('format'); return; }
         var jobs = Object.keys(data.months).sort().map(function (month) { return { month: month, ops: data.months[month] }; });
         var total = 0;
-        function goal() { // цель из копии возвращается, только если своей цели сейчас нет
+        function goal() { // настройки из копии берутся только там, где своих ещё нет: свою цель и свои категории копия не затирает
           if (!data.cfg) { cb(null, total); return; }
           ad.get(['cfg'], function (err, values) {
-            if (err || readCfg(values.cfg).goal) { cb(null, total); return; }
-            ad.set('cfg', JSON.stringify(readCfg(JSON.stringify(data.cfg))), function () { cb(null, total); });
+            if (err) { cb(null, total); return; }
+            var cur = readCfg(values.cfg), inc = readCfg(JSON.stringify(data.cfg)), changed = false;
+            ['goal', 'cats', 'srcs'].forEach(function (key) { if (!cur[key] && inc[key]) { cur[key] = inc[key]; changed = true; } });
+            if (!changed) { cb(null, total); return; }
+            ad.set('cfg', JSON.stringify(cur), function () { cb(null, total); });
           });
         }
         (function next() {
