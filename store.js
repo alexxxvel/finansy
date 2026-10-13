@@ -86,6 +86,8 @@
       if (off.length) { out[key + 'Off'] = off; }
     });
     if (o.seen) { out.seen = 1; }
+    if (F.validGoals(o.goals)) { out.goals = F.validGoals(o.goals); }
+    if (typeof o.goalAsk === 'string' && /^[a-z0-9]{1,10}$/.test(o.goalAsk)) { out.goalAsk = o.goalAsk; } // у прежней цели ещё не спросили, сколько уже накоплено
     return out;
   }
   /** списки из копии добавляются к своим и ничего не затирают: недостающие категории дописываются, свои названия и порядок остаются.
@@ -330,6 +332,7 @@
             if (bad) { cb('corrupt'); return; }
             var out = { app: 'finansy', v: 1, at: new Date().toISOString(), months: months }, cfg = readCfg(values.cfg);
             delete cfg.seen; // отметка о первом экране к записям не относится
+            delete cfg.goalAsk;
             if (Object.keys(cfg).length) { out.cfg = cfg; }
             cb(null, { text: JSON.stringify(out), count: count });
           });
@@ -346,7 +349,13 @@
           ad.get(['cfg'], function (err, values) {
             if (err) { cb(null, total); return; }
             var cur = readCfg(values.cfg), inc = readCfg(JSON.stringify(data.cfg || {})), changed = false;
-            if (!cur.goal && inc.goal) { cur.goal = inc.goal; changed = true; }
+            if (!cur.goal && !cur.goals && !inc.goals && inc.goal) { cur.goal = inc.goal; changed = true; } // прежняя единственная цель: приложение само переведёт её в новый вид
+            (inc.goals || []).forEach(function (g) { // цели из копии дописываются к своим, свои не меняются
+              var mine = cur.goals || [];
+              if (mine.length >= F.GOALS_MAX || mine.some(function (x) { return x[0] === g[0]; })) { return; }
+              cur.goals = mine.concat([g]);
+              changed = true;
+            });
             if (mergeLists(cur, inc, 'cats', 'e', used.e)) { changed = true; }
             if (mergeLists(cur, inc, 'srcs', 'i', used.i)) { changed = true; }
             var text = JSON.stringify(readCfg(JSON.stringify(cur)));

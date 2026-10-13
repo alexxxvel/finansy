@@ -127,8 +127,66 @@
     var next = packed ? packed.map(function (c) { return { id: c[0], name: c[1], icon: c[2], wide: c[1].length > 11 }; }) : base;
     target.splice.apply(target, [0, target.length].concat(next));
   }
-  /** применить настройки: свои категории и источники, если они заданы, иначе встроенные; скрытые — отдельными списками */
+  // ---------- цели: накопления считаются отдельно от остатка ----------
+  // Цель: id, название, сколько накопить (копейки её валюты), валюта, сколько уже было накоплено на старте.
+  // Запись «Отложить» хранится как трата с категорией «g_<id цели>», «Снять» — как доход с такой же категорией:
+  // старая версия страницы (если Telegram покажет её из кэша) такую запись не испортит, а новая не считает её ни тратой, ни доходом.
+  var GOALS = [], GOALS_MAX = 12;
+  var MONTHS_DAT = ['январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню', 'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю'];
+  /** список целей для хранения: [[id, название, сумма, валюта 0–2, старт], …] */
+  function validGoals(list) {
+    if (!list || typeof list.length !== 'number' || !list.length || list.length > GOALS_MAX) { return null; }
+    var out = [], seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var g = list[i];
+      if (!g || typeof g.length !== 'number' || typeof g[0] !== 'string' || !/^[a-z0-9]{1,10}$/.test(g[0]) || seen[g[0]]) { return null; }
+      var name = cleanNote(g[1]).slice(0, 24), a = g[2], u = g[3], s = g[4] === undefined ? 0 : g[4];
+      if (!name || typeof a !== 'number' || a !== Math.round(a) || a <= 0 || a >= 1e12 || !CURS[u] || typeof s !== 'number' || s !== Math.round(s) || s < 0 || s >= 1e12) { return null; }
+      seen[g[0]] = 1;
+      out.push([g[0], name, a, u, s]);
+    }
+    return out;
+  }
+  function packGoals() { return GOALS.map(function (g) { return [g.id, g.name, g.a, g.u, g.s]; }); }
+  function isGoalOp(op) { return !!op && typeof op.c === 'string' && op.c.indexOf('g_') === 0; }
+  function goalOf(cat) { return typeof cat === 'string' && cat.indexOf('g_') === 0 ? find(GOALS, cat.slice(2)) : null; }
+  /** сумма в валюте цели: рубли в доллары и обратно — по закреплённому курсу приложения */
+  function goalAmount(g, minor, cur, rate) {
+    var gc = CURS[g.u];
+    if (cur === gc) { return minor; }
+    var byn = toByn(minor, cur, rate || RATES[cur]);
+    return gc === 'BYN' ? byn : Math.round(byn / RATES[gc]);
+  }
+  function goalByn(g, minor) { return CURS[g.u] === 'BYN' ? minor : Math.round(minor * RATES[CURS[g.u]]); }
+  /** состояние цели: сколько накоплено (старт плюс отложенное минус снятое, в валюте цели) и её записи, свежие сверху */
+  function goalState(g, all) {
+    var have = g.s, ops = [], cat = 'g_' + g.id;
+    Object.keys(all || {}).forEach(function (m) {
+      all[m].forEach(function (op) {
+        if (op.c !== cat) { return; }
+        have += (op.k === 'e' ? 1 : -1) * goalAmount(g, op.a, op.u, op.r);
+        ops.push(op);
+      });
+    });
+    ops.sort(function (x, y) { return x.d === y.d ? (x.id < y.id ? 1 : -1) : (x.d < y.d ? 1 : -1); });
+    return { have: have, ops: ops };
+  }
+  /** прогноз: средний темп по месяцам с первой записи и к какому месяцу цель наберётся. Нужны хотя бы две записи и положительный темп */
+  function goalForecast(g, state, now) {
+    now = now || today();
+    var rest = g.a - state.have, net = state.have - g.s;
+    if (state.ops.length < 2 || rest <= 0 || net <= 0) { return null; }
+    var first = state.ops[state.ops.length - 1].d, months = (+now.slice(0, 4) - +first.slice(0, 4)) * 12 + (+now.slice(5, 7) - +first.slice(5, 7)) + 1;
+    var avg = net / Math.max(1, months), n = Math.ceil(rest / avg);
+    if (n > 240) { return null; }
+    var idx = (+now.slice(5, 7) - 1) + n, year = +now.slice(0, 4) + Math.floor(idx / 12);
+    return { avg: Math.round(avg), when: MONTHS_DAT[idx % 12] + NB + year };
+  }
+
+  /** применить настройки: свои категории и источники, если они заданы, иначе встроенные; скрытые — отдельными списками; цели */
   function useCfg(cfg) {
+    var goals = cfg ? validGoals(cfg.goals) : null;
+    GOALS.splice.apply(GOALS, [0, GOALS.length].concat((goals || []).map(function (g) { return { id: g[0], name: g[1], a: g[2], u: g[3], s: g[4] }; })));
     setList(CATS, BASE_CATS, cfg ? validList(cfg.cats) : null);
     setList(SRCS, BASE_SRCS, cfg ? validList(cfg.srcs) : null);
     setList(OFF.e, [], cfg ? validList(cfg.catsOff) : null);
@@ -136,6 +194,7 @@
   }
   /** категория записи по id: из списка или из скрытых. Записи с категорией, которой нет нигде (список сменили), не теряются: они «без категории» */
   function dict(kind, id) {
+    if (typeof id === 'string' && id.indexOf('g_') === 0) { var g = goalOf(id); return { id: id, name: g ? g.name : 'Удалённая цель', icon: 'wallet', goal: true }; }
     return find(kind === 'i' ? SRCS : CATS, id) || find(OFF[kind === 'i' ? 'i' : 'e'], id) || { id: id, name: 'Без категории', icon: 'dots' };
   }
   /** список для хранения: [[id, название, значок], …] */
@@ -209,6 +268,7 @@
       if (validList(data.cfg.srcs)) { cfg.srcs = validList(data.cfg.srcs); }
       if (validList(data.cfg.catsOff)) { cfg.catsOff = validList(data.cfg.catsOff); }
       if (validList(data.cfg.srcsOff)) { cfg.srcsOff = validList(data.cfg.srcsOff); }
+      if (validGoals(data.cfg.goals)) { cfg.goals = validGoals(data.cfg.goals); }
       if (!Object.keys(cfg).length) { cfg = null; }
     }
     return count ? { months: months, count: count, cfg: cfg } : null;
@@ -221,11 +281,12 @@
     return b === 1 ? one : many;
   }
 
-  /** сводка месяца: всё в рублях (копейки) */
+  /** сводка месяца: всё в рублях (копейки). Отложенное на цели и снятое с них — не траты и не доходы: считаются отдельно (saved, taken) */
   function summarize(ops) {
-    var spent = 0, income = 0, cats = {}, srcs = {};
+    var spent = 0, income = 0, cats = {}, srcs = {}, saved = 0, taken = 0;
     ops.forEach(function (op) {
       var b = bynOf(op), bucket = op.k === 'e' ? cats : srcs;
+      if (isGoalOp(op)) { if (op.k === 'e') { saved += b; } else { taken += b; } return; }
       if (op.k === 'e') { spent += b; } else { income += b; }
       var row = bucket[op.c] || (bucket[op.c] = { id: op.c, sum: 0, foreign: {} });
       row.sum += b;
@@ -237,7 +298,7 @@
         return { id: c.id, name: c.name, icon: c.icon, sum: r.sum, note: CURS.filter(function (u) { return r.foreign[u]; }).map(function (u) { return fmtShort(r.foreign[u]) + NB + u; }).join(', ') };
       }).sort(function (x, y) { return y.sum - x.sum; });
     }
-    return { spent: spent, income: income, left: income - spent, cats: rows(cats, 'e'), srcs: rows(srcs, 'i') };
+    return { spent: spent, income: income, left: income - spent - saved + taken, saved: saved, taken: taken, cats: rows(cats, 'e'), srcs: rows(srcs, 'i') };
   }
 
   /** записи по дням, свежие сверху */
@@ -283,7 +344,7 @@
     var from = shiftDay(now, -92), map = {}, list = [];
     Object.keys(all || {}).forEach(function (m) {
       all[m].forEach(function (op) {
-        if (op.k !== kind || op.d < from || op.d > now) { return; }
+        if (op.k !== kind || op.d < from || op.d > now || isGoalOp(op)) { return; } // отложенное на цель частой тратой не предлагается
         var key = [op.c, op.a, op.u, (op.n || '').toLowerCase()].join('|'), it = map[key];
         if (!it) { it = map[key] = { k: kind, c: op.c, a: op.a, u: op.u, n: op.n || '', count: 0, last: '' }; list.push(it); }
         it.count++;
@@ -318,7 +379,7 @@
     ops.forEach(function (op) {
       var d = op.d.split('-'), note = op.n || '';
       if (/^[=+\-@]/.test(note)) { note = "'" + note; } // Excel принял бы такую заметку за формулу
-      rows.push([d[2] + '.' + d[1] + '.' + d[0], op.k === 'e' ? 'Трата' : 'Доход', dict(op.k, op.c).name, num(op.a), op.u, num(bynOf(op)), note]);
+      rows.push([d[2] + '.' + d[1] + '.' + d[0], isGoalOp(op) ? (op.k === 'e' ? 'Отложено' : 'Снято') : (op.k === 'e' ? 'Трата' : 'Доход'), dict(op.k, op.c).name, num(op.a), op.u, num(bynOf(op)), note]);
     });
     return rows.map(function (r) {
       return r.map(function (cell) {
@@ -491,6 +552,7 @@
     plural: plural, summarize: summarize, byDays: byDays, dayLabel: dayLabel, monthLabel: monthLabel,
     prevMonth: prevMonth, inMonth: inMonth, daysLeft: daysLeft, perDay: perDay, fmtDay: fmtDay, frequent: frequent, validGoal: validGoal, parseAmount: parseAmount, balance: balance, table: table,
     validList: validList, useCfg: useCfg, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId,
+    GOALS: GOALS, GOALS_MAX: GOALS_MAX, validGoals: validGoals, packGoals: packGoals, isGoalOp: isGoalOp, goalOf: goalOf, goalAmount: goalAmount, goalByn: goalByn, goalState: goalState, goalForecast: goalForecast,
     parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX
   };
 })(window);

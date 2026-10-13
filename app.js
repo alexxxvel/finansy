@@ -1,4 +1,4 @@
-/* Учёт финансов: экраны. Главная («Месяц»), «История», лист добавления, первый запуск, настройки (свои категории, перенос из заметок, копия данных).
+/* Учёт финансов: экраны. Главная («Месяц»), «История», «Цели», лист добавления, первый запуск, настройки (свои категории, перенос из заметок, копия данных).
    Движение: лист на пружине (её можно перехватить пальцем), сумма досчитывается, полосы растут; частые действия (клавиши) без анимации.
    Стиль ES5: страница запускается и на старых встроенных браузерах Telegram. */
 (function () {
@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '4193cfcfea'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'fa79ddbf45'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -162,9 +162,9 @@
   // ---------- нижние капсулы ----------
   function paintDock() {
     clear(dock);
-    var tabs = el('nav', 'tabs');
+    var tabs = el('nav', 'tabs tabs--3');
     tabs.setAttribute('aria-label', 'Разделы');
-    [['month', 'Месяц'], ['history', 'История']].forEach(function (t) {
+    [['month', 'Месяц'], ['history', 'История'], ['goals', 'Цели']].forEach(function (t) {
       var b = btn('', t[1]);
       b.setAttribute('data-tab', t[0]);
       if (st.tab === t[0]) { b.setAttribute('aria-current', 'page'); }
@@ -177,10 +177,15 @@
       });
       tabs.appendChild(b);
     });
-    var a = btn('btn btn--add');
+    var a = btn('btn btn--plus'); // при трёх вкладках подпись «Добавить» не помещается: остаётся круглый плюс
     a.id = 'addBtn';
-    add(a, icon('plus'), document.createTextNode('Добавить'));
-    a.addEventListener('click', function () { openEntry(null); });
+    a.setAttribute('aria-label', 'Добавить');
+    a.appendChild(icon('plus'));
+    a.addEventListener('click', function () {
+      if (st.tab !== 'goals') { openEntry(null); return; }
+      // на вкладке «Цели» плюс сразу откладывает; целей нет — заводит первую
+      if (!F.GOALS.length) { openGoalEdit(null, null, null); } else { openEntry(null, { kind: 's', cat: F.GOALS.length === 1 ? 'g_' + F.GOALS[0].id : '' }); }
+    });
     add(dock, tabs, a);
   }
 
@@ -193,16 +198,25 @@
     return b;
   }
   /** шапка экрана: месяц слева, шестерёнка настроек справа */
-  function monthBar() {
-    var head = el('div', 'bar'), gear = btn('gear');
+  function gearBtn() {
+    var gear = btn('gear');
     gear.id = 'gearBtn';
     gear.setAttribute('aria-label', 'Настройки');
     gear.appendChild(icon('gear'));
     gear.addEventListener('click', function () { openSettings(); });
-    add(head, monthButton(), gear);
+    return gear;
+  }
+  function monthBar() {
+    var head = el('div', 'bar');
+    add(head, monthButton(), gearBtn());
     return head;
   }
 
+  /** размер крупной суммы по числу цифр до запятой: до четырёх — 68 px, пять — 52, шесть и больше — 44 */
+  function sumClass(minor) {
+    var n = String(Math.floor(Math.abs(minor) / 100)).length;
+    return 'spent__sum' + (n >= 6 ? ' is-s' : n === 5 ? ' is-m' : '');
+  }
   function setSum(node, minor) {
     var p = F.fmtParts(minor);
     node.whole.textContent = p.sign + p.whole;
@@ -224,10 +238,11 @@
 
   /** строка записи: в «Истории» со значком и названием категории, в листе категории — с датой */
   function opRow(op, bare) {
-    var dict = F.dict(op.k, op.c), b = btn('op' + (bare ? ' op--bare' : ''));
+    var dict = F.dict(op.k, op.c), b = btn('op' + (bare ? ' op--bare' : '')), goal = F.isGoalOp(op);
     b.setAttribute('data-id', op.id);
-    var name = el('span', '', bare ? F.dayLabel(op.d) : dict.name);
-    rowNote(name, [op.u !== 'BYN' ? F.fmtShort(op.a) + F.NB + op.u : '', op.n || ''].filter(Boolean).join(', ')); // сумма в валюте первой: длинную заметку строка обрежет, а её нет
+    // запись цели: «Отложено» или «Снято», название цели серым; в «Потрачено» и в доходы она не входит
+    var name = el('span', '', bare ? F.dayLabel(op.d) : goal ? (op.k === 'e' ? 'Отложено' : 'Снято') : dict.name);
+    rowNote(name, [goal && !bare ? dict.name : '', op.u !== 'BYN' ? F.fmtShort(op.a) + F.NB + op.u : '', op.n || ''].filter(Boolean).join(', ')); // сумма в валюте первой: длинную заметку строка обрежет, а её нет
     add(b, bare ? null : icon(dict.icon), name, el('data', op.k === 'i' ? 'is-plus' : '', (op.k === 'i' ? '+' : '') + F.fmt(F.bynOf(op))), icon('right', 'share__go'));
     b.addEventListener('click', function () { openEntry(op); });
     return b;
@@ -250,40 +265,23 @@
     li.appendChild(b);
     return li;
   }
-  function goalCard() {
-    var g = st.cfg.goal, have = Math.max(0, st.balance), pct = Math.min(100, Math.floor(have / g.a * 100));
-    var sec = el('section', 'goal'), b = btn('goal__btn');
-    b.id = 'goalCard';
-    var head = el('span', 'cats__head');
-    var pc = el('span', 'goal__pct', pct + '%');
-    pc.appendChild(icon('right', 'share__go'));
-    add(head, el('span', 'goal__title', g.n ? 'Цель: ' + g.n : 'Цель накопления'), pc);
-    var line = el('span', 'goal__line');
-    add(line, el('b', '', F.fmt(have)), document.createTextNode(' из' + F.NB + F.fmt(g.a)));
-    var track = el('i', 'goal__bar'), f = el('b');
-    f.style.transform = 'scaleX(' + Math.min(1, have / g.a).toFixed(4) + ')';
-    track.appendChild(f);
-    add(b, head, line, track, el('span', 'goal__rest', have >= g.a ? 'цель достигнута' : 'осталось накопить ' + F.fmt(g.a - have)));
-    b.addEventListener('click', openGoal);
-    sec.appendChild(b);
-    return sec;
-  }
-
   function paintMonth(animate) {
     var s = st.sum, was = st.shown;
     st.shown = s.spent;
-    var current = st.month === F.monthOf(F.today());
 
     var spent = el('section', 'spent');
     var sumEl = el('p', 'spent__sum');
     var node = { whole: el('span'), frac: el('i') };
     sumEl.id = 'spentSum';
+    sumEl.className = sumClass(s.spent);
     add(sumEl, node.whole, node.frac, el('abbr', '', 'BYN'));
     add(spent, el('p', 'spent__label', 'Потрачено'), sumEl);
 
     // шкала: дорожка = доход (при перерасходе и без дохода — сами траты); не больше трёх сегментов
-    var avail = s.income + st.carry, left = avail - s.spent; // доступно в этом месяце: доход и остаток с прошлых
-    var base = Math.max(avail, s.spent, 1);
+    // отложенное на цели потратить нельзя: оно вычитается из доступного; снятое с целей сверх отложенного, наоборот, добавляется
+    var back = Math.max(0, s.taken - s.saved), put = Math.max(0, s.saved - s.taken);
+    var avail = s.income + st.carry + back, left = avail - s.spent - put; // доступно в этом месяце: доход, остаток с прошлых и снятое из накоплений
+    var base = Math.max(avail, s.spent + put, 1);
     var bar = el('div', 'spent__bar');
     bar.setAttribute('role', 'img');
     bar.setAttribute('aria-label', avail > 0 ? 'Потрачено ' + Math.round(s.spent / avail * 100) + ' процентов доступного' : 'Доход ещё не внесён');
@@ -293,16 +291,31 @@
     var fill = el('div', 'spent__fill');
     segs.forEach(function (v) { var i = el('i'); i.style.width = (v / base * 100).toFixed(2) + '%'; fill.appendChild(i); });
     bar.appendChild(fill);
+    if (put > 0) { // траты растут слева, отложенное отнимает доступное справа контурным отрезком: «осталось» — промежуток между ними
+      var sv = el('i', 'spent__saved');
+      sv.style.width = Math.max(3, put / base * 100).toFixed(2) + '%';
+      bar.className = 'spent__bar spent__bar--saved';
+      bar.appendChild(sv);
+    }
     var legend = el('div', 'spent__legend');
-    if (!s.income && !st.carry) { add(legend, el('span', '', s.spent ? 'доход ещё не внесён' : 'записей в этом месяце нет')); }
+    if (!s.income && !st.carry && !back) { add(legend, el('span', '', s.spent || put ? 'доход ещё не внесён' : 'записей в этом месяце нет')); }
     else {
       add(legend, el('span', '', avail > 0 ? 'из' + F.NB + F.fmt(avail) : (s.income ? 'из' + F.NB + F.fmt(s.income) : 'доход ещё не внесён')));
-      add(legend, left < 0 ? el('span', 'is-over', 'перерасход ' + F.fmt(-left)) : el('span', '', 'осталось ' + F.fmt(left)));
+      add(legend, left < 0 ? el('span', 'is-over', 'перерасход ' + F.fmt(-left)) : el('span', 'is-left', 'осталось ' + F.fmt(left)));
     }
     add(spent, bar, legend);
     var days = F.daysLeft(st.month), per = F.perDay(left, days);
-    if (per) { // сколько можно тратить в день, чтобы остатка хватило до конца месяца
-      var dayEl = el('p', 'spent__day', days === 1 ? 'сегодня последний день месяца' : 'по' + F.NB + F.fmtDay(per) + F.NB + 'BYN в' + F.NB + 'день, ещё ' + days + F.NB + F.plural(days, 'день', 'дня', 'дней'));
+    // сколько можно тратить в день, чтобы остатка хватило до конца месяца; рядом с «отложено» слово BYN опускается, иначе строка не помещается
+    var dayText = !per ? '' : days === 1 ? 'сегодня последний день месяца' : 'по' + F.NB + F.fmtDay(per) + F.NB + (put > 0 ? '' : 'BYN' + F.NB) + 'в' + F.NB + 'день, ещё ' + days + F.NB + F.plural(days, 'день', 'дня', 'дней');
+    if (put > 0) {
+      var row2 = el('div', 'spent__legend spent__legend--2'), putBtn = btn('spent__mark', 'отложено ' + F.fmt(put));
+      putBtn.id = 'putBtn';
+      putBtn.addEventListener('click', openGoalsList); // короткий взгляд на цели, не уходя с месяца
+      add(row2, putBtn);
+      if (dayText) { var d2 = el('span', '', dayText); d2.id = 'perDay'; row2.appendChild(d2); }
+      spent.appendChild(row2);
+    } else if (dayText) {
+      var dayEl = el('p', 'spent__day', dayText);
       dayEl.id = 'perDay';
       spent.appendChild(dayEl);
     }
@@ -343,7 +356,7 @@
     }
     var srcs = el('section', 'cats cats--in');
     srcs.appendChild(el('h2', '', 'Откуда пришло'));
-    if (!s.srcs.length && !st.carry) {
+    if (!s.srcs.length && !st.carry && !back) {
       srcs.appendChild(el('p', 'empty', 'Доходов в этом месяце ещё нет.'));
     } else {
       var plain = el('ul', 'plain');
@@ -353,17 +366,16 @@
         add(cr, icon('wallet'), el('span', '', 'Остаток на начало месяца'), el('data', '', F.fmt(st.carry)));
         plain.appendChild(cr);
       }
+      if (back) { // с целей снято больше, чем отложено: эти деньги снова можно тратить
+        var tk = el('li', 'plain__carry');
+        tk.id = 'takenRow';
+        add(tk, icon('wallet'), el('span', '', 'Из накоплений'), el('data', '', F.fmt(back)));
+        plain.appendChild(tk);
+      }
       s.srcs.forEach(function (c) { plain.appendChild(shareRow('i', c, null, 0)); });
       srcs.appendChild(plain);
     }
-    var goalRow = null;
-    if (current && !st.cfg.goal) {
-      goalRow = btn('more more--copy');
-      goalRow.id = 'goalBtn';
-      add(goalRow, el('span', '', 'Цель накопления'), icon('right'));
-      goalRow.addEventListener('click', openGoal);
-    }
-    add(sheet, cats, srcs, current && st.cfg.goal ? goalCard() : null, goalRow);
+    add(sheet, cats, srcs);
     if (st.partial) { sheet.appendChild(el('p', 'note', 'Часть записей прошлых месяцев не читается: остаток на начало месяца может быть неточным.')); }
     if (store && store.kind === 'local') { sheet.appendChild(el('p', 'note', 'Пробный режим вне Telegram: записи хранятся только в этом браузере.')); }
 
@@ -421,60 +433,320 @@
     });
   }
 
-  // ---------- цель накопления ----------
-  function openGoal() {
-    var g = st.cfg.goal || null;
+  // ---------- цели: вкладка, лист цели, новая цель, список ----------
+  function gcur(g) { return F.CURS[g.u]; }
+  /** сумма в валюте цели: у рублей копейки всегда, у валюты — только когда они не нулевые */
+  function gm(minor, g) { return g.u === 0 ? F.fmt(minor) : (minor < 0 ? '−' : '') + F.fmtShort(minor); }
+  function gmCur(minor, g) { return gm(minor, g) + (g.u === 0 ? '' : F.NB + gcur(g)); }
+  function goalRest(g, have, long) {
+    if (have >= g.a) { return have > g.a ? 'цель достигнута, сверх неё ' + gmCur(have - g.a, g) : 'цель достигнута'; }
+    return 'ещё нужно ' + gmCur(g.a - have, g) + (long && g.u !== 0 ? ', это ' + F.fmt(F.goalByn(g, g.a - have)) + F.NB + 'BYN' : '');
+  }
+  /** сколько отложено за месяц по всем целям (или по одной), в рублях: снятое вычитается */
+  function monthPut(month, g) {
+    var sum = 0;
+    (st.all[month] || []).forEach(function (op) { if (F.isGoalOp(op) && (!g || op.c === 'g_' + g.id)) { sum += (op.k === 'e' ? 1 : -1) * F.bynOf(op); } });
+    return sum;
+  }
+  function signed(minor) { return (minor < 0 ? '−' : '+') + F.fmt(Math.abs(minor)); }
+  function goalCard(g, tap) {
+    var s = F.goalState(g, st.all), sec = el('section', 'goal'), b = btn('goal__btn'), head = el('span', 'cats__head'), pc = el('span', 'goal__pct', Math.min(100, Math.floor(s.have / g.a * 100)) + '%');
+    b.setAttribute('data-goal', g.id);
+    pc.appendChild(icon('right', 'share__go'));
+    add(head, el('span', 'goal__title', g.name), pc);
+    var line = el('span', 'goal__line'), track = el('i', 'goal__bar'), f = el('b');
+    add(line, el('b', '', gm(s.have, g)), document.createTextNode(' из' + F.NB + gmCur(g.a, g)));
+    f.style.transform = 'scaleX(' + Math.max(0, Math.min(1, s.have / g.a)).toFixed(4) + ')';
+    track.appendChild(f);
+    add(b, head, line, track, el('span', 'goal__rest', goalRest(g, s.have, true)));
+    b.addEventListener('click', function () { tap(g); });
+    sec.appendChild(b);
+    return sec;
+  }
+  function newGoalBtn(back) {
+    var b = btn('btn btn--quiet btn--new');
+    b.id = 'goalNew';
+    add(b, icon('plus'), document.createTextNode('Новая цель'));
+    b.addEventListener('click', function () {
+      if (F.GOALS.length >= F.GOALS_MAX) { haptic('err'); toast('Целей уже двенадцать. Удалите ту, что закрыта.'); return; }
+      openGoalEdit(null, back || null, null);
+    });
+    return b;
+  }
+  /** строка записи цели: день, заметка, сколько отложено или снято в валюте цели; нажатие открывает правку */
+  function goalRec(op, g) {
+    var li = el('li'), b = btn('op op--bare'), name = el('span', '', F.dayLabel(op.d)), d = F.goalAmount(g, op.a, op.u, op.r);
+    b.setAttribute('data-id', op.id);
+    rowNote(name, [op.u !== gcur(g) ? F.fmtShort(op.a) + F.NB + op.u : '', op.n || ''].filter(Boolean).join(', '));
+    add(b, name, el('data', op.k === 'e' ? 'is-plus' : '', (op.k === 'e' ? '+' : '−') + gm(d, g)), icon('right', 'share__go'));
+    b.addEventListener('click', function () { openEntry(op); });
+    li.appendChild(b);
+    return li;
+  }
+  function goalRecs(g, s, limit) {
+    var ul = el('ul', 'rows rows--ops');
+    s.ops.slice(0, limit).forEach(function (op) { ul.appendChild(goalRec(op, g)); });
+    if (g.s > 0) { // с этой суммы шкала началась: она не запись и не уменьшала остаток ни одного месяца
+      var li = el('li'), row = el('div', 'op op--bare is-start');
+      add(row, el('span', '', 'Уже было накоплено'), el('data', '', gm(g.s, g)), el('span'));
+      li.appendChild(row);
+      ul.appendChild(li);
+    }
+    return ul;
+  }
+  /** вкладка «Цели». Одна цель — она сама наверху крупно; несколько — общий итог в рублях и карточки */
+  function paintGoals() {
+    var goals = F.GOALS, now = F.monthOf(F.today()), head = el('div', 'bar'), title = el('h1', 'month', 'Цели');
+    title.id = 'goalsTitle';
+    add(head, title, gearBtn());
+    clear(view);
+    if (!goals.length) {
+      var empty = el('div', 'sheet sheet--top');
+      add(empty, el('p', 'empty', nb('Целей пока нет. Заведите первую: подушку, отпуск, технику. Приложение покажет, сколько накоплено и сколько ещё нужно.')), newGoalBtn(null));
+      add(view, head, empty);
+      return;
+    }
+    var hero = el('section', 'spent'), sumEl = el('p', 'spent__sum'), node = { whole: el('span'), frac: el('i') }, legend = el('div', 'spent__legend spent__legend--wrap'), sheet = el('div', 'sheet'), put;
+    sumEl.id = 'goalsSum';
+    if (goals.length === 1) {
+      var g = goals[0], s = F.goalState(g, st.all), label = btn('spent__label spent__label--btn'), bar = el('div', 'spent__bar'), fill = el('div', 'spent__fill'), seg = el('i');
+      label.id = 'goalHero';
+      add(label, document.createTextNode(g.name), icon('right', 'share__go'));
+      label.addEventListener('click', function () { openGoalView(g.id, null); });
+      var parts = g.u === 0 ? F.fmtParts(s.have) : { sign: s.have < 0 ? '−' : '', whole: F.fmtShort(s.have).split(',')[0], frac: F.fmtShort(s.have).indexOf(',') >= 0 ? ',' + F.fmtShort(s.have).split(',')[1] : '' };
+      node.whole.textContent = parts.sign + parts.whole;
+      node.frac.textContent = parts.frac;
+      sumEl.className = sumClass(s.have);
+      add(sumEl, node.whole, node.frac, el('abbr', '', gcur(g)));
+      seg.style.width = (Math.max(0, Math.min(1, s.have / g.a)) * 100).toFixed(2) + '%';
+      fill.appendChild(seg);
+      bar.appendChild(fill);
+      bar.setAttribute('role', 'img');
+      bar.setAttribute('aria-label', 'Накоплено ' + Math.min(100, Math.floor(s.have / g.a * 100)) + ' процентов цели');
+      add(legend, el('span', '', 'из' + F.NB + gmCur(g.a, g)), el('span', '', goalRest(g, s.have, false)));
+      add(hero, label, sumEl, bar, legend);
+      var sec = el('section', 'cats'), secHead = el('div', 'cats__head');
+      put = monthPut(now, g);
+      add(secHead, el('h2', '', 'Записи'), put ? el('span', '', F.inMonth(now) + ' ' + signed(put)) : null);
+      sec.appendChild(secHead);
+      if (s.ops.length || g.s > 0) { var recs1 = goalRecs(g, s, 50); recs1.className = 'rows rows--ops rows--flat'; sec.appendChild(recs1); }
+      else { sec.appendChild(el('p', 'empty', nb('Записей пока нет. Нажмите плюс внизу, чтобы отложить на цель.'))); }
+      add(sheet, sec, newGoalBtn(null));
+    } else {
+      var total = 0, foreign = {}, cards = el('div', 'saved__goals');
+      goals.forEach(function (x) {
+        total += F.goalByn(x, F.goalState(x, st.all).have);
+        if (x.u !== 0) { foreign[gcur(x)] = 1; }
+        cards.appendChild(goalCard(x, function (it) { openGoalView(it.id, null); }));
+      });
+      var tp = F.fmtParts(total), codes = Object.keys(foreign);
+      node.whole.textContent = tp.sign + tp.whole;
+      node.frac.textContent = tp.frac;
+      sumEl.className = sumClass(total);
+      add(sumEl, node.whole, node.frac, el('abbr', '', 'BYN'));
+      put = monthPut(now, null);
+      var rate = !codes.length ? '' : codes.length > 1 ? 'валюта по' + F.NB + 'курсу приложения' : (codes[0] === 'USD' ? 'доллары' : 'евро') + ' по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[codes[0]]);
+      add(legend, el('span', '', put ? F.inMonth(now) + ' ' + signed(put) : ''), rate ? el('span', '', rate) : null);
+      add(hero, el('p', 'spent__label', 'Накоплено'), sumEl, legend);
+      add(sheet, cards, newGoalBtn(null));
+    }
+    add(view, head, hero, sheet);
+  }
+  /** лист цели: сколько накоплено крупно, процент у шкалы, прогноз по среднему темпу, записи; внизу «Отложить» и «Снять» */
+  function openGoalView(id, back) {
+    var g = F.find(F.GOALS, id);
+    if (!g) { return; }
+    var s = F.goalState(g, st.all), fc = F.goalForecast(g, s);
     haptic();
-    openModal('list', false, function (m) {
-      var box = el('div', 'pick pick--goal');
-      var info = el('p', 'pick__info', 'Накоплено считается по всем записям: доходы минус траты. Сейчас это ' + F.fmt(Math.max(0, st.balance)) + F.NB + 'BYN.');
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--goalview'), top = el('div', 'goal__top'), edit = btn('capsule'), sum = el('p', 'goal__sum'), meter = el('div', 'goal__meter'), track = el('i', 'goal__bar'), f = el('b');
+      var foot = el('footer', 'modal__dock modal__dock--duo'), putBtn = btn('btn', 'Отложить'), take = btn('btn btn--quiet', 'Снять');
+      edit.id = 'goalEdit';
+      edit.appendChild(el('span', '', 'Изменить'));
+      edit.addEventListener('click', function () { openGoalEdit(g, function () { openGoalView(id, back); }, null); });
+      add(top, el('h2', 'pick__title', g.name), edit);
+      var text = gm(s.have, g), comma = text.indexOf(',');
+      sum.id = 'goalHave';
+      var num = el('span', 'goal__num');
+      add(num, el('span', '', comma >= 0 ? text.slice(0, comma) : text), el('i', '', comma >= 0 ? text.slice(comma) : ''));
+      add(sum, num, el('small', '', 'из' + F.NB + gmCur(g.a, g) + (g.u === 0 ? F.NB + 'BYN' : '')));
+      f.style.transform = 'scaleX(' + Math.max(0, Math.min(1, s.have / g.a)).toFixed(4) + ')';
+      track.appendChild(f);
+      add(meter, track, el('span', '', Math.min(100, Math.floor(s.have / g.a * 100)) + '%'));
+      var line = cap(goalRest(g, s.have, false)) + '.';
+      if (s.have < g.a && g.u !== 0) { line += ' Это ' + F.fmt(F.goalByn(g, g.a - s.have)) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[gcur(g)]) + '.'; }
+      if (fc) { line += ' В среднем вы откладываете ' + gmCur(Math.round(fc.avg / 100) * 100, g).replace(/,00$/, '') + ' в' + F.NB + 'месяц: в таком темпе накопите к' + F.NB + fc.when + '.'; }
+      var info = el('p', 'pick__info', nb(line));
       info.id = 'goalInfo';
-      var sum = el('input', 'field');
-      sum.id = 'goalSum';
-      sum.type = 'text';
-      sum.maxLength = 14;
-      sum.placeholder = 'например, 2000';
-      sum.value = g ? F.fmt(g.a).replace(/,00$/, '') : '';
-      sum.setAttribute('inputmode', 'decimal');
-      sum.setAttribute('aria-label', 'Сумма цели');
-      sum.setAttribute('enterkeyhint', 'done');
-      sum.setAttribute('autocomplete', 'off');
-      var name = el('input', 'field');
-      name.id = 'goalName';
-      name.type = 'text';
-      name.maxLength = 40;
-      name.placeholder = 'не обязательно';
-      name.value = g && g.n ? g.n : '';
-      name.setAttribute('aria-label', 'На что копите');
-      name.setAttribute('enterkeyhint', 'done');
-      name.setAttribute('autocomplete', 'off');
-      [sum, name].forEach(function (f) { f.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { f.blur(); } }); });
-      function write(goal) { // меняется только цель: свои категории и остальные настройки остаются как были
-        store.patchCfg({ goal: goal || null }, function (err) {
-          if (err) { toast(explain(err)); return; }
+      add(box, top, sum, meter, info, el('p', 'lbl lbl--gap', 'Записи'));
+      if (s.ops.length || g.s > 0) { box.appendChild(goalRecs(g, s, 30)); }
+      else { box.appendChild(el('p', 'pick__info', nb('Записей пока нет: нажмите «Отложить».'))); }
+      putBtn.id = 'goalPut';
+      take.id = 'goalTake';
+      putBtn.addEventListener('click', function () { openEntry(null, { kind: 's', cat: 'g_' + id }); });
+      take.setAttribute('aria-disabled', String(s.have <= 0));
+      if (s.have <= 0) { take.className = 'btn btn--quiet btn--off'; }
+      take.addEventListener('click', function () {
+        if (s.have <= 0) { haptic('err'); toast('В цели пока ничего нет'); return; }
+        openEntry(null, { kind: 't', cat: 'g_' + id });
+      });
+      add(foot, putBtn, take);
+      add(m, box, foot);
+    }, back);
+  }
+  /** новая цель или правка: название, сумма, валюта (у существующей цели не меняется), сколько уже накоплено */
+  function openGoalEdit(g, back, done) {
+    var u = g ? g.u : 0, busy = false, nameEl = null;
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat pick--newgoal'), foot = el('footer', 'modal__dock'), go = btn('btn', 'Сохранить цель'), row = el('div', 'field-row'), cur = btn('cur'), curText = el('span');
+      function field(id, value, ph, mode, max) {
+        var f = el('input', 'field');
+        f.id = id;
+        f.type = 'text';
+        f.maxLength = max;
+        f.placeholder = ph;
+        f.value = value;
+        if (mode) { f.setAttribute('inputmode', mode); }
+        f.setAttribute('enterkeyhint', 'done');
+        f.setAttribute('autocomplete', 'off');
+        f.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { f.blur(); } });
+        return f;
+      }
+      function label(text, id) { var l = el('label', 'lbl', text); l.setAttribute('for', id); return l; }
+      function plain(minor) { return minor ? F.fmt(minor).replace(/,00$/, '') : ''; }
+      nameEl = field('goalName', g ? g.name : '', 'Например, отпуск', '', 24);
+      var sum = field('goalSum', g ? plain(g.a) : '', 'например, 2000', 'decimal', 14), start = field('goalStart', g ? plain(g.s) : '', '0', 'decimal', 14), startLbl = label('', 'goalStart');
+      var info = el('p', 'pick__info');
+      info.id = 'goalMsg';
+      function texts() {
+        var code = F.CURS[u];
+        curText.textContent = code;
+        cur.setAttribute('aria-label', 'Валюта цели: ' + code + (g ? '' : '. Нажмите, чтобы сменить'));
+        startLbl.textContent = 'Уже накоплено, ' + code;
+        info.textContent = nb('Эти деньги отложены раньше: остаток месяца они не уменьшат.' + (code === 'BYN' ? '' : ' Откладывать можно и рублями, по курсу ' + F.fmtRate(F.RATES[code]) + '.'));
+      }
+      cur.id = 'goalCur';
+      add(cur, curText, g ? null : icon('down'));
+      cur.addEventListener('click', function () { // валюта выбирается у новой цели: у существующей в ней уже посчитаны старт и записи
+        if (g) { haptic('err'); toast('Валюту цели сменить нельзя: в ней посчитано накопленное'); return; }
+        u = (u + 1) % F.CURS.length;
+        haptic();
+        texts();
+      });
+      add(row, sum, cur);
+      go.id = 'goalSave';
+      go.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // нажатие не снимает фокус с поля: лист не прыгает под пальцем
+      go.addEventListener('click', function () {
+        if (busy) { return; }
+        var name = F.cleanNote(nameEl.value).slice(0, 24).replace(/ $/, ''), a = F.parseAmount(sum.value), s0 = start.value.replace(/\s/g, '') ? F.parseAmount(start.value) : 0;
+        var same = F.GOALS.some(function (x) { return x.name.toLowerCase() === name.toLowerCase() && (!g || x.id !== g.id); });
+        var bad = !name ? 'Введите название цели.' : same ? 'Цель с таким названием уже есть.' : !a ? 'Введите, сколько накопить, цифрами: например 2000.' : (start.value.replace(/\s/g, '') && !s0 && !/^0+([.,]0+)?$/.test(start.value.replace(/\s/g, ''))) ? 'Введите, сколько уже накоплено, цифрами.' : '';
+        if (bad) { info.textContent = bad; haptic('err'); return; }
+        var list = F.packGoals(), id = g ? g.id : F.catId(idsOf(list));
+        if (g) { list = list.map(function (x) { return x[0] === id ? [id, name, a, u, s0] : x; }); } else { list.push([id, name, a, u, s0]); }
+        busy = true;
+        store.patchCfg({ goals: list }, function (err) {
+          if (err) { busy = false; haptic('err'); toast(explain(err)); return; }
+          haptic('ok');
+          reload(true, function () {
+            if (done) { done(id); } else if (back) { back(); } else { closeModal(0); }
+          });
+        });
+      });
+      var del = null;
+      if (g) {
+        del = btn('link', 'Удалить цель');
+        del.id = 'goalDel';
+        del.addEventListener('click', function () {
+          if (busy) { return; }
+          ask('Удалить цель «' + g.name + '» и её записи? Отложенные по ней деньги вернутся в остаток.', function (yes) {
+            if (!yes) { return; }
+            var list = [], cat = 'g_' + g.id;
+            Object.keys(st.all).forEach(function (month) { st.all[month].forEach(function (op) { if (op.c === cat) { list.push({ id: op.id, m: month }); } }); });
+            busy = true;
+            store.removeOps(list, function (err) {
+              if (err) { busy = false; haptic('err'); toast(explain(err)); return; }
+              var rest = F.packGoals().filter(function (x) { return x[0] !== g.id; });
+              store.patchCfg({ goals: rest.length ? rest : null, goalAsk: null }, function (err2) {
+                if (err2) { busy = false; haptic('err'); toast(explain(err2)); return; }
+                haptic('ok');
+                closeModal(0);
+                reload(true, function () { toast('Цель удалена'); });
+              });
+            });
+          });
+        });
+      }
+      texts();
+      add(box, el('h2', 'pick__title', g ? 'Изменить цель' : 'Новая цель'), label('Название', 'goalName'), nameEl, label('Сколько накопить', 'goalSum'), row, startLbl, start, info, del);
+      foot.appendChild(go);
+      add(m, box, foot);
+    }, back);
+    if (!g && nameEl) { nameEl.focus(); }
+  }
+  /** список целей листом: открывается со строки «отложено» на главной, чтобы посмотреть цели, не уходя с месяца */
+  function openGoalsList() {
+    if (!F.GOALS.length) { return; }
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick'), total = 0, sumLine = el('span', 'goal__big');
+      F.GOALS.forEach(function (g) { total += F.goalByn(g, F.goalState(g, st.all).have); });
+      sumLine.id = 'goalsTotal';
+      add(sumLine, document.createTextNode('накоплено '), el('b', '', F.fmt(total) + F.NB + 'BYN'));
+      add(box, el('h2', 'pick__title', 'Цели'), sumLine);
+      F.GOALS.forEach(function (g) { box.appendChild(goalCard(g, function (it) { openGoalView(it.id, openGoalsList); })); });
+      box.appendChild(newGoalBtn(openGoalsList));
+      m.appendChild(box);
+    }, null);
+  }
+  /** Прежняя единственная цель (cfg.goal): её «накоплено» считалось из остатка по всем записям, перенести это число нельзя —
+      это те же деньги, что «осталось» месяца. Цель переводится в новый вид со стартом ноль, а человека один раз спрашивают, сколько уже отложено */
+  var goalMoving = false, goalAsked = false;
+  function migrateGoal(done) {
+    var old = st.cfg.goal;
+    if (!old || st.cfg.goals || goalMoving) { done(false); return; }
+    goalMoving = true;
+    var id = F.catId({});
+    store.patchCfg({ goals: [[id, old.n || 'Цель', old.a, 0, 0]], goal: null, goalAsk: id }, function (err) { goalMoving = false; done(!err); });
+  }
+  function askGoalStart() {
+    var g = st.cfg.goalAsk ? F.find(F.GOALS, st.cfg.goalAsk) : null, field = null;
+    if (!g || goalAsked || ui.open || firstRun()) { return; }
+    goalAsked = true; // один раз за запуск: если лист закрыли, он появится при следующем открытии приложения
+    var was = Math.max(0, F.balance(st.all));
+    openModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat pick--newgoal'), foot = el('footer', 'modal__dock'), go = btn('btn', 'Сохранить'), name = el('p', 'goal__name');
+      var lead = el('p', 'pick__info pick__info--lead', nb((was ? 'Раньше приложение показывало ' + F.fmt(was) + ': это был остаток по всем записям, а не отложенное. ' : '') + 'Теперь накопления считаются отдельно: впишите, сколько уже отложено, и дальше откладывайте записью «Отложить».'));
+      lead.id = 'moveInfo';
+      add(name, el('b', '', g.name), document.createTextNode(', цель ' + F.fmt(g.a) + F.NB + 'BYN'));
+      field = el('input', 'field');
+      field.id = 'moveStart';
+      field.type = 'text';
+      field.maxLength = 14;
+      field.placeholder = '0';
+      field.setAttribute('inputmode', 'decimal');
+      field.setAttribute('enterkeyhint', 'done');
+      field.setAttribute('autocomplete', 'off');
+      field.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { field.blur(); } });
+      var lbl = el('label', 'lbl', 'Уже накоплено, BYN');
+      lbl.setAttribute('for', 'moveStart');
+      go.id = 'moveSave';
+      go.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+      go.addEventListener('click', function () {
+        var raw = field.value.replace(/\s/g, ''), s0 = raw ? F.parseAmount(field.value) : 0;
+        if (raw && !s0 && !/^0+([.,]0+)?$/.test(raw)) { lead.textContent = 'Введите сумму цифрами, например 1500.'; haptic('err'); return; }
+        var list = F.packGoals().map(function (x) { return x[0] === g.id ? [x[0], x[1], x[2], x[3], s0] : x; });
+        store.patchCfg({ goals: list, goalAsk: null }, function (err) {
+          if (err) { haptic('err'); toast(explain(err)); return; }
           haptic('ok');
           closeModal(0);
           reload(true);
         });
-      }
-      var go = btn('btn', 'Сохранить цель');
-      go.id = 'goalSave';
-      go.addEventListener('click', function () {
-        var a = F.parseAmount(sum.value), n = F.cleanNote(name.value);
-        if (!a) { info.textContent = 'Введите сумму цели цифрами, например 2000.'; haptic('err'); return; }
-        write(n ? { a: a, n: n } : { a: a });
       });
-      var drop = null;
-      if (g) {
-        drop = btn('btn btn--quiet', 'Убрать цель');
-        drop.id = 'goalDrop';
-        drop.addEventListener('click', function () { write(null); });
-      }
-      var l1 = el('label', 'lbl', 'Сколько накопить, BYN'), l2 = el('label', 'lbl', 'Название');
-      l1.setAttribute('for', 'goalSum');
-      l2.setAttribute('for', 'goalName');
-      add(box, el('h2', '', 'Цель накопления'), info, l1, sum, l2, name, go, drop);
-      m.appendChild(box);
+      add(box, el('h2', 'pick__title', 'Цель считается по-новому'), lead, name, lbl, field);
+      foot.appendChild(go);
+      add(m, box, foot);
     });
   }
 
@@ -492,7 +764,7 @@
       view.appendChild(box);
       return;
     }
-    if (st.tab === 'history') { paintHistory(); } else { paintMonth(animate); }
+    if (st.tab === 'history') { paintHistory(); } else if (st.tab === 'goals') { paintGoals(); } else { paintMonth(animate); }
     view.scrollTop = 0;
     if (animate && view.animate) { view.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: reduce ? 120 : 180, easing: 'ease-out' }); }
   }
@@ -513,8 +785,13 @@
       st.prev = F.summarize(v.all[F.prevMonth(st.month)] || []);
       st.balance = F.balance(v.all);
       st.sum = F.summarize(v.ops);
+      if (st.cfg.goal && !st.cfg.goals && !goalMoving) { // прежняя единственная цель переводится в новый вид, затем всё читается заново
+        migrateGoal(function (ok) { if (ok) { reload(animate, done); } else { paint(animate); if (done) { done(null); } } });
+        return;
+      }
       paint(animate);
       if (done) { done(null); }
+      askGoalStart();
     });
   }
 
@@ -642,26 +919,29 @@
   }
 
   // ---------- лист добавления и правки ----------
-  function openEntry(op) {
+  /** preset — с чего открыть новый лист: { kind: 's' отложить | 't' снять, cat, digits, cur, date, note } */
+  function openEntry(op, preset) {
     if (!st.loaded || st.error) { return; }
+    var pre = preset || {}, goalOp = !!op && F.isGoalOp(op);
     entry = {
       edit: op || null,
-      kind: op ? op.k : 'e',
-      digits: op ? F.fmt(op.a).replace(/\s/g, '').replace(/,00$/, '').replace(/(,\d)0$/, '$1') : '',
-      cur: op ? op.u : 'BYN',
-      cat: op ? op.c : '',
-      date: op ? op.d : F.today(),
-      note: op && op.n ? op.n : '',
+      kind: op ? (goalOp ? (op.k === 'e' ? 's' : 't') : op.k) : pre.kind || 'e', // 'e' трата, 'i' доход, 's' отложить на цель, 't' снять с цели
+      digits: op ? F.fmt(op.a).replace(/\s/g, '').replace(/,00$/, '').replace(/(,\d)0$/, '$1') : pre.digits || '',
+      cur: op ? op.u : pre.cur || 'BYN',
+      cat: op ? op.c : pre.cat || '',
+      date: op ? op.d : pre.date || F.today(),
+      note: op && op.n ? op.n : pre.note || '',
       busy: false
     };
     haptic();
     openModal('entry', true, function (m) {
       var screen = el('div', 'screen');
 
-      var seg = el('div', 'seg');
-      seg.setAttribute('role', 'group');
-      seg.setAttribute('aria-label', 'Что добавляем');
-      entry.segBtns = [['e', 'Трата'], ['i', 'Доход']].map(function (k) {
+      // вид записи: у новой — «Трата / Доход / Отложить»; «Снять» и правка записи цели — отдельный режим с заголовком вместо переключателя
+      var mode = entry.kind === 't' ? (op ? 'Снято из накоплений' : 'Снять из накоплений') : goalOp ? 'Отложено на цель' : '';
+      var seg = mode ? el('p', 'entry__mode', nb(mode)) : el('div', 'seg');
+      if (mode) { seg.id = 'entryMode'; } else { seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Что добавляем'); }
+      entry.segBtns = (mode ? [] : [['e', 'Трата'], ['i', 'Доход']].concat(op ? [] : [['s', 'Отложить']])).map(function (k) {
         var b = btn('', k[1]);
         b.setAttribute('data-kind', k[0]);
         b.addEventListener('click', function () {
@@ -727,9 +1007,12 @@
       add(row, entry.sum, entry.curBtn);
       entry.hint = el('p', 'entry__conv'); // под суммой: пересчёт валюты или сколько останется после этой записи
       entry.hint.id = 'entryHint';
+      entry.hint2 = el('p', 'entry__conv'); // вторая строка у записи цели: что станет с остатком месяца
+      entry.hint2.id = 'entryHint2';
+      entry.hint2.hidden = true;
       entry.quick = el('div', 'quick'); // частые записи: одно касание вместо набора суммы
       entry.quick.id = 'quick';
-      add(box, row, entry.hint, entry.quick);
+      add(box, row, entry.hint, entry.hint2, entry.quick);
 
       entry.chips = el('ul', 'chips');
       var keys = el('div', 'keys');
@@ -770,9 +1053,9 @@
       Трата: три колонки, длинное название занимает две. Доход: две колонки. */
   function chipPages(list, cols) {
     function rows(items, nav) {
-      var wide = 0, single = nav ? 1 : 0;
-      items.forEach(function (c) { if (cols === 3 && c.wide) { wide++; } else { single++; } });
-      return cols === 3 ? wide + Math.ceil(Math.max(0, single - wide) / 3) : Math.ceil(single / 2);
+      var wide = 0, single = nav ? 1 : 0, full = 0;
+      items.forEach(function (c) { if (c.full) { full++; } else if (cols === 3 && c.wide) { wide++; } else { single++; } });
+      return full + (cols === 3 ? wide + Math.ceil(Math.max(0, single - wide) / 3) : Math.ceil(single / 2));
     }
     if (rows(list, false) <= 3) { return [list]; }
     var pages = [], page = [];
@@ -784,7 +1067,9 @@
     return pages;
   }
   function paintChips() {
-    var list = entry.kind === 'e' ? F.CATS : F.SRCS, cols = entry.kind === 'i' ? 2 : 3;
+    var goalKind = entry.kind === 's' || entry.kind === 't';
+    var list = entry.kind === 'e' ? F.CATS : entry.kind === 'i' ? F.SRCS : F.GOALS.map(function (g) { return { id: 'g_' + g.id, name: g.name, wide: false, full: g.name.length > 13 }; }), cols = entry.kind === 'e' ? 3 : 2; // длинное название цели занимает весь ряд
+    if (entry.kind === 's' && !entry.edit) { list = list.concat([{ id: '+', name: 'Новая цель', fresh: true }]); } // снять можно только из цели, которая уже есть
     var pages = chipPages(list, cols);
     if (entry.page === undefined) { // при правке открыть страницу, на которой стоит категория записи
       entry.page = 0;
@@ -793,9 +1078,23 @@
     if (entry.page >= pages.length) { entry.page = 0; }
     clear(entry.chips);
     entry.chips.className = 'chips' + (cols === 2 ? ' chips--two' : '');
-    entry.chips.setAttribute('aria-label', entry.kind === 'e' ? 'Категория' : 'Источник');
+    entry.chips.setAttribute('aria-label', goalKind ? 'Цель' : entry.kind === 'e' ? 'Категория' : 'Источник');
     entry.chipBtns = pages[entry.page].map(function (c) {
-      var li = el('li', c.wide && cols === 3 ? 'chips__wide' : ''), b = btn('', c.name);
+      if (c.fresh) { // «Новая цель» прямо с листа: набранная сумма не теряется
+        var nl = el('li', 'chips__new'), nbn = btn('');
+        nbn.id = 'chipNewGoal';
+        add(nbn, icon('plus'), document.createTextNode(c.name));
+        nbn.addEventListener('click', function () {
+          if (!entry || entry.busy) { return; }
+          if (F.GOALS.length >= F.GOALS_MAX) { haptic('err'); toast('Целей уже двенадцать. Удалите ту, что закрыта.'); return; }
+          var keep = { kind: 's', digits: entry.digits, cur: entry.cur, date: entry.date, note: entry.note };
+          openGoalEdit(null, function () { openEntry(null, keep); }, function (id) { keep.cat = 'g_' + id; openEntry(null, keep); });
+        });
+        nl.appendChild(nbn);
+        entry.chips.appendChild(nl);
+        return nbn;
+      }
+      var li = el('li', (c.wide && cols === 3) || c.full ? 'chips__wide' : ''), b = btn('', c.name);
       b.setAttribute('data-cat', c.id);
       b.addEventListener('click', function () {
         if (!entry || entry.busy) { return; }
@@ -857,7 +1156,11 @@
     }
 
     clear(e.hint);
-    if (e.cur !== 'BYN') {
+    clear(e.hint2);
+    e.hint2.hidden = true;
+    e.over = '';
+    if (e.kind === 's' || e.kind === 't') { goalHints(e, minor, byn); }
+    else if (e.cur !== 'BYN') {
       e.hint.textContent = minor ? 'это ' + F.fmt(byn) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[e.cur]) : 'курс ' + F.fmtRate(F.RATES[e.cur]) + F.NB + 'BYN за' + F.NB + '1' + F.NB + e.cur;
     } else if (!e.edit && F.monthOf(e.date) === st.month) { // сколько останется после этой записи
       var s = st.sum, text, val, left = s.left + st.carry + (minor ? (e.kind === 'e' ? -byn : byn) : 0);
@@ -870,14 +1173,40 @@
     var label, off = true;
     if (e.busy) { label = 'Сохраняем'; }
     else if (!minor) { label = 'Введите сумму'; }
-    else if (!e.cat) { label = e.kind === 'e' ? 'Выберите категорию' : 'Выберите источник'; }
-    else { label = e.edit ? 'Сохранить' : (e.kind === 'e' ? 'Добавить трату' : 'Добавить доход'); off = false; }
+    else if (!e.cat) { label = e.kind === 'e' ? 'Выберите категорию' : e.kind === 'i' ? 'Выберите источник' : 'Выберите цель'; }
+    else if (e.over) { label = e.over; } // снять больше, чем есть в цели, нельзя: кнопка называет, сколько там
+    else {
+      var money = e.cur === 'BYN' ? F.fmt(minor) : F.fmtShort(minor) + F.NB + e.cur;
+      label = e.edit ? 'Сохранить' : e.kind === 'e' ? 'Добавить трату' : e.kind === 'i' ? 'Добавить доход' : (e.kind === 's' ? 'Отложить ' : 'Снять ') + money;
+      off = false;
+    }
     e.go.textContent = label;
     e.go.className = 'btn' + (off ? ' btn--off' : '');
     e.go.setAttribute('aria-disabled', String(off));
     if (e.del) { e.del.setAttribute('aria-disabled', String(!!e.busy)); }
   }
 
+  /** две строки под суммой у записи цели: что станет с целью и что станет с остатком месяца (одна запись делает два дела) */
+  function goalHints(e, minor, byn) {
+    var g = F.goalOf(e.cat), take = e.kind === 't';
+    if (!g) { if (minor && e.cur !== 'BYN') { e.hint.textContent = 'это ' + F.fmt(byn) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[e.cur]); } return; }
+    var was = F.goalState(g, st.all).have, cur = gcur(g), delta = F.goalAmount(g, minor, e.cur);
+    if (e.edit && e.edit.c === e.cat) { was -= (e.edit.k === 'e' ? 1 : -1) * F.goalAmount(g, e.edit.a, e.edit.u, e.edit.r); } // правка: считаем так, будто прежней записи нет
+    var will = was + (take ? -delta : delta), tail = g.u === 0 ? '' : F.NB + cur;
+    if (take && minor && will < 0) { e.over = nb('В цели только ' + gmCur(Math.max(0, was), g)); }
+    if (!minor) { add(e.hint, document.createTextNode(nb((take ? 'В цели ' : 'Сейчас накоплено ') + gm(was, g) + tail + ' из ' + gm(g.a, g)))); }
+    else if (take) { add(e.hint, document.createTextNode(nb('В цели останется ')), el('b', '', gm(Math.max(0, will), g)), document.createTextNode(nb(' из ' + gm(g.a, g) + tail))); }
+    else if (e.cur === cur) { add(e.hint, document.createTextNode('Сейчас ' + gm(was, g) + ', станет '), el('b', '', gm(will, g))); }
+    else { // цель в одной валюте, откладывают в другой: пересчёт виден до сохранения
+      var one = e.cur === 'BYN' ? cur : cur === 'BYN' ? e.cur : '';
+      add(e.hint, el('b', '', gm(delta, g) + F.NB + cur), document.createTextNode(nb(one ? ' по курсу ' + F.fmtRate(F.RATES[one]) : ' по курсам приложения') + ', станет ' + gm(will, g)));
+    }
+    if (minor && !e.edit && F.monthOf(e.date) === st.month && window.innerHeight >= 640) { // на низком экране второй строке нет места: остаётся главное, что станет с целью
+      var s = st.sum, left = s.left + st.carry + (take ? byn : -byn);
+      add(e.hint2, document.createTextNode(nb(left < 0 ? 'Перерасход месяца ' : 'На траты ' + F.inMonth(st.month) + (take ? ' станет ' : ' останется '))), el('b', '', F.fmt(Math.abs(left))));
+      e.hint2.hidden = false;
+    }
+  }
   function afterWrite(err, date, said) {
     if (!entry) { return; }
     if (err) { entry.busy = false; paintEntry(); haptic('err'); toast(explain(err)); return; }
@@ -891,8 +1220,8 @@
     var e = entry;
     if (!e || e.busy) { return; }
     var minor = F.parseTyped(e.digits);
-    if (!minor || !e.cat) { haptic('err'); return; }
-    var op = F.makeOp(e.kind, e.cat, minor, e.cur, e.date, e.edit ? e.edit.id : null, e.note);
+    if (!minor || !e.cat || e.over) { haptic('err'); return; }
+    var op = F.makeOp(e.kind === 'i' || e.kind === 't' ? 'i' : 'e', e.cat, minor, e.cur, e.date, e.edit ? e.edit.id : null, e.note); // отложенное хранится как трата с категорией цели, снятое — как доход
     if (e.edit && e.edit.u === e.cur && e.edit.r) { op.r = e.edit.r; } // правка не меняет курс, по которому запись была внесена
     e.busy = true;
     paintEntry();
@@ -902,7 +1231,7 @@
   function addOp(op) {
     store.add(op, function (err) {
       afterWrite(err, op.d, function () { // случайную запись можно убрать сразу, не заходя в «Историю»
-        toast(op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), undone); });
+        toast(F.isGoalOp(op) ? (op.k === 'e' ? 'Отложено на цель' : 'Снято из накоплений') : op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), undone); });
       });
     });
   }
