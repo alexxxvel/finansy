@@ -69,15 +69,51 @@
     return out;
   }
 
-  /** настройки лежат отдельным ключом cfg: цель накопления, свои категории трат (cats) и источники дохода (srcs) */
+  /** настройки лежат отдельным ключом cfg: цель накопления, свои категории трат (cats) и источники дохода (srcs),
+      скрытые категории и источники (catsOff, srcsOff), отметка «первый экран пройден» (seen) */
   function readCfg(text) {
     var o = null;
     try { o = JSON.parse(text || '{}'); } catch (e) { o = null; }
     var out = {};
-    if (o && F.validGoal(o.goal)) { out.goal = { a: o.goal.a }; if (o.goal.n) { out.goal.n = o.goal.n; } }
-    if (o && F.validList(o.cats)) { out.cats = F.validList(o.cats); }
-    if (o && F.validList(o.srcs)) { out.srcs = F.validList(o.srcs); }
+    if (!o || typeof o !== 'object') { return out; }
+    if (F.validGoal(o.goal)) { out.goal = { a: o.goal.a }; if (o.goal.n) { out.goal.n = o.goal.n; } }
+    ['cats', 'srcs'].forEach(function (key) { if (F.validList(o[key])) { out[key] = F.validList(o[key]); } });
+    ['cats', 'srcs'].forEach(function (key) { // скрытая категория не может одновременно стоять в списке
+      var off = F.validList(o[key + 'Off']), on = {};
+      if (!off) { return; }
+      (out[key] || []).forEach(function (c) { on[c[0]] = 1; });
+      off = off.filter(function (c) { return !on[c[0]]; });
+      if (off.length) { out[key + 'Off'] = off; }
+    });
+    if (o.seen) { out.seen = 1; }
     return out;
+  }
+  /** списки из копии добавляются к своим и ничего не затирают: недостающие категории дописываются, свои названия и порядок остаются.
+      Своего списка ещё нет (действует встроенный) — берётся список из копии, а встроенные категории, которых в нём нет, уходят в скрытые:
+      записи в них сохраняют название, вернуть их можно в настройках */
+  function mergeLists(cur, inc, key, kind, used) {
+    var off = key + 'Off', base = F.builtin(kind), have = {}, changed = false;
+    function mark(list) { (list || []).forEach(function (c) { have[c[0]] = 1; }); }
+    function addTo(name, list) {
+      (list || []).forEach(function (c) {
+        if (have[c[0]] || (cur[key] || []).length + (cur[off] || []).length >= F.LIST_MAX) { return; }
+        have[c[0]] = 1;
+        (cur[name] = cur[name] || []).push(c);
+        changed = true;
+      });
+    }
+    if (!cur[key] && !inc[key] && !inc[off]) { return false; } // и тут, и там встроенный список
+    if (!cur[key]) {
+      if (inc[key]) { cur[key] = inc[key].slice(); changed = true; mark(cur[key]); mark(cur[off]); addTo(off, inc[off]); addTo(off, base); return changed; }
+      cur[key] = base.slice(); // в копии только скрытые: свой список становится явным
+      changed = true;
+    }
+    mark(cur[key]);
+    mark(cur[off]);
+    addTo(key, inc[key]);
+    addTo(off, inc[off]);
+    if (!inc[key]) { addTo(off, base.filter(function (c) { return used[c[0]]; })); } // копия сделана со встроенным списком: названия его категорий нужны её записям
+    return changed;
   }
 
   function Store(ad) {
@@ -203,10 +239,17 @@
         });
       },
       remove: function (id, month, cb) { removeFrom(month, id, cb); },
-      setCfg: function (cfg, cb) {
-        var text = JSON.stringify(readCfg(JSON.stringify(cfg || {})));
-        if (F.utf8len(text) > 4096) { cb('too long'); return; }
-        ad.set('cfg', text, cb);
+      /** правка настроек: ключ перечитывается (вдруг его изменил второй телефон), меняется только названное, пишется одной записью.
+          В patch значение null убирает настройку */
+      patchCfg: function (patch, cb) {
+        ad.get(['cfg'], function (err, values) {
+          if (err) { cb(err); return; }
+          var cur = readCfg(values.cfg);
+          Object.keys(patch || {}).forEach(function (key) { if (patch[key] === null) { delete cur[key]; } else { cur[key] = patch[key]; } });
+          var next = readCfg(JSON.stringify(cur)), text = JSON.stringify(next);
+          if (F.utf8len(text) > 4096) { cb('too long'); return; }
+          ad.set('cfg', text, function (err2) { cb(err2, next); });
+        });
       },
       /** копия всех записей текстом */
       exportAll: function (cb) {
@@ -224,7 +267,8 @@
             });
             if (bad) { cb('corrupt'); return; }
             var out = { app: 'finansy', v: 1, at: new Date().toISOString(), months: months }, cfg = readCfg(values.cfg);
-            if (cfg.goal || cfg.cats || cfg.srcs) { out.cfg = cfg; }
+            delete cfg.seen; // отметка о первом экране к записям не относится
+            if (Object.keys(cfg).length) { out.cfg = cfg; }
             cb(null, { text: JSON.stringify(out), count: count });
           });
         });
@@ -234,15 +278,18 @@
         var data = F.parseBackup(text);
         if (!data) { cb('format'); return; }
         var jobs = Object.keys(data.months).sort().map(function (month) { return { month: month, ops: data.months[month] }; });
-        var total = 0;
-        function goal() { // настройки из копии берутся только там, где своих ещё нет: свою цель и свои категории копия не затирает
-          if (!data.cfg) { cb(null, total); return; }
+        var total = 0, used = { e: {}, i: {} }; // в каких категориях у копии есть записи
+        jobs.forEach(function (job) { job.ops.forEach(function (op) { used[op.k][op.c] = 1; }); });
+        function goal() { // настройки из копии ничего своего не затирают: цель берётся, если своей нет, категории дописываются к своим
           ad.get(['cfg'], function (err, values) {
             if (err) { cb(null, total); return; }
-            var cur = readCfg(values.cfg), inc = readCfg(JSON.stringify(data.cfg)), changed = false;
-            ['goal', 'cats', 'srcs'].forEach(function (key) { if (!cur[key] && inc[key]) { cur[key] = inc[key]; changed = true; } });
-            if (!changed) { cb(null, total); return; }
-            ad.set('cfg', JSON.stringify(cur), function () { cb(null, total); });
+            var cur = readCfg(values.cfg), inc = readCfg(JSON.stringify(data.cfg || {})), changed = false;
+            if (!cur.goal && inc.goal) { cur.goal = inc.goal; changed = true; }
+            if (mergeLists(cur, inc, 'cats', 'e', used.e)) { changed = true; }
+            if (mergeLists(cur, inc, 'srcs', 'i', used.i)) { changed = true; }
+            var text = JSON.stringify(readCfg(JSON.stringify(cur)));
+            if (!changed || F.utf8len(text) > 4096) { cb(null, total); return; }
+            ad.set('cfg', text, function () { cb(null, total); });
           });
         }
         (function next() {

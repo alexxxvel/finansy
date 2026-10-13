@@ -25,6 +25,15 @@
   ];
   // списки можно заменить своими (настройки cfg.cats и cfg.srcs): массивы меняются на месте, поэтому ссылки F.CATS и F.SRCS остаются верными
   var BASE_CATS = CATS.slice(), BASE_SRCS = SRCS.slice();
+  // скрытые категории и источники (cfg.catsOff, cfg.srcsOff): на листе добавления их нет, но записи в них сохраняют название и значок
+  var OFF = { e: [], i: [] };
+  // набор для первого открытия: человек отмечает свои категории сам, первые девять отмечены заранее
+  var STARTER = [['food', 'Продукты', 'cart'], ['cafe', 'Кафе', 'cup'], ['trans', 'Транспорт', 'bus'], ['auto', 'Авто', 'car'], ['home', 'Жильё', 'home'], ['link', 'Связь', 'phone'],
+    ['health', 'Здоровье', 'heart'], ['beauty', 'Красота', 'star'], ['cloth', 'Одежда', 'shirt'], ['house', 'Дом и быт', 'box'], ['family', 'Семья', 'users'], ['gifts', 'Подарки', 'gift'],
+    ['fun', 'Досуг', 'ticket'], ['subs', 'Подписки', 'repeat'], ['study', 'Учёба', 'book'], ['pets', 'Питомцы', 'paw'], ['work', 'Работа', 'case'], ['credit', 'Кредиты', 'card'],
+    ['docs', 'Документы', 'file'], ['other', 'Другое', 'dots']];
+  var STARTER_ON = 9;
+  var LIST_MAX = 40; // столько категорий (видимых и скрытых вместе) помещается в настройки с запасом
   var CURS = ['BYN', 'USD', 'EUR'];
   // закреплённый курс (решение 11.10.2026): в записи хранится курс на момент ввода, поэтому смена числа здесь не трогает прошлые записи
   var RATES = { BYN: 1, USD: 3.06, EUR: 3.43 };
@@ -118,14 +127,26 @@
     var next = packed ? packed.map(function (c) { return { id: c[0], name: c[1], icon: c[2], wide: c[1].length > 11 }; }) : base;
     target.splice.apply(target, [0, target.length].concat(next));
   }
-  /** применить настройки: свои категории и источники, если они заданы, иначе встроенные */
+  /** применить настройки: свои категории и источники, если они заданы, иначе встроенные; скрытые — отдельными списками */
   function useCfg(cfg) {
     setList(CATS, BASE_CATS, cfg ? validList(cfg.cats) : null);
     setList(SRCS, BASE_SRCS, cfg ? validList(cfg.srcs) : null);
+    setList(OFF.e, [], cfg ? validList(cfg.catsOff) : null);
+    setList(OFF.i, [], cfg ? validList(cfg.srcsOff) : null);
   }
-  /** категория записи по id. Записи с категорией, которой нет в списке (список сменили), не теряются: они «без категории» */
+  /** категория записи по id: из списка или из скрытых. Записи с категорией, которой нет нигде (список сменили), не теряются: они «без категории» */
   function dict(kind, id) {
-    return find(kind === 'i' ? SRCS : CATS, id) || { id: id, name: 'Без категории', icon: 'dots' };
+    return find(kind === 'i' ? SRCS : CATS, id) || find(OFF[kind === 'i' ? 'i' : 'e'], id) || { id: id, name: 'Без категории', icon: 'dots' };
+  }
+  /** список для хранения: [[id, название, значок], …] */
+  function packList(list) { return list.map(function (c) { return [c.id, c.name, c.icon]; }); }
+  /** встроенный список (тот, что действует, пока своего нет) в виде для хранения */
+  function builtin(kind) { return packList(kind === 'i' ? BASE_SRCS : BASE_CATS); }
+  /** id для своей категории: короткий и не занятый */
+  function catId(taken) {
+    var id;
+    do { id = 'u' + Math.random().toString(36).slice(2, 8); } while (!/^[a-z0-9]{4,12}$/.test(id) || taken[id]);
+    return id;
   }
 
   function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
@@ -186,7 +207,9 @@
       if (validGoal(data.cfg.goal)) { cfg.goal = data.cfg.goal; }
       if (validList(data.cfg.cats)) { cfg.cats = validList(data.cfg.cats); }
       if (validList(data.cfg.srcs)) { cfg.srcs = validList(data.cfg.srcs); }
-      if (!cfg.goal && !cfg.cats && !cfg.srcs) { cfg = null; }
+      if (validList(data.cfg.catsOff)) { cfg.catsOff = validList(data.cfg.catsOff); }
+      if (validList(data.cfg.srcsOff)) { cfg.srcsOff = validList(data.cfg.srcsOff); }
+      if (!Object.keys(cfg).length) { cfg = null; }
     }
     return count ? { months: months, count: count, cfg: cfg } : null;
   }
@@ -208,13 +231,13 @@
       row.sum += b;
       if (op.u !== 'BYN') { row.foreign[op.u] = (row.foreign[op.u] || 0) + op.a; }
     });
-    function rows(bucket, list) {
+    function rows(bucket, kind) {
       return Object.keys(bucket).map(function (id) {
-        var c = find(list, id) || { id: id, name: 'Без категории', icon: 'dots' }, r = bucket[id];
+        var c = dict(kind, id), r = bucket[id];
         return { id: c.id, name: c.name, icon: c.icon, sum: r.sum, note: CURS.filter(function (u) { return r.foreign[u]; }).map(function (u) { return fmtShort(r.foreign[u]) + NB + u; }).join(', ') };
       }).sort(function (x, y) { return y.sum - x.sum; });
     }
-    return { spent: spent, income: income, left: income - spent, cats: rows(cats, CATS), srcs: rows(srcs, SRCS) };
+    return { spent: spent, income: income, left: income - spent, cats: rows(cats, 'e'), srcs: rows(srcs, 'i') };
   }
 
   /** записи по дням, свежие сверху */
@@ -312,6 +335,6 @@
     toByn: toByn, bynOf: bynOf, find: find, makeOp: makeOp, validOp: validOp, pack: pack, unpack: unpack, cleanNote: cleanNote, utf8len: utf8len, parseBackup: parseBackup,
     plural: plural, summarize: summarize, byDays: byDays, dayLabel: dayLabel, monthLabel: monthLabel,
     prevMonth: prevMonth, inMonth: inMonth, daysLeft: daysLeft, perDay: perDay, fmtDay: fmtDay, frequent: frequent, validGoal: validGoal, parseAmount: parseAmount, balance: balance, table: table,
-    validList: validList, useCfg: useCfg, dict: dict
+    validList: validList, useCfg: useCfg, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId
   };
 })(window);

@@ -1,4 +1,4 @@
-/* Учёт финансов: экраны. Главная («Месяц»), «История», лист добавления, копия данных.
+/* Учёт финансов: экраны. Главная («Месяц»), «История», лист добавления, первый запуск, настройки (свои категории, копия данных).
    Движение: лист на пружине (её можно перехватить пальцем), сумма досчитывается, полосы растут; частые действия (клавиши) без анимации.
    Стиль ES5: страница запускается и на старых встроенных браузерах Telegram. */
 (function () {
@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'a50f2fb344'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '01e3bbf81e'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -36,6 +36,16 @@
     box: '<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
     cash: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/>',
     star: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
+    cup: '<path d="M10 2v2M14 2v2M6 2v2M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1"/>',
+    ticket: '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>',
+    book: '<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/>',
+    file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+    pill: '<path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/>',
+    plane: '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/>',
+    tool: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+    gear: '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+    grip: '<path d="M4 9h16M4 15h16"/>',
+    left: '<path d="m15 6-6 6 6 6"/>',
     down: '<path d="m6 9 6 6 6-6"/>',
     right: '<path d="m9 6 6 6-6 6"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
@@ -69,6 +79,8 @@
     } catch (e) { /* вибрации нет — работаем без неё */ }
   }
   function tgTry(fn) { try { if (inTg) { fn(); } } catch (e) { /* старый Telegram: метода нет */ } }
+  /** короткий предлог не остаётся в конце строки: после него неразрывный пробел */
+  function nb(s) { return String(s).replace(/(^|[\s«(])(в|на|за|из|к|с|у|о|и|а|не|по|до|от|под)\s/gi, '$1$2' + F.NB); }
 
   // ---------- состояние ----------
   var st = {
@@ -78,7 +90,7 @@
     tab: 'month', more: false, shown: 0, loaded: false, error: ''
   };
   var store = null;
-  var ui = { y: 0, h: 0, raf: 0, open: false, kind: '' };
+  var ui = { y: 0, h: 0, raf: 0, open: false, kind: '', back: null }; // back: куда вернёт «Назад», если лист открыт из другого листа
   var entry = null; // состояние листа добавления
   var lastBlur = 0; // когда поле ввода последний раз потеряло фокус
 
@@ -127,14 +139,16 @@
   /** сообщение внизу; с кнопкой — это отмена только что сделанного (случайную запись убрать одним касанием) */
   function toast(text, action, fn) {
     clear(toastEl);
-    toastEl.appendChild(el('span', '', text));
+    var lines = nb(text).split('\n'), body = el('span', '', lines.length > 1 ? null : lines[0]);
+    if (lines.length > 1) { add(body, el('b', '', lines[0]), el('small', '', lines[1])); } // две смысловые строки: что случилось и что с записями
+    toastEl.appendChild(body);
     if (action) {
       var b = btn('toast__act', action);
       b.id = 'toastAct';
       b.addEventListener('click', function () { toastEl.className = 'toast'; fn(); });
       toastEl.appendChild(b);
     }
-    toastEl.className = 'toast is-on' + (action ? ' toast--act' : '');
+    toastEl.className = 'toast is-on' + (action ? ' toast--act' : '') + (ui.open && ui.kind === 'cats' ? ' toast--dock' : ''); // в листе с нижней кнопкой сообщение стоит над её чертой
     clearTimeout(toast.t);
     toast.t = setTimeout(function () { toastEl.className = 'toast'; }, action ? 7000 : 3800);
   }
@@ -177,6 +191,16 @@
     add(b, document.createTextNode(F.monthLabel(st.month)), icon('down'));
     b.addEventListener('click', openMonths);
     return b;
+  }
+  /** шапка экрана: месяц слева, шестерёнка настроек справа */
+  function monthBar() {
+    var head = el('div', 'bar'), gear = btn('gear');
+    gear.id = 'gearBtn';
+    gear.setAttribute('aria-label', 'Настройки');
+    gear.appendChild(icon('gear'));
+    gear.addEventListener('click', function () { openSettings(); });
+    add(head, monthButton(), gear);
+    return head;
   }
 
   function setSum(node, minor) {
@@ -333,18 +357,12 @@
       add(goalRow, el('span', '', 'Цель накопления'), icon('right'));
       goalRow.addEventListener('click', openGoal);
     }
-    var copy = btn('more more--copy');
-    copy.id = 'backupBtn';
-    add(copy, el('span', '', 'Копия данных'), icon('right'));
-    copy.addEventListener('click', openBackup);
-    add(sheet, cats, srcs, current && st.cfg.goal ? goalCard() : null, goalRow, copy);
+    add(sheet, cats, srcs, current && st.cfg.goal ? goalCard() : null, goalRow);
     if (st.partial) { sheet.appendChild(el('p', 'note', 'Часть записей прошлых месяцев не читается: остаток на начало месяца может быть неточным.')); }
     if (store && store.kind === 'local') { sheet.appendChild(el('p', 'note', 'Пробный режим вне Telegram: записи хранятся только в этом браузере.')); }
 
     clear(view);
-    var head = el('div', 'bar');
-    head.appendChild(monthButton());
-    add(view, head, spent, sheet);
+    add(view, monthBar(), spent, sheet);
 
     if (animate && !reduce) {
       tweenSum(node, was, s.spent);
@@ -356,8 +374,7 @@
   // ---------- история ----------
   function paintHistory() {
     clear(view);
-    var head = el('div', 'bar');
-    head.appendChild(monthButton());
+    var head = monthBar();
     var sheet = el('div', 'sheet sheet--full');
     var days = F.byDays(st.ops);
     if (!days.length) { sheet.appendChild(el('p', 'empty', 'В этом месяце записей нет.')); }
@@ -426,10 +443,8 @@
       name.setAttribute('enterkeyhint', 'done');
       name.setAttribute('autocomplete', 'off');
       [sum, name].forEach(function (f) { f.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { f.blur(); } }); });
-      function write(goal) { // остальные настройки (свои категории) остаются как были
-        var next = { cats: st.cfg.cats, srcs: st.cfg.srcs };
-        if (goal) { next.goal = goal; }
-        store.setCfg(next, function (err) {
+      function write(goal) { // меняется только цель: свои категории и остальные настройки остаются как были
+        store.patchCfg({ goal: goal || null }, function (err) {
           if (err) { toast(explain(err)); return; }
           haptic('ok');
           closeModal(0);
@@ -458,6 +473,10 @@
   }
 
   function paint(animate) {
+    var first = firstRun();
+    stage.className = 'stage' + (first ? ' stage--first' : '');
+    if (first) { paintFirst(); view.scrollTop = 0; return; }
+    st.first = null;
     if (st.error) {
       clear(view);
       var box = el('div', 'fail');
@@ -517,15 +536,44 @@
     })(last);
   }
 
-  function openModal(kind, full, build) {
+  function fillModal(kind, full, build, back) {
     ui.kind = kind;
-    toastEl.className = 'toast'; // сообщение не должно лежать поверх клавиш листа
+    ui.back = back || null;
     clear(modal);
-    modal.className = 'modal' + (full ? ' modal--full' : '') + ' modal--' + kind;
+    modal.className = 'modal' + (full ? ' modal--full' : '') + ' modal--' + kind + (back && !inTg ? ' modal--back' : '');
     var grab = el('div', 'grab');
     grab.appendChild(el('i'));
     modal.appendChild(grab);
+    if (back && !inTg) { // вне Telegram его кнопки «Назад» нет: своя стрелка в углу листа
+      var b = btn('modal__back');
+      b.id = 'backBtn';
+      b.setAttribute('aria-label', 'Назад');
+      b.appendChild(icon('left'));
+      b.addEventListener('click', goBack);
+      modal.appendChild(b);
+    }
     build(modal);
+    return grab;
+  }
+  function goBack() { if (ui.open && ui.back) { ui.back(); } else { closeModal(0); } }
+  /** следующий лист поверх открытого (настройки → категории → правка): содержимое меняется на месте, лист не закрывается.
+      Новый лист выше прежнего — доезжает на пружине, ниже — встаёт сразу; содержимое проявляется */
+  function swapModal(kind, full, build, back) {
+    if (!ui.open) { openModal(kind, full, build, back); return; }
+    var was = modal.offsetHeight;
+    cancelAnimationFrame(ui.raf);
+    entry = null;
+    var grab = fillModal(kind, full, build, back);
+    ui.h = modal.offsetHeight;
+    bindDrag(grab);
+    if (ui.h > was + 1 && !reduce) { setY(ui.h - was); springTo(0, 0, 1, 0.32); } else { setY(0); }
+    if (!reduce) {
+      [].slice.call(modal.children).forEach(function (n) { if (n !== grab && n.animate) { n.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 180, easing: 'ease-out' }); } });
+    }
+  }
+  function openModal(kind, full, build, back) {
+    toastEl.className = 'toast'; // сообщение не должно лежать поверх клавиш листа
+    var grab = fillModal(kind, full, build, back);
     modal.style.display = 'flex';
     scrim.style.display = 'block';
     modal.setAttribute('aria-hidden', 'false');
@@ -539,6 +587,7 @@
   function closeModal(velocity, after) {
     if (!ui.open) { if (after) { after(); } return; }
     ui.open = false;
+    ui.back = null;
     entry = null;
     modal.setAttribute('aria-hidden', 'true');
     tgTry(function () { tg.BackButton.hide(); });
@@ -777,7 +826,9 @@
     e.curBtn.setAttribute('aria-label', 'Валюта: ' + e.cur + '. Нажмите, чтобы сменить');
     e.dateText.textContent = F.dayLabel(e.date);
 
-    var often = (!e.edit && !e.digits && !e.busy && window.innerHeight >= 640) ? F.frequent(st.all, e.kind, 3) : []; // на низком экране кнопкам нет места
+    var often = (!e.edit && !e.digits && !e.busy && window.innerHeight >= 640) ? F.frequent(st.all, e.kind, 9) : []; // на низком экране кнопкам нет места
+    var shownList = e.kind === 'e' ? F.CATS : F.SRCS;
+    often = often.filter(function (it) { return !!F.find(shownList, it.c); }).slice(0, 3); // скрытую категорию частая запись не предлагает
     clear(e.quick);
     e.quick.hidden = !often.length;
     e.hint.hidden = !!often.length;
@@ -898,6 +949,381 @@
     });
   }
 
+  // ---------- свои категории: слова, списки, сохранение ----------
+  var WORDS = {
+    e: { key: 'cats', list: 'Категории трат', own: 'Своя категория', fresh: 'Новая категория', edit: 'Изменить категорию', hide: 'Скрыть категорию', hidden: 'Категория скрыта\nЗаписи на месте',
+      off: 'Скрытые категории', last: 'Нужна хотя бы одна категория', kept: 'Записи останутся. Вернуть категорию можно в «Скрытых».', ph: 'Например, ремонт', full: 'Категорий уже сорок. Переименуйте одну из имеющихся' },
+    i: { key: 'srcs', list: 'Источники дохода', own: 'Свой источник', fresh: 'Новый источник', edit: 'Изменить источник', hide: 'Скрыть источник', hidden: 'Источник скрыт\nЗаписи на месте',
+      off: 'Скрытые источники', last: 'Нужен хотя бы один источник', kept: 'Записи останутся. Вернуть источник можно в «Скрытых».', ph: 'Например, стипендия', full: 'Источников уже сорок. Переименуйте один из имеющихся' }
+  };
+  // значки на выбор: четыре ряда по семь
+  var PICK = ['cart', 'cup', 'bus', 'car', 'home', 'phone', 'heart', 'pill', 'star', 'shirt', 'box', 'users', 'gift', 'ticket',
+    'repeat', 'book', 'paw', 'case', 'card', 'file', 'cash', 'wallet', 'drop', 'bag', 'laptop', 'plane', 'tool', 'dots'];
+  var ALIAS = { spark: 'ticket' }; // прежнее имя того же значка
+
+  /** списки в виде для хранения: видимые (on) и скрытые (off) */
+  function listsOf(kind) { return { on: F.packList(kind === 'i' ? F.SRCS : F.CATS), off: F.packList(F.OFF[kind]) }; }
+  function namesOf(lists, skip) {
+    var out = {};
+    lists.forEach(function (c) { if (c[0] !== skip) { out[c[1].toLowerCase()] = 1; } });
+    return out;
+  }
+  function idsOf(lists) { var out = {}; lists.forEach(function (c) { out[c[0]] = 1; }); return out; }
+  /** списки пишутся одной записью настроек; done(true) — сохранено и экран под листом обновлён */
+  function saveLists(kind, on, off, done) {
+    var patch = {};
+    patch[WORDS[kind].key] = on;
+    patch[WORDS[kind].key + 'Off'] = off.length ? off : null;
+    store.patchCfg(patch, function (err) {
+      if (err) { haptic('err'); toast(err === 'too long' ? 'Список не помещается: сократите названия.' : explain(err)); done(false); return; }
+      reload(false, function (e) { done(!e); });
+    });
+  }
+
+  // ---------- первый запуск ----------
+  /** первый экран видит только тот, у кого нет ни записей, ни своего списка: тем, кто уже ведёт учёт, он не мешает */
+  function firstRun() { return st.loaded && !st.error && !st.cfg.seen && !st.cfg.cats && !st.months.length && !st.partial; }
+  function paintFirst() {
+    var f = st.first || (st.first = { on: {}, mine: [], busy: false });
+    if (!f.init) { F.STARTER.slice(0, F.STARTER_ON).forEach(function (c) { f.on[c[0]] = 1; }); f.init = true; }
+    function all() { return F.STARTER.concat(f.mine); }
+    function picked() { return all().filter(function (c) { return f.on[c[0]]; }); }
+    clear(view);
+    var box = el('div', 'first'), ul = el('ul', 'picks'), go = btn('btn');
+    go.id = 'firstGo';
+    function label() {
+      var n = picked().length, off = !n || f.busy;
+      go.textContent = f.busy ? 'Сохраняем' : (n ? 'Готово, выбрано ' + n : 'Выберите хотя бы одну');
+      go.className = 'btn' + (off ? ' btn--off' : '');
+      go.setAttribute('aria-disabled', String(off));
+    }
+    ul.setAttribute('aria-label', 'Категории трат');
+    all().forEach(function (c) {
+      var li = el('li'), b = btn('');
+      b.setAttribute('data-cat', c[0]);
+      b.setAttribute('aria-pressed', String(!!f.on[c[0]]));
+      add(b, icon(c[2]), el('span', '', c[1]));
+      b.addEventListener('click', function () {
+        if (f.busy) { return; }
+        if (f.on[c[0]]) { delete f.on[c[0]]; } else { f.on[c[0]] = 1; }
+        b.setAttribute('aria-pressed', String(!!f.on[c[0]]));
+        haptic();
+        label();
+      });
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+    var ownLi = el('li', 'picks__add'), own = btn('');
+    own.id = 'firstOwn';
+    add(own, icon('plus'), el('span', '', 'Своя'));
+    own.addEventListener('click', function () {
+      if (f.busy) { return; }
+      if (all().length >= F.LIST_MAX) { haptic('err'); toast(WORDS.e.full); return; }
+      haptic();
+      catSheet('e', null, null, function (name, ic) { // своя категория пока живёт на этом экране: запишется вместе с остальными по «Готово»
+        var id = F.catId(idsOf(all()));
+        f.mine.push([id, name, ic]);
+        f.on[id] = 1;
+        closeModal(0);
+        paintFirst();
+      }, null, namesOf(all()));
+    });
+    ownLi.appendChild(own);
+    ul.appendChild(ownLi);
+    go.addEventListener('click', function () {
+      var on = picked();
+      if (!on.length || f.busy) { haptic('err'); return; }
+      var off = F.STARTER.filter(function (c) { return !f.on[c[0]]; }); // неотмеченные уходят в скрытые: вернуть их можно в настройках
+      f.busy = true;
+      label();
+      store.patchCfg({ cats: on, catsOff: off.length ? off : null, seen: 1 }, function (err) {
+        if (err) { f.busy = false; label(); haptic('err'); toast(explain(err)); return; }
+        haptic('ok');
+        reload(true, gearTip);
+      });
+    });
+    var foot = el('div', 'first__dock');
+    foot.appendChild(go);
+    add(box, el('h1', 'first__title', 'На что вы тратите'), el('p', 'first__lead', 'Тёмные уже выбраны. Нажмите, чтобы добавить или убрать.'), ul, foot);
+    view.appendChild(box);
+    label();
+  }
+
+  /** подсказка-пузырь у шестерёнки: показывается один раз после первого экрана, уходит с первым касанием по экрану */
+  function gearTip() {
+    var tip = el('div', 'tip', nb('Категории меняются здесь'));
+    tip.id = 'gearTip';
+    tip.setAttribute('role', 'status');
+    stage.appendChild(tip);
+    function off() {
+      document.removeEventListener('pointerdown', off, true);
+      if (tip.parentNode) { tip.parentNode.removeChild(tip); }
+    }
+    setTimeout(function () { document.addEventListener('pointerdown', off, true); }, 400);
+  }
+
+  // ---------- настройки ----------
+  function openSettings() {
+    if (!st.loaded || st.error || firstRun()) { return; }
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick'), ul = el('ul', 'menu');
+      function row(id, name, small, fn) {
+        var li = el('li'), b = btn('menu__row');
+        b.id = id;
+        add(b, el('span', '', name), small ? el('small', '', small) : null, icon('right'));
+        b.addEventListener('click', fn);
+        li.appendChild(b);
+        ul.appendChild(li);
+      }
+      row('setCats', WORDS.e.list, String(F.CATS.length), function () { openCats('e'); });
+      row('setSrcs', WORDS.i.list, String(F.SRCS.length), function () { openCats('i'); });
+      row('backupBtn', 'Копия данных', '', function () { openBackup(openSettings); });
+      add(box, el('h2', '', 'Настройки'), ul);
+      m.appendChild(box);
+    });
+  }
+
+  // ---------- список категорий (или источников) ----------
+  function openCats(kind, toEnd) {
+    var w = WORDS[kind];
+    haptic();
+    swapModal('cats', true, function (m) {
+      var box = el('div', 'pick pick--cats'), foot = el('footer', 'modal__dock modal__dock--bar'), own = btn('btn btn--quiet');
+      own.id = 'ownBtn';
+      add(own, icon('plus'), document.createTextNode(w.own));
+      own.addEventListener('click', function () { newCat(kind); });
+      foot.appendChild(own);
+      add(m, box, foot);
+      box.addEventListener('scroll', function () { box.setAttribute('data-scrolled', box.scrollTop > 2 ? '1' : '0'); }); // список ушёл под верхний край: там появляется черта
+      ui.cats = { kind: kind, box: box };
+      fillCats(kind, box);
+    }, openSettings);
+    if (toEnd && ui.cats) { ui.cats.box.scrollTop = ui.cats.box.scrollHeight; }
+  }
+  /** список на листе перерисовывается на месте: прокрутка остаётся где была */
+  function fillCats(kind, box) {
+    var w = WORDS[kind], list = kind === 'i' ? F.SRCS : F.CATS, off = F.OFF[kind];
+    var first = chipPages(list, kind === 'i' ? 2 : 3)[0].length, top = box.scrollTop, n = 0;
+    clear(box);
+    box.className = 'pick pick--cats';
+    add(box, el('h2', 'pick__title', w.list), el('p', 'pick__info', nb('Нажмите на строку, чтобы изменить. Порядок меняют за две полоски.')));
+    function group(label, items) {
+      if (!items.length) { return; }
+      var ul = el('ul', 'rows');
+      items.forEach(function (c) { ul.appendChild(catRow(kind, c, n++, box)); });
+      add(box, list.length > first ? el('p', 'lbl lbl--gap', label) : null, ul);
+      if (list.length <= first) { ul.className = 'rows rows--gap'; }
+    }
+    group(nb('Первые ' + first + ' видны сразу при добавлении'), list.slice(0, first));
+    group(nb('Остальные спрятаны под кнопкой «Ещё»'), list.slice(first));
+    if (off.length) {
+      var menu = el('ul', 'menu'), li = el('li'), b = btn('menu__row');
+      b.id = 'offBtn';
+      add(b, el('span', '', 'Скрытые'), el('small', '', String(off.length)), icon('right'));
+      b.addEventListener('click', function () { openHidden(kind); });
+      li.appendChild(b);
+      menu.appendChild(li);
+      box.appendChild(menu);
+    }
+    box.scrollTop = top;
+  }
+  function refreshCats() { if (ui.open && ui.kind === 'cats' && ui.cats) { fillCats(ui.cats.kind, ui.cats.box); } }
+  function catRow(kind, c, index, box) {
+    var li = el('li', 'rows__li'), b = btn('row'), grip = el('span', 'row__grip');
+    b.setAttribute('data-cat', c.id);
+    add(b, icon(c.icon), el('span', '', c.name), icon('right', 'row__go'));
+    b.addEventListener('click', function () { editCat(kind, c.id); });
+    grip.setAttribute('role', 'img');
+    grip.setAttribute('aria-label', 'Потяните, чтобы переместить');
+    grip.appendChild(icon('grip'));
+    bindReorder(grip, li, kind, index, box);
+    add(li, b, grip);
+    return li;
+  }
+  /** порядок меняется перетаскиванием за две полоски: строка идёт за пальцем, соседи расступаются, у края лист прокручивается.
+      Запись одна, при отпускании. Строки двух групп считаются одним списком: подпись между ними строка перешагивает */
+  function bindReorder(grip, li, kind, from, box) {
+    var id = null, rows = [], tops = [], h = 0, startY = 0, lastY = 0, scroll0 = 0, to = from, raf = 0;
+    function place() {
+      var dy = lastY - startY + (box.scrollTop - scroll0), j, t = 0;
+      dy = Math.max(tops[0] - tops[from], Math.min(tops[tops.length - 1] - tops[from], dy));
+      var mid = tops[from] + dy + h / 2;
+      for (j = 0; j < tops.length; j++) { if (j !== from && tops[j] + h / 2 < mid) { t++; } }
+      if (t !== to) { to = t; haptic(); }
+      for (j = 0; j < rows.length; j++) {
+        if (j === from) { continue; }
+        var nj = j < from ? (j >= to ? j + 1 : j) : (j <= to ? j - 1 : j);
+        rows[j].style.transform = nj === j ? '' : 'translate3d(0,' + (tops[nj] - tops[j]).toFixed(1) + 'px,0)';
+      }
+      li.style.transform = 'translate3d(0,' + dy.toFixed(1) + 'px,0)';
+    }
+    function tick() {
+      var r = box.getBoundingClientRect();
+      if (lastY < r.top + 56) { box.scrollTop -= 8; } else if (lastY > r.bottom - 56) { box.scrollTop += 8; }
+      place();
+      raf = requestAnimationFrame(tick);
+    }
+    grip.addEventListener('pointerdown', function (e) {
+      if (id !== null) { return; }
+      id = e.pointerId;
+      try { grip.setPointerCapture(id); } catch (x) { /* без захвата тоже работает */ }
+      rows = [].slice.call(box.querySelectorAll('.rows__li'));
+      tops = rows.map(function (r) { return r.getBoundingClientRect().top + box.scrollTop; });
+      h = li.offsetHeight;
+      startY = lastY = e.clientY;
+      scroll0 = box.scrollTop;
+      to = from;
+      li.className = 'rows__li is-drag';
+      box.className = 'pick pick--cats is-sorting';
+      haptic();
+      raf = requestAnimationFrame(tick);
+      e.preventDefault();
+    });
+    grip.addEventListener('pointermove', function (e) { if (e.pointerId === id) { lastY = e.clientY; } });
+    function end(e) {
+      if (e.pointerId !== id) { return; }
+      id = null;
+      cancelAnimationFrame(raf);
+      place();
+      li.className = 'rows__li is-drop'; // строка доезжает на своё новое место
+      li.style.transform = 'translate3d(0,' + (tops[to] - tops[from]).toFixed(1) + 'px,0)';
+      if (to === from) { setTimeout(function () { fillCats(kind, box); }, reduce ? 0 : 170); return; }
+      var l = listsOf(kind), item = l.on.splice(from, 1)[0];
+      l.on.splice(to, 0, item);
+      saveLists(kind, l.on, l.off, function () { fillCats(kind, box); });
+    }
+    grip.addEventListener('pointerup', end);
+    grip.addEventListener('pointercancel', end);
+  }
+
+  // ---------- новая категория и правка ----------
+  /** лист с названием и значком. save(название, значок, fail) — сохранить; hide — скрыть (у новой категории его нет); taken — занятые названия */
+  function catSheet(kind, item, back, save, hide, taken) {
+    var w = WORDS[kind], cur = item ? (ALIAS[item.icon] || item.icon) : 'box', busy = false, name = null;
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat'), foot = el('footer', 'modal__dock'), go = btn('btn'), icons = el('ul', 'icons');
+      name = el('input', 'field');
+      name.id = 'catName';
+      name.type = 'text';
+      name.maxLength = 24;
+      name.placeholder = w.ph;
+      name.value = item ? item.name : '';
+      name.setAttribute('enterkeyhint', 'done');
+      name.setAttribute('autocomplete', 'off');
+      var l1 = el('label', 'lbl', 'Название');
+      l1.setAttribute('for', 'catName');
+      go.id = 'catSave';
+      function state() {
+        var n = F.cleanNote(name.value).slice(0, 24).replace(/ $/, ''), dup = !!n && !!taken[n.toLowerCase()], off = !n || dup;
+        go.textContent = !n ? 'Введите название' : (dup ? 'Такое название уже есть' : 'Сохранить');
+        go.className = 'btn' + (off ? ' btn--off' : '');
+        go.setAttribute('aria-disabled', String(off));
+        return off ? '' : n;
+      }
+      name.addEventListener('input', state);
+      name.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { name.blur(); } });
+      icons.setAttribute('aria-label', 'Значок');
+      var btns = PICK.map(function (ic, n) {
+        var li = el('li'), b = btn('');
+        b.setAttribute('data-icon', ic);
+        b.setAttribute('aria-label', 'Значок ' + (n + 1));
+        b.setAttribute('aria-pressed', String(ic === cur));
+        b.appendChild(icon(ic));
+        b.addEventListener('click', function () {
+          cur = ic;
+          btns.forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+          haptic();
+        });
+        li.appendChild(b);
+        icons.appendChild(li);
+        return b;
+      });
+      go.addEventListener('click', function () {
+        var n = state();
+        if (!n || busy) { haptic('err'); return; }
+        busy = true;
+        save(n, cur, function () { busy = false; });
+      });
+      var drop = null;
+      if (hide) {
+        drop = btn('link', w.hide);
+        drop.id = 'catHide';
+        drop.addEventListener('click', function () { if (!busy) { hide(); } });
+      }
+      add(box, el('h2', 'pick__title', item ? w.edit : w.fresh), l1, name, el('p', 'lbl', 'Значок'), icons, drop, hide ? el('p', 'pick__info pick__info--kept', nb(w.kept)) : null);
+      foot.appendChild(go);
+      add(m, box, foot);
+      state();
+    }, back);
+    if (!item && name) { name.focus(); } // новая категория начинается с названия: клавиатура открывается сразу
+  }
+  function newCat(kind) {
+    var l = listsOf(kind), every = l.on.concat(l.off);
+    if (every.length >= F.LIST_MAX) { haptic('err'); toast(WORDS[kind].full); return; }
+    haptic();
+    catSheet(kind, null, function () { openCats(kind); }, function (name, ic, fail) {
+      l.on.push([F.catId(idsOf(every)), name, ic]);
+      saveLists(kind, l.on, l.off, function (ok) { if (ok) { openCats(kind, true); } else { l.on.pop(); fail(); } });
+    }, null, namesOf(every));
+  }
+  function editCat(kind, id) {
+    var w = WORDS[kind], l = listsOf(kind), idx = -1;
+    l.on.forEach(function (c, n) { if (c[0] === id) { idx = n; } });
+    if (idx < 0) { return; }
+    var was = l.on[idx];
+    haptic();
+    catSheet(kind, { name: was[1], icon: was[2] }, function () { openCats(kind); }, function (name, ic, fail) {
+      l.on[idx] = [id, name, ic];
+      saveLists(kind, l.on, l.off, function (ok) { if (ok) { openCats(kind); } else { l.on[idx] = was; fail(); } });
+    }, function () {
+      if (l.on.length < 2) { haptic('err'); toast(w.last); return; }
+      var on = l.on.filter(function (c) { return c[0] !== id; });
+      saveLists(kind, on, l.off.concat([was]), function (ok) {
+        if (!ok) { return; }
+        openCats(kind);
+        toast(w.hidden, 'Вернуть', function () { // возвращается на прежнее место в списке
+          var now = listsOf(kind), back = now.off.filter(function (c) { return c[0] !== id; });
+          if (back.length === now.off.length) { return; }
+          now.on.splice(Math.min(idx, now.on.length), 0, was);
+          saveLists(kind, now.on, back, function (ok2) { if (ok2) { refreshCats(); } });
+        });
+      });
+    }, namesOf(l.on.concat(l.off), id));
+  }
+  // ---------- скрытые ----------
+  function openHidden(kind) {
+    var w = WORDS[kind];
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick');
+      m.appendChild(box);
+      (function fill() {
+        var l = listsOf(kind), ul = el('ul', 'rows');
+        clear(box);
+        l.off.forEach(function (c) {
+          var li = el('li', 'rows__li'), row = el('div', 'row row--off'), back = btn('row__back');
+          back.appendChild(el('span', '', 'Вернуть'));
+          back.setAttribute('data-cat', c[0]);
+          back.setAttribute('aria-label', 'Вернуть: ' + c[1]);
+          add(row, icon(c[2]), el('span', '', c[1]), back);
+          back.addEventListener('click', function () {
+            var now = listsOf(kind), rest = now.off.filter(function (x) { return x[0] !== c[0]; });
+            if (rest.length === now.off.length) { return; }
+            saveLists(kind, now.on.concat([c]), rest, function (ok) {
+              if (!ok) { return; }
+              haptic('ok');
+              if (rest.length) { fill(); refit(); } else { openCats(kind, true); }
+            });
+          });
+          li.appendChild(row);
+          ul.appendChild(li);
+        });
+        add(box, el('h2', 'pick__title', w.off), el('p', 'pick__info', nb('Записи в них на месте. Возвращённая встанет в конец списка.')), ul);
+      })();
+    }, function () { openCats(kind); });
+  }
+
   // ---------- копия данных ----------
   function refit() { if (ui.open) { ui.h = modal.offsetHeight; } }
   function copyText(area, text) { // копирование прямо в ответ на касание: иначе iPhone его не разрешает
@@ -911,13 +1337,13 @@
     lastBlur = 0; // фокус сняла сама программа, а не касание мимо поля
     return ok;
   }
-  function openBackup() {
+  function openBackup(back) {
     haptic();
-    openModal('list', false, function (m) {
+    swapModal('list', false, function (m) {
       var box = el('div', 'pick');
       m.appendChild(box);
       backupMenu(box);
-    });
+    }, back);
   }
   function backupMenu(box) {
     clear(box);
@@ -1090,7 +1516,12 @@
     tgTry(function () { tg.setBackgroundColor('#F5F5F7'); });
     tgTry(function () { if (tg.setBottomBarColor) { tg.setBottomBarColor('#FFFFFF'); } });
     tgTry(function () { if (tg.disableVerticalSwipes) { tg.disableVerticalSwipes(); } }); // иначе жест «вниз» сворачивает всё приложение вместо листа
-    tgTry(function () { tg.BackButton.onClick(function () { closeModal(0); }); });
+    tgTry(function () { tg.BackButton.onClick(goBack); });
+    tgTry(function () { // пункт «Настройки» в меню Telegram открывает тот же лист, что и шестерёнка
+      if (!tg.SettingsButton) { return; }
+      tg.SettingsButton.onClick(function () { if (!ui.open) { openSettings(); } });
+      tg.SettingsButton.show();
+    });
     tgTry(function () { tg.onEvent('viewportChanged', fit); });
 
     store = S.create(inTg ? S.cloudAdapter(tg.CloudStorage) : S.localAdapter('fin_'));
@@ -1127,6 +1558,6 @@
     if (!st.loaded) { fail('Не получилось открыть учёт', 'Закройте окно и откройте его ещё раз. Для разработчика: ' + String(e.message || '').replace(/[<>&]/g, '').slice(0, 120)); }
   });
 
-  window.FINAPP = { state: st, reload: reload, version: VERSION, setKeyboard: function (px, mode) { sim = px ? { px: px, mode: mode || 'overlay' } : null; fit(); } };
+  window.FINAPP = { state: st, reload: reload, version: VERSION, back: goBack, setKeyboard: function (px, mode) { sim = px ? { px: px, mode: mode || 'overlay' } : null; fit(); } };
   boot();
 })();

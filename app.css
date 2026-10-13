@@ -1,4 +1,4 @@
-/* Учёт финансов: стили. Основа — дизайн-система студии «Apple-стиль» (tokens.css: шрифт, пружины, кривые).
+/* Учёт финансов: стили. Экраны: главная, история, лист добавления, первый запуск, настройки и свои категории. Основа — дизайн-система студии «Apple-стиль» (tokens.css: шрифт, пружины, кривые).
    Шкала размеров: 15 / 17 / 28 / 34 / 68 (крупная сумма сжимается до 52 и 44, когда цифр много).
    Скругления: 18 (кнопки, клавиши), 28 (листы), капсула и круг. Цвет: графит и серые, один акцент (синий) только у действия. */
 
@@ -31,7 +31,11 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .view h2 { font: 600 15px/1.3 var(--font); letter-spacing: -.005em; color: var(--muted); }
 .pick h2 { font: 600 17px/1.3 var(--font); letter-spacing: -.015em; color: var(--ink); }
 
-.bar { flex: none; display: flex; align-items: center; min-height: 48px; }
+.bar { flex: none; display: flex; align-items: center; justify-content: space-between; min-height: 48px; }
+/* шестерёнка: вход в настройки; значок стоит по правому краю содержимого, зона касания шире */
+.gear { flex: none; display: grid; place-items: center; width: 44px; height: 44px; margin-right: -10px; border-radius: 999px; color: var(--ink); }
+.gear svg { width: 24px; height: 24px; }
+.gear:active { opacity: .6; }
 .month { display: inline-flex; align-items: center; gap: 4px; min-height: 48px; font: 700 34px/1.1 var(--font); letter-spacing: -.035em; font-variation-settings: "opsz" 32; }
 .month svg { width: 24px; height: 24px; color: var(--muted); margin-top: 4px; }
 
@@ -94,7 +98,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .goal__bar { display: block; height: 6px; margin-top: 8px; border-radius: 3px; background: var(--fill); overflow: hidden; }
 .goal__bar b { display: block; height: 100%; border-radius: 3px; background: var(--ink); transform-origin: 0 50%; }
 .goal__rest { display: block; margin-top: 8px; font: 500 15px/1.3 var(--font); color: var(--muted); }
-/* остальные категории одной строкой и вход в «Копию данных» */
+/* остальные категории одной строкой и строка «Цель накопления» */
 .more { display: grid; grid-template-columns: 1fr auto 14px; align-items: center; column-gap: 10px; width: 100%; min-height: 44px; padding-left: 44px; text-align: left; color: var(--muted); }
 .more span, .more data { font: 500 17px/1.25 var(--font); letter-spacing: -.015em; }
 .more svg { width: 14px; height: 14px; grid-column: 3; color: #AEAEB2; }
@@ -208,6 +212,90 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .pick__area--ghost { position: absolute; left: 20px; bottom: 0; width: 1px; height: 1px; margin: 0; padding: 0; opacity: 0; pointer-events: none; }
 .pick__ver { margin-top: 14px; font: 400 15px/1.4 var(--font); color: var(--muted); }
 
+/* ---------- первый запуск: человек отмечает свои категории ---------- */
+.stage--first .dock, .stage--first::after { display: none; }
+.first { flex: 1 0 auto; display: flex; flex-direction: column; padding-top: 8px; }
+.first__title { font: 700 34px/1.1 var(--font); letter-spacing: -.035em; font-variation-settings: "opsz" 32; }
+.first__lead { margin-top: 10px; font: 400 17px/1.4 var(--font); color: var(--muted); max-width: 32ch; }
+/* те же метки, что на листе добавления траты, со значком категории */
+/* три столбца по ширине своей самой длинной метки, свободное место делится поровну: у «Документов» те же поля, что у коротких названий */
+.picks { display: grid; grid-template-columns: repeat(3, minmax(0, auto)); gap: 6px; margin-top: 24px; padding-bottom: 16px; }
+.picks button { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: var(--chip-h); padding: 0 7px; border-radius: 999px; background: var(--surface); font: 500 15px/1.3 var(--font); white-space: nowrap; transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out); }
+.picks button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.picks svg { flex: none; width: 16px; height: 16px; }
+.picks button[aria-pressed="true"] { background: var(--ink); color: #FFFFFF; }
+.picks .picks__add button { background: var(--fill); font-weight: 600; }
+/* кнопка остаётся у нижнего края, даже если своих категорий добавили много и метки листаются */
+.first__dock { position: sticky; bottom: 0; margin-top: auto; padding: 10px 0 max(20px, var(--safe-b)); background: var(--bg); }
+
+/* ---------- настройки и свои категории ---------- */
+.pick .pick__title { font: 700 28px/1.15 var(--font); letter-spacing: -.03em; font-variation-settings: "opsz" 32; }
+/* своя стрелка «Назад» (только вне Telegram): стоит над содержимым листа и не прокручивается вместе с ним */
+.modal__back { flex: none; align-self: flex-start; display: grid; place-items: center; width: 44px; height: 44px; margin: -6px 0 -2px 8px; color: var(--ink); }
+.modal__back svg { width: 24px; height: 24px; }
+.menu { margin-top: 10px; border-radius: 18px; background: var(--surface); overflow: hidden; }
+.menu__row { display: grid; grid-template-columns: 1fr auto 14px; column-gap: 10px; align-items: center; width: 100%; min-height: 52px; padding: 0 16px; text-align: left; border-bottom: 1px solid var(--line); }
+.menu li:last-child .menu__row { border-bottom: 0; }
+.menu__row:active { background: var(--fill); }
+.menu__row span { font: 500 17px/1.25 var(--font); letter-spacing: -.015em; }
+.menu__row small { font: 400 15px/1.25 var(--font); color: var(--muted); font-variant-numeric: tabular-nums; }
+.menu__row svg { grid-column: 3; width: 14px; height: 14px; color: #AEAEB2; }
+.lbl--gap, .rows--gap { margin-top: 16px; }
+.lbl--gap { font-weight: 600; letter-spacing: -.005em; text-wrap: balance; } /* подпись группы — заголовок, как «Куда ушло» на главной; подсказка над ней обычным начертанием */
+/* подсказка у шестерёнки после первого экрана */
+.tip { position: absolute; z-index: 3; top: 58px; right: 12px; padding: 11px 16px; border-radius: 18px; background: var(--ink); color: #FFFFFF; font: 500 15px/1.3 var(--font); white-space: nowrap; transform-origin: calc(100% - 20px) 0; animation: tip 220ms var(--ease-out) both; }
+.tip::before { content: ""; position: absolute; top: -5px; right: 14px; width: 12px; height: 12px; border-radius: 2px; background: var(--ink); transform: rotate(45deg); }
+@keyframes tip { from { opacity: 0; transform: scale(.92); } }
+.pick--cats { padding-bottom: 20px; border-top: 1px solid transparent; }
+.pick--cats[data-scrolled="1"] { border-top-color: var(--line); }
+.pick--cats .pick__info { margin-bottom: 0; }
+.pick--cats .menu { margin-top: 16px; }
+/* список категорий: строка открывает правку (стрелка), две полоски — перетаскивание (зона 44 px) */
+.rows { padding: 0 6px 0 16px; border-radius: 18px; background: var(--surface); }
+.rows__li { position: relative; }
+.row { display: grid; grid-template-columns: 34px 1fr 44px 14px; column-gap: 8px; align-items: center; width: 100%; min-height: 48px; text-align: left; border-bottom: 1px solid var(--line); }
+.rows__li:last-child .row { border-bottom: 0; }
+.row > svg:first-child { width: 34px; height: 34px; padding: 8px; border-radius: 999px; background: #F0F0F3; }
+.row span { font: 500 17px/1.25 var(--font); letter-spacing: -.015em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row__go { grid-column: 4; width: 14px; height: 14px; color: #AEAEB2; }
+.row__grip { position: absolute; top: 0; right: 22px; display: grid; place-items: center; width: 44px; height: 100%; color: #8E8E93; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.row__grip svg { width: 24px; height: 24px; }
+/* перетаскивание: поднятая строка идёт за пальцем, соседи расступаются */
+.is-sorting .rows__li { transition: transform 160ms var(--ease-out); }
+.is-sorting .rows__li.is-drag { z-index: 2; transition: none; }
+.is-sorting .rows__li.is-drop { z-index: 2; }
+.rows__li.is-drag .row, .rows__li.is-drop .row { border-bottom-color: transparent; }
+.rows__li.is-drag::before, .rows__li.is-drop::before { content: ""; position: absolute; z-index: -1; top: 0; bottom: 0; left: -16px; right: -6px; border-radius: 14px; background: var(--surface); box-shadow: 0 0 0 1px rgba(60,60,67,.08), 0 12px 28px -10px rgba(30,30,60,.35); }
+/* скрытые: строка не кнопка, вернуть можно словом справа */
+.row--off { grid-template-columns: 34px 1fr auto; padding-right: 6px; }
+.row__back { display: grid; place-items: center; min-height: 44px; }
+.row .row__back span { display: block; min-width: auto; overflow: visible; padding: 0 14px; border-radius: 999px; background: var(--fill); font: 600 15px/32px var(--font); letter-spacing: 0; color: var(--ink); }
+.row__back:active span { opacity: .6; }
+/* нижняя кнопка листа со списком: список уходит под её верхнюю черту */
+.modal__dock--bar { box-shadow: 0 -1px 0 var(--line); }
+.modal__dock .btn--quiet { margin-top: 0; }
+/* новая категория и правка: название, значок, «Скрыть» */
+.pick--cat { padding-bottom: 4px; }
+.pick--cat .pick__title { margin-bottom: 14px; }
+.pick--cat .field { margin-bottom: 16px; }
+.icons { display: grid; grid-template-columns: repeat(7, 44px); justify-content: space-between; gap: 7px 0; } /* края сетки совпадают с краями поля и кнопки */
+.icons button { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; background: var(--surface); transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out); }
+.icons button[aria-pressed="true"] { background: var(--ink); color: #FFFFFF; }
+.icons svg { width: 20px; height: 20px; }
+.pick__info--kept { margin: 0 0 6px; }
+.link { display: inline-flex; align-items: center; min-height: 44px; margin-top: 10px; font: 600 17px/1 var(--font); color: var(--ink); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #AEAEB2; }
+.is-typing .modal--list .modal__dock { padding-bottom: 12px; }
+/* узкие телефоны: самая длинная метка («Документы») должна помещаться целиком вместе со значком и полями не меньше 6 px
+   (13.10.2026 при запасе 0 px метка обрезалась на экране с двойной плотностью точек, при полях 2 px текст упирался в край капсулы) */
+@media (max-width: 389px) { .first { margin: 0 -6px; } .picks button { padding: 0 6px; } }
+@media (max-width: 374px) { .picks { gap: 4px; } .picks button { gap: 3px; } .picks svg { width: 14px; height: 14px; } }
+@media (max-width: 350px) {
+  .picks svg { display: none; }
+  .picks .picks__add svg { display: block; }
+  .icons { grid-template-columns: repeat(7, 40px); }
+  .icons button { width: 40px; height: 40px; }
+}
+
 .fail { padding: 40px 20px; max-width: 36ch; }
 .fail h2 { font: 700 28px/1.15 var(--font); letter-spacing: -.03em; color: var(--ink); }
 .fail p { margin: 10px 0 20px; color: var(--muted); }
@@ -215,6 +303,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .toast { position: absolute; left: 20px; right: 20px; bottom: calc(96px + var(--safe-b)); z-index: 8; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 4px 18px; border-radius: 18px; background: var(--ink); color: #FFFFFF; font: 500 15px/1.35 var(--font); opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
 .toast.is-on { opacity: 1; transform: none; }
 .toast--act.is-on { pointer-events: auto; }
+.toast--dock { bottom: calc(74px + max(20px, var(--safe-b))); }
+.toast span b, .toast span small { display: block; font: 600 15px/1.35 var(--font); }
+.toast span small { font-weight: 400; color: rgba(255,255,255,.72); }
 .toast__act { flex: none; min-height: 44px; padding: 0 6px; font: 600 15px/1 var(--font); color: #FFFFFF; text-decoration: underline; text-underline-offset: 3px; }
 
 /* появление данных: полосы растут один раз при открытии месяца и после новой записи */
