@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '01e3bbf81e'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '65ca3aac6b'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -555,7 +555,11 @@
     build(modal);
     return grab;
   }
-  function goBack() { if (ui.open && ui.back) { ui.back(); } else { closeModal(0); } }
+  function goBack() {
+    if (ui.open && ui.back) { ui.back(); }
+    else if (!ui.open && st.first && st.first.manual) { closePicker(); } // экран выбора категорий, открытый из настроек: «Назад» ничего не меняет
+    else { closeModal(0); }
+  }
   /** следующий лист поверх открытого (настройки → категории → правка): содержимое меняется на месте, лист не закрывается.
       Новый лист выше прежнего — доезжает на пружине, ниже — встаёт сразу; содержимое проявляется */
   function swapModal(kind, full, build, back) {
@@ -980,16 +984,47 @@
     });
   }
 
-  // ---------- первый запуск ----------
-  /** первый экран видит только тот, у кого нет ни записей, ни своего списка: тем, кто уже ведёт учёт, он не мешает */
-  function firstRun() { return st.loaded && !st.error && !st.cfg.seen && !st.cfg.cats && !st.months.length && !st.partial; }
+  // ---------- выбор категорий метками: первый запуск и «Выбрать из готовых» ----------
+  /** Экран открывается сам один раз у того, у кого своего списка ещё нет: и у нового человека, и у того, кто начал до появления своих категорий
+      (его прежние категории уже отмечены, записи не меняются). Позже его открывает строка «Выбрать из готовых» в настройках */
+  function firstRun() {
+    if (!st.loaded || st.error || st.partial) { return false; }
+    return (!st.cfg.seen && !st.cfg.cats) || !!(st.first && st.first.manual);
+  }
+  /** что показать и что отметить. Новый человек: стартовый набор, первые девять отмечены. Остальные: свои видимые (отмечены), скрытые и то из набора, чего у них нет */
+  function pickBase() {
+    var on = {}, list;
+    function mark(c) { on[c[0]] = 1; }
+    if (!st.cfg.cats && !st.months.length) {
+      list = F.STARTER.slice();
+      list.slice(0, F.STARTER_ON).forEach(mark);
+    } else {
+      var l = listsOf('e'), mine = l.on.concat(l.off), ids = idsOf(mine), names = namesOf(mine);
+      list = mine.concat(F.STARTER.filter(function (c) { return !ids[c[0]] && !names[c[1].toLowerCase()]; })).slice(0, F.LIST_MAX);
+      l.on.forEach(mark);
+    }
+    return { list: list, on: on };
+  }
+  function openPicker() {
+    closeModal(0, function () {
+      st.first = { manual: true };
+      tgTry(function () { tg.BackButton.show(); });
+      paint(false);
+    });
+  }
+  function closePicker() {
+    st.first = null;
+    tgTry(function () { tg.BackButton.hide(); });
+    paint(false);
+  }
   function paintFirst() {
-    var f = st.first || (st.first = { on: {}, mine: [], busy: false });
-    if (!f.init) { F.STARTER.slice(0, F.STARTER_ON).forEach(function (c) { f.on[c[0]] = 1; }); f.init = true; }
-    function all() { return F.STARTER.concat(f.mine); }
+    var f = st.first || (st.first = {});
+    if (!f.base) { var base = pickBase(); f.base = base.list; f.on = base.on; f.mine = []; f.busy = false; }
+    function all() { return f.base.concat(f.mine); }
     function picked() { return all().filter(function (c) { return f.on[c[0]]; }); }
     clear(view);
-    var box = el('div', 'first'), ul = el('ul', 'picks'), go = btn('btn');
+    var even = all().some(function (c) { return c[1].length > 9; }); // есть название длиннее «Документов»: столбцы равные (по содержимому они уже не делятся без обрезки, проверено 13.10.2026)
+    var box = el('div', 'first'), ul = el('ul', 'picks' + (even ? ' picks--even' : '')), go = btn('btn');
     go.id = 'firstGo';
     function label() {
       var n = picked().length, off = !n || f.busy;
@@ -999,7 +1034,7 @@
     }
     ul.setAttribute('aria-label', 'Категории трат');
     all().forEach(function (c) {
-      var li = el('li'), b = btn('');
+      var li = el('li', c[1].length > 11 ? 'picks__wide' : ''), b = btn(''); // длинное название занимает два столбца, как на листе добавления
       b.setAttribute('data-cat', c[0]);
       b.setAttribute('aria-pressed', String(!!f.on[c[0]]));
       add(b, icon(c[2]), el('span', '', c[1]));
@@ -1024,7 +1059,7 @@
         var id = F.catId(idsOf(all()));
         f.mine.push([id, name, ic]);
         f.on[id] = 1;
-        closeModal(0);
+        closeModal(0, function () { if (f.manual) { tgTry(function () { tg.BackButton.show(); }); } });
         paintFirst();
       }, null, namesOf(all()));
     });
@@ -1033,18 +1068,28 @@
     go.addEventListener('click', function () {
       var on = picked();
       if (!on.length || f.busy) { haptic('err'); return; }
-      var off = F.STARTER.filter(function (c) { return !f.on[c[0]]; }); // неотмеченные уходят в скрытые: вернуть их можно в настройках
+      var off = f.base.filter(function (c) { return !f.on[c[0]]; }); // неотмеченные уходят в скрытые: записи в них остаются, вернуть можно в настройках
       f.busy = true;
       label();
       store.patchCfg({ cats: on, catsOff: off.length ? off : null, seen: 1 }, function (err) {
-        if (err) { f.busy = false; label(); haptic('err'); toast(explain(err)); return; }
+        if (err) { f.busy = false; label(); haptic('err'); toast(err === 'too long' ? 'Список не помещается: сократите названия.' : explain(err)); return; }
+        var manual = !!f.manual;
         haptic('ok');
-        reload(true, gearTip);
+        st.first = null;
+        tgTry(function () { tg.BackButton.hide(); });
+        reload(true, manual ? function () { toast('Категории обновлены'); } : gearTip);
       });
     });
-    var foot = el('div', 'first__dock');
+    var foot = el('div', 'first__dock'), back = null;
     foot.appendChild(go);
-    add(box, el('h1', 'first__title', 'На что вы тратите'), el('p', 'first__lead', 'Тёмные уже выбраны. Нажмите, чтобы добавить или убрать.'), ul, foot);
+    if (f.manual && !inTg) {
+      back = btn('first__back');
+      back.id = 'pickBack';
+      back.setAttribute('aria-label', 'Назад');
+      back.appendChild(icon('left'));
+      back.addEventListener('click', closePicker);
+    }
+    add(box, back, el('h1', 'first__title', 'На что вы тратите'), el('p', 'first__lead', nb('Тёмные уже выбраны. Нажмите, чтобы добавить или убрать.')), ul, foot);
     view.appendChild(box);
     label();
   }
@@ -1117,15 +1162,18 @@
     }
     group(nb('Первые ' + first + ' видны сразу при добавлении'), list.slice(0, first));
     group(nb('Остальные спрятаны под кнопкой «Ещё»'), list.slice(first));
-    if (off.length) {
-      var menu = el('ul', 'menu'), li = el('li'), b = btn('menu__row');
-      b.id = 'offBtn';
-      add(b, el('span', '', 'Скрытые'), el('small', '', String(off.length)), icon('right'));
-      b.addEventListener('click', function () { openHidden(kind); });
+    var menu = el('ul', 'menu');
+    function more(id, name, small, fn) {
+      var li = el('li'), b = btn('menu__row');
+      b.id = id;
+      add(b, el('span', '', name), small ? el('small', '', small) : null, icon('right'));
+      b.addEventListener('click', fn);
       li.appendChild(b);
       menu.appendChild(li);
-      box.appendChild(menu);
     }
+    if (kind === 'e') { more('pickBtn', 'Выбрать из готовых', '', openPicker); } // тот же экран с метками, что при первом открытии
+    if (off.length) { more('offBtn', 'Скрытые', String(off.length), function () { openHidden(kind); }); }
+    if (menu.firstChild) { box.appendChild(menu); }
     box.scrollTop = top;
   }
   function refreshCats() { if (ui.open && ui.kind === 'cats' && ui.cats) { fillCats(ui.cats.kind, ui.cats.box); } }

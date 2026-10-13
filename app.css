@@ -225,6 +225,14 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .picks svg { flex: none; width: 16px; height: 16px; }
 .picks button[aria-pressed="true"] { background: var(--ink); color: #FFFFFF; }
 .picks .picks__add button { background: var(--fill); font-weight: 600; }
+/* есть название длиннее «Документов» (своё или прежнее): столбцы равные, название длиннее 11 знаков занимает два столбца, непоместившееся обрезается многоточием */
+.picks { grid-auto-flow: row dense; }
+.picks.picks--even { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.picks.picks--even button { padding: 0 2px; }
+.picks__wide { grid-column: span 2; }
+/* выбор открыт из настроек: своя стрелка «Назад» (в Telegram её заменяет кнопка Telegram) */
+.first__back { align-self: flex-start; display: grid; place-items: center; width: 44px; height: 44px; margin: -8px 0 0 -12px; color: var(--ink); }
+.first__back svg { width: 24px; height: 24px; }
 /* кнопка остаётся у нижнего края, даже если своих категорий добавили много и метки листаются */
 .first__dock { position: sticky; bottom: 0; margin-top: auto; padding: 10px 0 max(20px, var(--safe-b)); background: var(--bg); }
 
