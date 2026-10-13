@@ -328,6 +328,161 @@
     }).join('\r\n');
   }
 
+  // ---------- перенос из заметок: разбор списка и подбор категорий ----------
+  var MONTH_RE = ['январ[ья]', 'феврал[ья]', 'марта?', 'апрел[ья]', 'ма[йя]', 'июн[ья]', 'июл[ья]', 'августа?', 'сентябр[ья]', 'октябр[ья]', 'ноябр[ья]', 'декабр[ья]'];
+  var NOTES_MAX = 200; // столько записей помещается в один перенос: список их id для отмены обязан влезть в одно значение хранилища
+  function monthByWord(w) {
+    for (var i = 0; i < 12; i++) { if (new RegExp('^' + MONTH_RE[i] + '$').test(w)) { return i + 1; } }
+    return 0;
+  }
+  // сумма в строке: знак, число (тысячи через пробел, копейки через запятую или точку), слово валюты
+  var AMOUNT_RE = /(^|[\s(:=])([+\-−–—])?\s?(\d{1,3}(?: \d{3})+|\d+)(?:[.,](\d{1,2}))?(?!\d)\s?(руб(?:лей|ля|ль)?\.?|р\.?|byn|br|\$|usd|дол(?:ларов|лара|лар|л)?\.?|€|eur|евро)?(?=$|[\s).,;:!])/gi;
+  var INCOME_RE = /(^|\s)(зарплат|аванс|преми|стипенд|пенси|зп(\s|$))/i;
+
+  /** Список из заметок → записи. Строка: сумма и на что, в любом порядке. Дата отдельной строкой («10.10», «12 октября», «Сентябрь») относится к строкам под ней,
+      дата в начале или в конце строки — только к этой строке; без даты запись получает сегодняшнюю. Плюс перед суммой или слово «зарплата» означает доход.
+      Строки без суммы не теряются: они возвращаются отдельно (skipped), чтобы человек их увидел. now — сегодняшняя дата, для теста */
+  function parseNotes(text, now) {
+    now = now || today();
+    var year = +now.slice(0, 4), cur = now, items = [], skipped = [], more = false;
+    function plain(y, m, d) { // настоящая дата не позже сегодняшней, иначе это не дата
+      if (m < 1 || m > 12 || d < 1 || d > new Date(y, m, 0).getDate()) { return ''; }
+      var s = y + '-' + pad(m) + '-' + pad(d);
+      return s > now ? '' : s;
+    }
+    function fix(m, d) { return plain(year, m, d) || plain(year - 1, m, d); } // без года: в будущем быть не может, значит прошлый год
+    function numDate(tok) { // «12.10», «12.10.25», «12/10/2026»
+      var m = /^(\d{1,2})[.\/](\d{1,2})(?:[.\/](\d{2}|\d{4}))?$/.exec(tok);
+      if (!m) { return ''; }
+      return m[3] ? plain(m[3].length === 2 ? 2000 + (+m[3]) : +m[3], +m[2], +m[1]) : fix(+m[2], +m[1]);
+    }
+    function wordDate(day, word, y) { var m = monthByWord(word); return m ? (y ? plain(+y, m, +day) : fix(m, +day)) : ''; }
+    function wholeDate(s) { // вся строка — дата
+      if (s === 'сегодня') { return now; }
+      if (s === 'вчера') { return shiftDay(now, -1); }
+      if (s === 'позавчера') { return shiftDay(now, -2); }
+      var m = /^(\d{1,2}) ([а-яё]+)(?: (\d{4}))?(?: ?г)?$/.exec(s);
+      if (m) { return wordDate(m[1], m[2], m[3]); }
+      m = /^([а-яё]+)(?: (\d{4}))?(?: ?г)?$/.exec(s);
+      if (m && monthByWord(m[1])) { return wordDate(1, m[1], m[2]); } // месяц без числа: записи встают на первое число
+      return numDate(s);
+    }
+    String(text === undefined || text === null ? '' : text).split(/\r?\n/).forEach(function (raw) {
+      var line = raw.replace(/[   \t]/g, ' ').replace(/[​-‍﻿]/g, '').replace(/\s+/g, ' ').replace(/^ | $/g, '');
+      line = line.replace(/^[•*·]\s*/, '').replace(/^[-–—]\s+/, ''); // маркер списка
+      if (!line) { return; }
+      var head = line.toLowerCase().replace(/^(пн|вт|ср|чт|пт|сб|вс|понедельник|вторник|среда|четверг|пятница|суббота|воскресенье)[,.]? /, '').replace(/[:.,]$/, '');
+      var whole = wholeDate(head);
+      if (whole) { cur = whole; return; }
+      var date = cur, rest = line, toks = line.split(' '), d;
+      function hasNumber(s) { return /\d/.test(s); }
+      if (toks.length > 1) { // дата в начале или в конце строки, если кроме неё есть число для суммы
+        d = numDate(toks[0].replace(/[:.,)]$/, ''));
+        if (d && hasNumber(toks.slice(1).join(' '))) { date = d; rest = toks.slice(1).join(' '); }
+        else if (toks.length > 2 && /^\d{1,2}$/.test(toks[0]) && (d = wordDate(toks[0], toks[1].toLowerCase().replace(/[:.,]$/, ''))) && hasNumber(toks.slice(2).join(' '))) { date = d; rest = toks.slice(2).join(' '); }
+        else {
+          d = numDate(toks[toks.length - 1]);
+          if (d && /[.\/]/.test(toks[toks.length - 1]) && hasNumber(toks.slice(0, -1).join(' ')) && amounts(toks.slice(0, -1).join(' ')).length) { date = d; rest = toks.slice(0, -1).join(' '); }
+        }
+      }
+      var found = amounts(rest), pick = null;
+      found.forEach(function (f) { if (f.cur || f.plus) { pick = pick || f; } });
+      pick = pick || found[found.length - 1] || null; // чисел несколько: сумма та, что с валютой или плюсом, иначе последняя
+      if (!pick) { skipped.push({ raw: cleanNote(line), d: cur }); return; }
+      var note = cleanNote((rest.slice(0, pick.from) + ' ' + rest.slice(pick.to)).replace(/^[\s\-–—:;,=.]+|[\s\-–—:;,=.]+$/g, '').replace(/\s+/g, ' '));
+      if (items.length >= NOTES_MAX) { more = true; return; }
+      items.push({ d: date, k: pick.plus || INCOME_RE.test(note) ? 'i' : 'e', a: pick.minor, u: pick.cur || 'BYN', n: note });
+    });
+    return { items: items, skipped: skipped, more: more };
+  }
+  /** все суммы в строке: { minor, cur, plus, from, to } */
+  function amounts(s) {
+    var out = [], m, re = new RegExp(AMOUNT_RE.source, 'gi');
+    while ((m = re.exec(s))) {
+      var whole = m[3].replace(/ /g, ''), minor = whole.length > 7 ? 0 : (+whole) * 100 + (m[4] ? +((m[4] + '0').slice(0, 2)) : 0);
+      var c = (m[5] || '').toLowerCase(), cur = !c ? '' : /^(\$|usd|дол)/.test(c) ? 'USD' : /^(€|eur|евро)/.test(c) ? 'EUR' : 'BYN';
+      if (minor > 0) { out.push({ minor: minor, cur: cur, plus: m[2] === '+', from: m.index + m[1].length, to: m.index + m[0].length }); }
+      if (re.lastIndex === m.index) { re.lastIndex++; }
+    }
+    return out;
+  }
+
+  // по каким словам заметки узнаётся категория. Названия у людей свои, а значок у категории общий: слова привязаны к значку.
+  // Знак «=» в начале: слово должно совпасть целиком (короткие слова иначе ловят чужое: «газ» в «магазине»)
+  var HINTS = [
+    [['cart'], 'магазин продукт еда евроопт гиппо соседи корона санта грин рынок хлеб молок мясо овощ фрукт =алми виталюр'],
+    [['cup'], 'кофе кафе ресторан пицц суши бургер столов обед ужин завтрак шаурм перекус доставк макдон =мак =kfc =кфс'],
+    [['bus'], 'такси автобус метро проезд маршрутк троллейбус трамва электричк поезд самокат =яндекс'],
+    [['car'], 'бензин заправк азс мойка шиномонтаж запчаст парковк стоянк страховк техосмотр =сто'],
+    [['home'], 'квартир аренд коммунал жкх ипотек электричеств =свет =вода =газ =жировка'],
+    [['phone'], 'телефон связь интернет мтс =а1 =a1 =life =лайф тариф'],
+    [['heart', 'pill'], 'аптек врач лекарств анализ стоматолог зубн массаж остеопат невролог больниц поликлиник медцентр медосмотр =узи'],
+    [['star', 'drop'], 'парикмахер стрижк маникюр педикюр косметик ногти салон барбер уход крем шампун'],
+    [['shirt'], 'одежд обув куртк ботинк кроссовк джинс секонд плать футболк'],
+    [['box'], 'хозтовар посуд бытов химия мебель =мила'],
+    [['users'], 'детям ребенк сыну дочк садик'],
+    [['gift'], 'подарок подарк подарил цветы букет =др'],
+    [['ticket', 'spark'], 'кино театр концерт боулинг клуб развлеч бар'],
+    [['repeat'], 'подписк spotify netflix youtube icloud кинопоиск'],
+    [['book'], 'курс учеб книг репетитор школа'],
+    [['paw'], 'корм ветеринар кошк собак =кот'],
+    [['card'], 'кредит рассрочк'],
+    [['plane'], 'отпуск отель билет самолет'],
+    [['tool'], 'ремонт стройматериал краск инструмент'],
+    [['case'], 'зарплат аванс преми оклад =зп'],
+    [['laptop'], 'фриланс заказ подработ сайт']
+  ];
+  function wordsOf(s) { return String(s).toLowerCase().replace(/ё/g, 'е').split(/[^a-zа-я0-9]+/).filter(Boolean); }
+  /** категория для заметки из списка человека (list: его видимые категории или источники). Возвращает { id, sure, guess }:
+      уверенно — если он уже относил такую заметку сюда, если слово заметки известно или похоже на название категории;
+      иначе id пустой, а guess — две категории, которыми он пользуется чаще всего */
+  function guessCat(note, kind, list, all) {
+    var key = String(note).toLowerCase(), words = wordsOf(note), count = {}, used = {}, best = '', i, j;
+    Object.keys(all || {}).forEach(function (m) {
+      all[m].forEach(function (op) {
+        if (op.k !== kind || !find(list, op.c)) { return; }
+        used[op.c] = (used[op.c] || 0) + 1;
+        if (key && (op.n || '').toLowerCase() === key) { count[op.c] = (count[op.c] || 0) + 1; }
+      });
+    });
+    Object.keys(count).forEach(function (id) { if (!best || count[id] > count[best]) { best = id; } });
+    if (best) { return { id: best, sure: true }; }
+    for (i = 0; i < HINTS.length; i++) {
+      var hit = HINTS[i][1].split(' ').some(function (h) {
+        var exact = h.charAt(0) === '=', w = exact ? h.slice(1) : h;
+        return words.some(function (x) { return exact ? x === w : x.indexOf(w) === 0; });
+      });
+      if (!hit) { continue; }
+      for (j = 0; j < list.length; j++) { if (HINTS[i][0].indexOf(list[j].icon) >= 0) { return { id: list[j].id, sure: true }; } }
+    }
+    for (j = 0; j < list.length; j++) { // слово заметки похоже на название категории: «подарок Лене» и «Подарки»
+      var names = wordsOf(list[j].name).filter(function (w) { return w.length >= 4; });
+      var same = names.some(function (w) { var stem = w.slice(0, Math.max(4, w.length - 2)); return words.some(function (x) { return x.indexOf(stem) === 0; }); });
+      if (same) { return { id: list[j].id, sure: true }; }
+    }
+    var top = list.map(function (c) { return c.id; }).sort(function (x, y) { return (used[y] || 0) - (used[x] || 0); }).slice(0, 2);
+    return { id: '', sure: false, guess: top };
+  }
+  /** id записи из заметок: одинаковая строка даёт тот же id, поэтому повторная вставка списка дублей не создаёт.
+      seq — номер среди одинаковых строк одного переноса: две одинаковые покупки в один день не сливаются */
+  function noteId(key, seq) {
+    var h = 2166136261, s = String(key);
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0; }
+    return 'n' + ('000000' + h.toString(36)).slice(-7) + (seq || 0).toString(36);
+  }
+  /** «10 октября», «с 10 по 12 октября», «с 28 сентября по 12 октября» */
+  function period(a, b) {
+    var t = today().slice(0, 4);
+    function day(d, month) { var p = d.split('-'); return (+p[2]) + (month ? NB + MONTHS_GEN[+p[1] - 1] + (p[0] === t ? '' : NB + p[0]) : ''); }
+    if (a === b) { return day(a, true); }
+    return 'с' + NB + day(a, a.slice(0, 7) !== b.slice(0, 7)) + ' по' + NB + day(b, true);
+  }
+  /** «с августа по октябрь» для записей за несколько месяцев; один месяц — пусто */
+  function monthsSpan(a, b) {
+    if (a === b) { return ''; }
+    return 'с' + NB + MONTHS_GEN[+a.slice(5, 7) - 1] + ' по' + NB + MONTHS[+b.slice(5, 7) - 1].toLowerCase();
+  }
+
   g.FIN = {
     NB: NB, CATS: CATS, SRCS: SRCS, CURS: CURS, RATES: RATES,
     today: today, monthOf: monthOf, isDate: isDate, isMonth: isMonth, shiftDay: shiftDay,
@@ -335,6 +490,7 @@
     toByn: toByn, bynOf: bynOf, find: find, makeOp: makeOp, validOp: validOp, pack: pack, unpack: unpack, cleanNote: cleanNote, utf8len: utf8len, parseBackup: parseBackup,
     plural: plural, summarize: summarize, byDays: byDays, dayLabel: dayLabel, monthLabel: monthLabel,
     prevMonth: prevMonth, inMonth: inMonth, daysLeft: daysLeft, perDay: perDay, fmtDay: fmtDay, frequent: frequent, validGoal: validGoal, parseAmount: parseAmount, balance: balance, table: table,
-    validList: validList, useCfg: useCfg, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId
+    validList: validList, useCfg: useCfg, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId,
+    parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX
   };
 })(window);

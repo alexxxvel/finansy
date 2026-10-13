@@ -1,4 +1,4 @@
-/* Учёт финансов: экраны. Главная («Месяц»), «История», лист добавления, первый запуск, настройки (свои категории, копия данных).
+/* Учёт финансов: экраны. Главная («Месяц»), «История», лист добавления, первый запуск, настройки (свои категории, перенос из заметок, копия данных).
    Движение: лист на пружине (её можно перехватить пальцем), сумма досчитывается, полосы растут; частые действия (клавиши) без анимации.
    Стиль ES5: страница запускается и на старых встроенных браузерах Telegram. */
 (function () {
@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '65ca3aac6b'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '4193cfcfea'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -137,7 +137,7 @@
   function typing() { var a = document.activeElement; return !!a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.type !== 'date'; }
 
   /** сообщение внизу; с кнопкой — это отмена только что сделанного (случайную запись убрать одним касанием) */
-  function toast(text, action, fn) {
+  function toast(text, action, fn, ms) {
     clear(toastEl);
     var lines = nb(text).split('\n'), body = el('span', '', lines.length > 1 ? null : lines[0]);
     if (lines.length > 1) { add(body, el('b', '', lines[0]), el('small', '', lines[1])); } // две смысловые строки: что случилось и что с записями
@@ -150,7 +150,7 @@
     }
     toastEl.className = 'toast is-on' + (action ? ' toast--act' : '') + (ui.open && ui.kind === 'cats' ? ' toast--dock' : ''); // в листе с нижней кнопкой сообщение стоит над её чертой
     clearTimeout(toast.t);
-    toast.t = setTimeout(function () { toastEl.className = 'toast'; }, action ? 7000 : 3800);
+    toast.t = setTimeout(function () { toastEl.className = 'toast'; }, ms || (action ? 7000 : 3800));
   }
   function explain(err) {
     if (err === 'timeout') { return 'Нет ответа от Telegram. Проверьте связь и повторите.'; }
@@ -319,6 +319,12 @@
     cats.appendChild(catsHead);
     if (!s.cats.length) {
       cats.appendChild(el('p', 'empty', 'Трат пока нет. Нажмите «Добавить», чтобы внести первую.'));
+      if (!st.months.length) { // записей нет совсем: тому, кто вёл траты в заметках, не нужно начинать с нуля
+        var fromNotes = btn('link link--empty', 'Перенести список из заметок');
+        fromNotes.id = 'notesLink';
+        fromNotes.addEventListener('click', function () { openNotes(null); });
+        cats.appendChild(fromNotes);
+      }
     } else {
       var all = s.cats.length <= 5 || st.more;
       var list = el('ul', 'shares');
@@ -1123,6 +1129,7 @@
       }
       row('setCats', WORDS.e.list, String(F.CATS.length), function () { openCats('e'); });
       row('setSrcs', WORDS.i.list, String(F.SRCS.length), function () { openCats('i'); });
+      row('notesBtn', 'Перенос из заметок', '', function () { openNotes(openSettings); });
       row('backupBtn', 'Копия данных', '', function () { openBackup(openSettings); });
       add(box, el('h2', '', 'Настройки'), ul);
       m.appendChild(box);
@@ -1372,6 +1379,439 @@
     }, function () { openCats(kind); });
   }
 
+  // ---------- перенос из заметок ----------
+  var notes = null; // разобранный список, пока человек его проверяет: { items, skipped, more, back, added }. Живёт до «Добавить» или «Начать заново»: случайно закрытый лист продолжается с того же места
+  function recs(n) { return n + F.NB + F.plural(n, 'запись', 'записи', 'записей'); } // число не отрывается от слова при переносе строки
+  function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  function listOf(kind) { return kind === 'i' ? F.SRCS : F.CATS; }
+  function bynOf(it) { return F.toByn(it.a, it.u, F.RATES[it.u]); }
+  function sumOf(items) { var s = 0; items.forEach(function (it) { s += bynOf(it); }); return s; }
+  function ask(text, go) {
+    if (inTg && tg.showConfirm) { try { tg.showConfirm(text, go); return; } catch (x) { /* спросим обычным окном */ } }
+    go(window.confirm(text));
+  }
+  /** подобрать категории тем записям, у которых их ещё нет */
+  function guessAll(items) {
+    items.forEach(function (it) {
+      if (it.cat !== undefined) { return; }
+      var g = F.guessCat(it.n, it.k, listOf(it.k), st.all);
+      it.cat = g.id;
+      it.asked = !g.sure; // приложение не уверено: категорию выбирает человек
+      it.guess = g.guess || [];
+    });
+  }
+  function startNotes(parsed, back) {
+    parsed.items.forEach(function (it, i) { it.i = i; });
+    guessAll(parsed.items);
+    notes = { items: parsed.items, skipped: parsed.skipped, more: parsed.more, back: back || null, added: [] };
+    openReview();
+  }
+
+  /** экран вставки: примеры строк, кнопка читает скопированное сама, поле открывается второй кнопкой */
+  function openNotes(back) {
+    if (!st.loaded || st.error || firstRun()) { return; }
+    if (notes) { notes.back = back || null; haptic(); openReview(); return; }
+    haptic();
+    swapModal('notes', true, function (m) {
+      var box = el('div', 'pick pick--notes'), foot = el('footer', 'modal__dock modal__dock--two'), intro = el('div', 'notes__intro'), sample = el('ul', 'sample'), last = el('div', 'notes__last');
+      var info = el('p', 'pick__info', nb('Скопируйте в заметках список трат и вставьте сюда. Приложение найдёт суммы и разложит записи по вашим категориям.'));
+      info.id = 'notesInfo';
+      [['10.10', 'дата для строк ниже'], ['магазин 62,5', 'трата'], ['60 бензин', 'сумма может стоять первой'], ['такси 14 руб', 'слова после суммы не мешают'],
+        ['25 eur подписка', 'евро и доллары'], ['+1500 зарплата', 'плюс означает доход']].forEach(function (r) {
+        var li = el('li');
+        add(li, el('b', '', r[0]), el('span', '', nb(r[1])));
+        sample.appendChild(li);
+      });
+      sample.setAttribute('aria-label', 'Примеры строк');
+      add(intro, el('p', 'lbl lbl--gap', 'Приложение понимает такие строки'), sample, el('p', 'pick__info', nb('Без даты записи получат сегодняшнюю дату.')), last);
+      var area = el('textarea', 'pick__area pick__area--notes');
+      area.id = 'notesText';
+      area.placeholder = 'Вставьте сюда список';
+      area.setAttribute('aria-label', 'Список из заметок');
+      area.setAttribute('autocapitalize', 'none');
+      area.setAttribute('autocorrect', 'off');
+      area.spellcheck = false;
+      area.hidden = true;
+      var go = btn('btn btn--off', 'Вставьте список');
+      go.id = 'notesGo';
+      go.hidden = true;
+      var paste = btn('btn', 'Вставить скопированное'), manual = btn('btn btn--quiet', nb('Вставить в поле'));
+      paste.id = 'notesPaste';
+      manual.id = 'notesManual';
+      var hint = '';
+      function state() {
+        var p = F.parseNotes(area.value), n = p.items.length, k = p.skipped.length, filled = !!area.value.replace(/\s/g, '');
+        // над вставленным списком стоит итог разбора, а не подсказка, как вставлять
+        info.textContent = nb(n ? (k ? (k === 1 ? 'Одна строка без суммы: её можно дописать на следующем шаге.' : 'Строк без суммы: ' + k + '. Их можно дописать на следующем шаге.') : 'Суммы нашлись во всех строках.')
+          : filled ? 'В списке нет ни одной суммы. Нужны строки вида «магазин 62,5».' : hint);
+        go.textContent = n ? 'Разобрать: ' + recs(n) : (filled ? 'Сумм не найдено' : 'Вставьте список');
+        go.className = 'btn' + (n ? '' : ' btn--off');
+        go.setAttribute('aria-disabled', String(!n));
+        return p;
+      }
+      function showField(text, focus) {
+        intro.hidden = true;
+        foot.hidden = true;
+        area.hidden = false;
+        go.hidden = false;
+        box.className = 'pick pick--notes is-field'; // поле тянется до кнопки, кнопка стоит у нижнего края листа или над клавиатурой
+        if (text !== null) { area.value = text; }
+        state();
+        refit();
+        if (focus) { area.focus(); }
+      }
+      var denied = nb('Телефон не дал прочитать скопированное. Вставьте список в поле ниже.');
+      paste.addEventListener('click', function () {
+        var p = null;
+        try { p = navigator.clipboard && navigator.clipboard.readText ? navigator.clipboard.readText() : null; } catch (e) { p = null; }
+        if (!p || !p.then) { hint = denied; showField(null, true); return; }
+        p.then(function (raw) {
+          var parsed = F.parseNotes(raw);
+          if (parsed.items.length) { startNotes(parsed, back); return; }
+          haptic('err');
+          if (!String(raw || '').replace(/\s/g, '')) { info.textContent = nb('Скопированного текста нет. Откройте заметки, скопируйте список и нажмите кнопку ещё раз.'); return; }
+          showField(raw, false);
+        }, function () { hint = denied; showField(null, true); });
+      });
+      manual.addEventListener('click', function () {
+        hint = 'Удерживайте палец в поле и выберите «Вставить».';
+        showField(null, true);
+      });
+      area.addEventListener('input', function (ev) {
+        var p = state();
+        if (ev && ev.inputType === 'insertFromPaste' && p.items.length && typing()) { area.blur(); lastBlur = 0; } // список вставлен: клавиатура больше не нужна, под ней кнопку не видно
+      });
+      go.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // нажатие на кнопку не снимает фокус с поля: клавиатура не прячется, и кнопка не уезжает из-под пальца
+      go.addEventListener('click', function () {
+        var p = state();
+        if (!p.items.length) { haptic('err'); return; }
+        startNotes(p, back);
+      });
+      add(box, el('h2', 'pick__title', 'Перенос из заметок'), info, intro, area, go);
+      add(foot, paste, manual);
+      add(m, box, foot);
+      store.lastImport(function (err, rec) { // прошлый перенос можно отменить и позже, не только из сообщения сразу после него
+        if (err || !rec || !last.parentNode) { return; }
+        var n = 0, undo = btn('link', 'Отменить последний перенос');
+        Object.keys(rec.m).forEach(function (month) { n += rec.m[month].length; });
+        undo.id = 'notesUndo';
+        undo.addEventListener('click', function () { ask('Убрать ' + recs(n) + ' последнего переноса?', function (yes) { if (yes) { undoImport(rec); } }); });
+        var when = el('p', 'pick__info pick__info--kept', recs(n) + ', ' + F.dayLabel(rec.at).toLowerCase());
+        when.id = 'notesLast';
+        add(last, undo, when);
+        refit();
+      });
+    }, back);
+  }
+  function undoImport(rec) {
+    var list = [];
+    Object.keys(rec.m).forEach(function (month) { rec.m[month].forEach(function (id) { list.push({ id: id, m: month }); }); });
+    store.removeOps(list, function (err, removed) {
+      if (err) { haptic('err'); toast(explain(err)); return; }
+      store.setLastImport(null, function () {
+        haptic('ok');
+        closeModal(0);
+        reload(true, function () { toast('Перенос отменён, убрано: ' + recs(removed)); });
+      });
+    });
+  }
+
+  /** экран проверки: сколько записей и на какую сумму, строки без суммы, заметки без категории с двумя догадками, остальное одной строкой */
+  function openReview() {
+    var back = notes.back;
+    swapModal('review', true, function (m) {
+      var box = el('div', 'pick pick--review'), foot = el('footer', 'modal__dock modal__dock--bar'), go = btn('btn');
+      go.id = 'notesAdd';
+      go.addEventListener('click', addNotes);
+      foot.appendChild(go);
+      add(m, box, foot);
+      notes.box = box;
+      notes.go = go;
+      paintReview();
+    }, back);
+  }
+  /** спорные записи собраны по заметке: один выбор на все одинаковые. «Выбрать для каждой отдельно» разбирает группу (solo) */
+  function askGroups(live) {
+    var groups = [], byKey = {};
+    live.forEach(function (it) {
+      if (!it.asked) { return; }
+      var key = it.k + '|' + it.n.toLowerCase() + (it.solo ? '|' + it.i : ''), g = byKey[key];
+      if (!g) { g = byKey[key] = { items: [] }; groups.push(g); }
+      g.items.push(it);
+    });
+    return groups;
+  }
+  /** подстрока группы: у одной записи день, у двух-трёх — их суммы (общей суммы в заметках человека нет), у большего числа — итог */
+  function subOf(items) {
+    if (items.length === 1) { return F.period(items[0].d, items[0].d) + (items[0].u === 'BYN' ? '' : ', ' + F.fmtShort(items[0].a) + F.NB + items[0].u); }
+    if (items.length > 3) { return recs(items.length) + ' на' + F.NB + F.fmt(sumOf(items)); }
+    var sums = items.map(function (it) { return F.fmt(bynOf(it)); });
+    return recs(items.length) + ': ' + sums.slice(0, -1).join(', ') + ' и' + F.NB + sums[sums.length - 1];
+  }
+  function noteRow(it, name, sum, fn) { // строка как в «Истории»: значок и название категории, серым заметка
+    var c = F.dict(it.k, it.cat), li = el('li'), b = btn('op'), text = el('span', '', c.name);
+    rowNote(text, name);
+    add(b, icon(c.icon), text, el('data', it.k === 'i' ? 'is-plus' : '', (it.k === 'i' ? '+' : '') + F.fmt(sum)), icon('right', 'share__go'));
+    b.addEventListener('click', fn);
+    li.appendChild(b);
+    return li;
+  }
+  /** записи по дням в том порядке, в каком они шли в заметках */
+  function daysList(parent, items, back) {
+    var days = [], map = {};
+    items.forEach(function (it) { if (!map[it.d]) { map[it.d] = []; days.push(it.d); } map[it.d].push(it); });
+    days.sort().forEach(function (d) {
+      var ul = el('ul', 'rows rows--ops');
+      map[d].forEach(function (it) {
+        var li = noteRow(it, it.n + (it.u === 'BYN' ? '' : (it.n ? ', ' : '') + F.fmtShort(it.a) + F.NB + it.u), bynOf(it), function () { openPick([it], back); });
+        li.firstChild.setAttribute('data-i', String(it.i));
+        ul.appendChild(li);
+      });
+      add(parent, el('p', 'lbl lbl--gap', F.period(d, d)), ul); // даты здесь числом, как в заметках; «Сегодня» и «Вчера» остаются «Истории»
+    });
+  }
+  /** категории для спорной заметки: те, которыми человек пользуется чаще (по прежним записям и по этому же списку), потом по его порядку */
+  function rankCats(kind, live) {
+    var used = {}, list = listOf(kind);
+    Object.keys(st.all).forEach(function (m) { st.all[m].forEach(function (op) { if (op.k === kind) { used[op.c] = (used[op.c] || 0) + 1; } }); });
+    live.forEach(function (it) { if (it.k === kind && it.cat) { used[it.cat] = (used[it.cat] || 0) + 1; } });
+    return list.map(function (c, n) { return { c: c, n: n }; }).sort(function (x, y) { return (used[y.c.id] || 0) - (used[x.c.id] || 0) || x.n - y.n; }).map(function (x) { return x.c; });
+  }
+  function paintReview() {
+    var N = notes, box = N.box, top = box.scrollTop;
+    var live = N.items.filter(function (it) { return !it.off; }), need = live.filter(function (it) { return !it.cat; });
+    var earn = live.filter(function (it) { return it.k === 'i'; }), spend = live.filter(function (it) { return it.k !== 'i'; }), dates = live.map(function (it) { return it.d; }).sort();
+    clear(box);
+    var big = el('div', 'pick__big'), count = el('h2', '', recs(live.length)), total = el('data', '', spend.length || !earn.length ? F.fmt(sumOf(spend)) : '+' + F.fmt(sumOf(earn)));
+    count.id = 'notesCount';
+    total.id = 'notesSum';
+    add(big, count, total);
+    var text = live.length ? cap(F.period(dates[0], dates[dates.length - 1])) + '. ' : '';
+    if (earn.length && spend.length) { text += 'Из них ' + F.plural(earn.length, 'доход', 'доходы', 'доходов') + ': ' + earn.length + ' на' + F.NB + F.fmt(sumOf(earn)) + '. '; }
+    if (!live.length) { text += 'Переносить нечего.'; }
+    else if (!need.length) { text += 'Категории подобраны, можно добавлять.'; }
+    else if (need.length === live.length) { text += 'Приложение не разобрало ни одной записи: подскажите категории.'; }
+    else { text += 'Категории подобраны, ' + recs(need.length) + ' приложение не разобрало.'; }
+    if (N.more) { text += ' Взяты первые ' + F.NOTES_MAX + ' строк, остальные перенесите вторым заходом.'; }
+    var info = el('p', 'pick__info', nb(text));
+    info.id = 'reviewInfo';
+    add(box, big, info);
+
+    if (N.skipped.length) { // строки без суммы не пропадают молча: их видно сразу под итогом, сумму можно вписать
+      var one = N.skipped.length === 1, menu = el('ul', 'menu menu--gap'), li = el('li'), row = btn('menu__row menu__row--two'), what = el('span', '', one ? nb('Не перенесётся: «' + N.skipped[0].raw + '»') : nb('Не перенесутся: ' + N.skipped.length + ' ' + F.plural(N.skipped.length, 'строка', 'строки', 'строк')));
+      row.id = 'skipBtn';
+      what.appendChild(el('small', '', nb(one ? 'в строке нет суммы' : 'в них нет суммы')));
+      add(row, what, el('small', '', 'вписать'), icon('right'));
+      row.addEventListener('click', function () { if (one) { openAmount(N.skipped[0], openReview); } else { openSkipped(); } });
+      li.appendChild(row);
+      menu.appendChild(li);
+      box.appendChild(menu);
+    }
+
+    var groups = askGroups(live), open = groups.filter(function (g) { return !g.items[0].cat; }), chosen = groups.filter(function (g) { return !!g.items[0].cat; });
+    var ranked = {};
+    if (open.length) { box.appendChild(el('p', 'lbl lbl--gap', 'Нужна ваша подсказка')); }
+    open.forEach(function (g) {
+      var it = g.items[0], list = listOf(it.k), sec = el('section', 'ask'), topRow = el('p', 'ask__top'), tags = el('ul', 'tags');
+      sec.setAttribute('data-note', it.n);
+      add(topRow, el('b', '', it.n || 'Без подписи'), el('data', '', (it.k === 'i' ? '+' : '') + F.fmt(sumOf(g.items))));
+      (ranked[it.k] || (ranked[it.k] = rankCats(it.k, live))).slice(0, list.length > 6 ? 5 : 6).forEach(function (c) {
+        var id = c.id, gl = el('li', c.name.length > 11 ? 'tags__wide' : ''), gb = btn('');
+        gb.setAttribute('data-cat', id);
+        gb.appendChild(el('span', '', c.name));
+        gb.addEventListener('click', function () { g.items.forEach(function (x) { x.cat = id; }); haptic(); paintReview(); });
+        gl.appendChild(gb);
+        tags.appendChild(gl);
+      });
+      var ml = el('li', 'tags__more'), mb = btn('');
+      mb.appendChild(el('span', '', 'Ещё'));
+      mb.setAttribute('aria-label', 'Остальные категории');
+      mb.addEventListener('click', function () { openPick(g.items, openReview); });
+      ml.appendChild(mb);
+      tags.appendChild(ml);
+      add(sec, topRow, el('small', '', subOf(g.items)), tags);
+      box.appendChild(sec);
+    });
+    if (chosen.length) {
+      var ul = el('ul', 'rows rows--ops');
+      chosen.forEach(function (g) {
+        var it = g.items[0], li2 = noteRow(it, (it.n || 'без подписи') + (g.items.length > 1 ? ', ' + recs(g.items.length) : ''), sumOf(g.items), function () { openPick(g.items, openReview); });
+        li2.firstChild.setAttribute('data-note', it.n);
+        ul.appendChild(li2);
+      });
+      add(box, el('p', 'lbl lbl--gap', 'Вы выбрали'), ul);
+    }
+    var sure = live.filter(function (it) { return !it.asked; });
+    if (sure.length && groups.length) { // остальное одной строкой: открывает записи по дням, как в заметках
+      var m2 = el('ul', 'menu menu--gap'), l2 = el('li'), r2 = btn('menu__row');
+      r2.id = 'sortedBtn';
+      add(r2, el('span', '', 'Разложено: ' + recs(sure.length)), el('small', '', F.fmt(sumOf(sure.filter(function (it) { return it.k !== 'i'; })))), icon('right')); // сумма трат: доходы в неё не входят, как и в итог вверху
+      r2.addEventListener('click', openSorted);
+      l2.appendChild(r2);
+      m2.appendChild(l2);
+      box.appendChild(m2);
+    } else if (sure.length) { daysList(box, sure, openReview); } // спрашивать не о чем: список виден сразу
+    var again = btn('link', 'Вставить другой список');
+    again.id = 'notesReset';
+    again.addEventListener('click', function () {
+      ask('Вставить другой список? Этот список и выбранные категории сбросятся.', function (yes) { if (yes) { var b = N.back; notes = null; openNotes(b); } });
+    });
+    box.appendChild(again);
+
+    var off = N.busy || !live.length || need.length > 0;
+    N.go.textContent = N.busy ? 'Добавляем' : need.length ? nb('Ещё ' + recs(need.length) + ' без категории') : live.length ? 'Добавить ' + recs(live.length) : 'Нечего добавлять';
+    N.go.className = 'btn' + (off ? ' btn--off' : '');
+    N.go.setAttribute('aria-disabled', String(off));
+    box.scrollTop = top;
+  }
+  function openSorted() {
+    var sure = notes.items.filter(function (it) { return !it.off && !it.asked; });
+    haptic();
+    swapModal('sorted', true, function (m) {
+      var box = el('div', 'pick pick--review');
+      add(box, el('h2', 'pick__title', 'Разложено: ' + recs(sure.length)), el('p', 'pick__info', nb('Нажмите на запись, чтобы сменить категорию.')));
+      daysList(box, sure, openSorted);
+      m.appendChild(box);
+    }, openReview);
+  }
+  /** выбор категории записи (или нескольких с одинаковой заметкой): все категории человека в его порядке, можно завести свою */
+  function openPick(its, back) {
+    var first = its[0], kind = first.k, list = listOf(kind), many = its.length > 1;
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick'), head = el('div', 'pick__big'), tags = el('ul', 'tags');
+      add(head, el('h2', '', first.n || 'Без подписи'), el('data', '', (kind === 'i' ? '+' : '') + F.fmt(sumOf(its))));
+      var info = el('p', 'pick__info', nb(many ? subOf(its) + '. Категория будет ' + (its.length === 2 ? 'у обеих.' : 'у всех.') : subOf(its) + '. Куда отнести эту запись?'));
+      info.id = 'pickInfo';
+      list.forEach(function (c) { // порядок как на листе добавления траты
+
+        var li = el('li', c.name.length > 11 ? 'tags__wide' : ''), b = btn('');
+        b.setAttribute('data-cat', c.id);
+        b.setAttribute('aria-pressed', String(!!first.cat && its.every(function (x) { return x.cat === c.id; })));
+        b.appendChild(el('span', '', c.name));
+        b.addEventListener('click', function () { its.forEach(function (x) { x.cat = c.id; }); back(); });
+        li.appendChild(b);
+        tags.appendChild(li);
+      });
+      var ownLi = el('li', 'tags__add'), own = btn('');
+      own.id = 'pickOwn';
+      add(own, icon('plus'), el('span', '', kind === 'i' ? 'Свой' : 'Своя'));
+      own.addEventListener('click', function () {
+        var l = listsOf(kind), every = l.on.concat(l.off);
+        if (every.length >= F.LIST_MAX) { haptic('err'); toast(WORDS[kind].full); return; }
+        catSheet(kind, null, function () { openPick(its, back); }, function (name, ic, fail) {
+          var id = F.catId(idsOf(every));
+          l.on.push([id, name, ic]);
+          saveLists(kind, l.on, l.off, function (ok) { if (!ok) { l.on.pop(); fail(); return; } its.forEach(function (x) { x.cat = id; }); back(); });
+        }, null, namesOf(every));
+      });
+      ownLi.appendChild(own);
+      tags.appendChild(ownLi);
+      var links = el('div', 'links'), split = null, drop = btn('link', nb(many ? 'Не переносить эти записи' : 'Не переносить эту запись'));
+      if (many) {
+        split = btn('link', 'Выбрать для каждой отдельно');
+        split.id = 'pickSplit';
+        split.addEventListener('click', function () { its.forEach(function (x) { x.solo = true; }); back(); });
+      }
+      drop.id = 'pickDrop';
+      drop.addEventListener('click', function () { its.forEach(function (x) { x.off = true; }); back(); });
+      add(links, split, drop);
+      add(box, head, info, tags, links, el('p', 'pick__info pick__info--kept', nb(many ? 'Они останутся в заметках, в приложение не попадут.' : 'Она останется в заметках, в приложение не попадёт.')));
+      m.appendChild(box);
+    }, back);
+  }
+  /** строки без суммы: список, из которого открывается ввод суммы */
+  function openSkipped() {
+    if (!notes.skipped.length) { openReview(); return; }
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick'), ul = el('ul', 'rows');
+      notes.skipped.forEach(function (s) {
+        var li = el('li', 'rows__li'), row = el('div', 'row row--off row--plain'), go = btn('row__back');
+        go.appendChild(el('span', '', 'Вписать'));
+        go.setAttribute('aria-label', 'Вписать сумму: ' + s.raw);
+        go.addEventListener('click', function () { openAmount(s, openSkipped); });
+        add(row, el('span', '', s.raw), go);
+        li.appendChild(row);
+        ul.appendChild(li);
+      });
+      add(box, el('h2', 'pick__title', 'Строки без суммы'), el('p', 'pick__info', nb('В приложение они не попадут. Впишите сумму, и строка встанет в список.')), ul);
+      m.appendChild(box);
+    }, openReview);
+  }
+  function openAmount(skip, back) {
+    var field = null;
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat'), foot = el('footer', 'modal__dock'), go = btn('btn', 'Добавить в список');
+      var info = el('p', 'pick__info', nb(cap(F.period(skip.d, skip.d)) + '. В строке нет суммы: впишите её, и запись встанет в список.'));
+      info.id = 'skipInfo';
+      field = el('input', 'field');
+      field.id = 'skipSum';
+      field.type = 'text';
+      field.maxLength = 12;
+      field.placeholder = 'например, 12,50';
+      field.setAttribute('inputmode', 'decimal');
+      field.setAttribute('enterkeyhint', 'done');
+      field.setAttribute('autocomplete', 'off');
+      field.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { field.blur(); } });
+      var lbl = el('label', 'lbl', 'Сумма, BYN');
+      lbl.setAttribute('for', 'skipSum');
+      go.id = 'skipSave';
+      go.addEventListener('click', function () {
+        var a = F.parseAmount(field.value);
+        if (!a) { info.textContent = 'Введите сумму цифрами, например 12,50.'; haptic('err'); return; }
+        var it = { d: skip.d, k: 'e', a: a, u: 'BYN', n: skip.raw, i: notes.items.length };
+        notes.items.push(it);
+        guessAll([it]);
+        notes.skipped.splice(notes.skipped.indexOf(skip), 1);
+        back();
+      });
+      add(box, el('h2', 'pick__title', skip.raw), info, lbl, field);
+      foot.appendChild(go);
+      add(m, box, foot);
+    }, back);
+    if (field) { field.focus(); }
+  }
+  /** «Добавить»: одна пачка, запись по кускам месяцев. При сбое на середине лист остаётся: повтор допишет остальное, дублей не будет */
+  function addNotes() {
+    var N = notes;
+    if (!N || N.busy) { return; }
+    var live = N.items.filter(function (it) { return !it.off; }), seen = {};
+    if (!live.length || live.some(function (it) { return !it.cat; })) { haptic('err'); return; }
+    var ops = live.map(function (it) {
+      var key = [it.d, it.k, it.a, it.u, it.n.toLowerCase()].join('|');
+      seen[key] = (seen[key] || 0) + 1;
+      return F.makeOp(it.k, it.cat, it.a, it.u, it.d, F.noteId(key, seen[key] - 1), it.n);
+    });
+    N.busy = true;
+    paintReview();
+    store.addOps(ops, function (err, added) {
+      N.busy = false;
+      N.added = N.added.concat(added || []);
+      if (err) {
+        paintReview();
+        haptic('err');
+        toast(N.added.length ? 'Сохранилось не всё: ' + N.added.length + ' из ' + ops.length + '.\nНажмите «Добавить» ещё раз, дубли не появятся' : explain(err));
+        return;
+      }
+      var done = N.added, months = ops.map(function (op) { return F.monthOf(op.d); }).sort();
+      notes = null;
+      haptic('ok');
+      if (!done.length) { closeModal(0); reload(false, function () { toast('Все эти записи уже перенесены'); }); return; }
+      var rec = { at: F.today(), m: {} };
+      done.forEach(function (x) { (rec.m[x.m] = rec.m[x.m] || []).push(x.id); });
+      store.setLastImport(rec, function () {
+        if (months.indexOf(st.month) < 0) { st.month = months[months.length - 1]; } // записи не этого месяца: открываем самый свежий из перенесённых
+        closeModal(0);
+        reload(true, function () {
+          var tail = done.length < ops.length ? 'остальные уже были перенесены' : F.monthsSpan(months[0], months[months.length - 1]);
+          toast('Добавлено: ' + recs(done.length) + (tail ? '\n' + tail : ''), 'Отменить', function () { undoImport(rec); }, 20000);
+        });
+      });
+    });
+  }
+
   // ---------- копия данных ----------
   function refit() { if (ui.open) { ui.h = modal.offsetHeight; } }
   function copyText(area, text) { // копирование прямо в ответ на касание: иначе iPhone его не разрешает
@@ -1465,7 +1905,7 @@
   function backupImport(box) {
     clear(box);
     var text = '';
-    var info = el('p', 'pick__info', 'Скопируйте текст копии, затем нажмите «Вставить из буфера». Существующие записи не изменятся, добавятся только недостающие.');
+    var info = el('p', 'pick__info', 'Скопируйте текст копии, затем нажмите «Вставить скопированное». Существующие записи не изменятся, добавятся только недостающие.');
     info.id = 'backupInfo';
     var area = el('textarea', 'pick__area');
     area.id = 'backupText';
@@ -1475,9 +1915,9 @@
     area.setAttribute('autocorrect', 'off');
     area.spellcheck = false;
     area.hidden = true;
-    var paste = btn('btn', 'Вставить из буфера');
+    var paste = btn('btn', 'Вставить скопированное');
     paste.id = 'pasteBtn';
-    var manual = btn('btn btn--quiet', 'Вставить вручную');
+    var manual = btn('btn btn--quiet', 'Вставить в поле');
     manual.id = 'manualBtn';
     var go = btn('btn', '');
     go.id = 'restoreBtn';

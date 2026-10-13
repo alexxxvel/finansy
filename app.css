@@ -304,6 +304,59 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   .icons button { width: 40px; height: 40px; }
 }
 
+/* ---------- перенос из заметок ---------- */
+.modal__dock--two { display: grid; gap: 8px; }
+.modal__dock[hidden], .notes__intro[hidden] { display: none; }
+.link--empty { margin-top: 0; }
+/* примеры строк: слева как пишет человек, справа что это значит */
+.sample { padding: 0 16px; border-radius: 18px; background: var(--surface); }
+.sample li { display: grid; grid-template-columns: minmax(0, 148px) 1fr; column-gap: 12px; align-items: center; min-height: 44px; border-bottom: 1px solid var(--line); }
+.sample li:last-child { border-bottom: 0; }
+.sample b { font: 500 17px/1.25 var(--font); letter-spacing: -.01em; white-space: nowrap; }
+.sample span { font: 400 15px/1.25 var(--font); color: var(--muted); }
+.sample + .pick__info { margin: 12px 0 0; }
+.notes__last { margin-top: 4px; }
+.pick--notes .pick__title { margin-bottom: 0; }
+.pick--notes .lbl--gap { margin-top: 2px; }
+/* Вставка в поле: лист следует за видимой частью экрана (у остальных листов во весь экран высота на время набора заморожена), поле тянется до кнопки,
+   кнопка стоит у нижнего края листа, то есть над клавиатурой. Нажатие на кнопку фокус с поля не снимает (app.js), поэтому она не уезжает из-под пальца:
+   13.10.2026 подсказка пряталась на время набора, раскладка менялась при потере фокуса, и нажатие на «Разобрать» уходило мимо */
+.modal--notes.modal--full { height: calc(var(--vh, 100vh) - 10px - var(--kb, 0px)); }
+.pick--notes.is-field { display: flex; flex-direction: column; overflow: hidden; }
+.pick--notes.is-field > * { flex: none; }
+.pick--notes.is-field .pick__area--notes { flex: 1 1 auto; height: auto; min-height: 72px; }
+/* экран проверки */
+.pick--review { padding-bottom: max(24px, var(--safe-b)); }
+.pick--review .pick__info { margin-bottom: 0; }
+.menu--gap { margin-top: 12px; }
+.menu__row--two { min-height: 60px; padding-top: 8px; padding-bottom: 8px; }
+.menu__row--two span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu__row--two span small { display: block; margin-top: 1px; }
+/* заметка, которую приложение не разобрало: две догадки и «Ещё»; метки как на листе добавления траты */
+.ask { padding: 14px 0 20px; border-bottom: 1px solid var(--line); }
+.lbl + .ask { padding-top: 2px; }
+.ask__top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ask__top b, .ask__top data { font: 600 17px/1.25 var(--font); letter-spacing: -.015em; }
+.ask__top b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask small { display: block; margin-top: 2px; font: 400 15px/1.3 var(--font); color: var(--muted); }
+.ask + .menu--gap { margin-top: 20px; }
+.tags { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 6px; margin-top: 12px; }
+.tags button { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: 44px; padding: 0 6px; border-radius: 999px; background: var(--surface); font: 500 15px/1.3 var(--font); white-space: nowrap; transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out); }
+.tags button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tags button[aria-pressed="true"] { background: var(--ink); color: #FFFFFF; }
+.tags .tags__more button { background: var(--fill); color: var(--muted); font-weight: 600; }
+.tags .tags__add button { background: var(--fill); font-weight: 600; }
+.tags svg { flex: none; width: 16px; height: 16px; }
+.tags__wide { grid-column: span 2; }
+/* строки записей плиткой: те же строки, что в «Истории» */
+.rows--ops { padding: 0 12px 0 16px; }
+.rows--ops .op { border-bottom: 1px solid var(--line); }
+.rows--ops li:last-child .op { border-bottom: 0; }
+.row--plain { grid-template-columns: 1fr auto; }
+.links { display: grid; justify-items: start; margin-top: 6px; }
+.links .link { margin-top: 0; }
+.pick--review > .link { margin-top: 14px; }
+
 .fail { padding: 40px 20px; max-width: 36ch; }
 .fail h2 { font: 700 28px/1.15 var(--font); letter-spacing: -.03em; color: var(--ink); }
 .fail p { margin: 10px 0 20px; color: var(--muted); }

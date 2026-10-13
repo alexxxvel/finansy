@@ -152,9 +152,9 @@
         var have = {};
         flat(list).forEach(function (op) { have[op.id] = 1; });
         var fresh = ops.filter(function (op) { return !have[op.id]; });
-        var added = fresh.length;
+        var added = fresh.length, ids = fresh.map(function (op) { return op.id; });
         (function next() {
-          if (!fresh.length) { cb(null, added); return; }
+          if (!fresh.length) { cb(null, added, ids); return; }
           var last = list.length ? list[list.length - 1] : null;
           var target = last && size(last.ops.concat([fresh[0]])) <= LIMIT ? last : null;
           if (!target) { target = { i: last ? last.i + 1 : 0, ops: [] }; list.push(target); }
@@ -239,6 +239,68 @@
         });
       },
       remove: function (id, month, cb) { removeFrom(month, id, cb); },
+      /** добавить записи пачкой (перенос из заметок). Уже существующие id пропускаются. Отдаёт, что добавлено: [{ id, m }];
+          при сбое на середине — ошибку и то, что успело сохраниться в прошлых месяцах (повтор допишет остальное, дублей не будет) */
+      addOps: function (ops, cb) {
+        var byMonth = {}, done = [];
+        for (var i = 0; i < ops.length; i++) {
+          if (!F.validOp(ops[i])) { cb('invalid', done); return; }
+          var m = F.monthOf(ops[i].d);
+          (byMonth[m] = byMonth[m] || []).push(ops[i]);
+        }
+        var months = Object.keys(byMonth).sort();
+        (function next() {
+          if (!months.length) { cb(null, done); return; }
+          var month = months.shift();
+          append(month, byMonth[month], function (err, added, ids) {
+            if (err) { cb(err, done); return; }
+            ids.forEach(function (id) { done.push({ id: id, m: month }); });
+            next();
+          });
+        })();
+      },
+      /** убрать записи пачкой (отмена переноса): в каждом куске одна запись ключа. Отдаёт, сколько убрано */
+      removeOps: function (list, cb) {
+        var byMonth = {}, removed = 0;
+        list.forEach(function (x) { (byMonth[x.m] = byMonth[x.m] || {})[x.id] = 1; });
+        var months = Object.keys(byMonth).sort();
+        (function next() {
+          if (!months.length) { cb(null, removed); return; }
+          var month = months.shift(), gone = byMonth[month];
+          chunks(month, function (err, parts) {
+            if (err) { cb(err, removed); return; }
+            var dirty = parts.filter(function (c) { return c.ops.some(function (op) { return gone[op.id]; }); });
+            (function step() {
+              if (!dirty.length) { next(); return; }
+              var c = dirty.shift(), was = c.ops.length;
+              c.ops = c.ops.filter(function (op) { return !gone[op.id]; });
+              write(month, c, function (err2) { if (err2) { cb(err2, removed); return; } removed += was - c.ops.length; step(); });
+            })();
+          });
+        })();
+      },
+      /** последний перенос из заметок: { at: дата, m: { месяц: [id, …] } }. Лежит отдельным ключом imp, чтобы перенос можно было отменить позже */
+      lastImport: function (cb) {
+        ad.get(['imp'], function (err, values) {
+          if (err) { cb(err); return; }
+          var o = null;
+          try { o = JSON.parse(values.imp || 'null'); } catch (e) { o = null; }
+          if (!o || !F.isDate(o.at) || !o.m || typeof o.m !== 'object') { cb(null, null); return; }
+          var out = { at: o.at, m: {} }, n = 0;
+          Object.keys(o.m).forEach(function (month) {
+            if (!F.isMonth(month) || !o.m[month] || typeof o.m[month].length !== 'number') { return; }
+            var ids = o.m[month].filter(function (id) { return typeof id === 'string' && /^[a-z0-9]{4,24}$/.test(id); });
+            if (ids.length) { out.m[month] = ids; n += ids.length; }
+          });
+          cb(null, n ? out : null);
+        });
+      },
+      setLastImport: function (rec, cb) {
+        if (!rec) { ad.del(['imp'], cb); return; }
+        var text = JSON.stringify(rec);
+        if (F.utf8len(text) > LIMIT) { ad.del(['imp'], cb); return; } // не поместилось: отмена останется только в сообщении сразу после переноса
+        ad.set('imp', text, cb);
+      },
       /** правка настроек: ключ перечитывается (вдруг его изменил второй телефон), меняется только названное, пишется одной записью.
           В patch значение null убирает настройку */
       patchCfg: function (patch, cb) {
