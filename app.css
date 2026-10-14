@@ -454,6 +454,7 @@ h1.month { margin: 0; cursor: default; }
 .switch-row[aria-checked="true"] .switch { background: var(--ink); } /* синий в приложении только у главной кнопки */
 .switch-row[aria-checked="true"] .switch::after { transform: translateX(20px); }
 .pick--ask .pick__info--lead { margin: -2px 0 12px; }
+.pick__info--switch { margin: 8px 0 4px; }
 /* длинная форма над нижней кнопкой: строка, ушедшая под край, гаснет, а не обрезается по буквам */
 .pick--newgoal { -webkit-mask-image: linear-gradient(#000 calc(100% - 28px), transparent); mask-image: linear-gradient(#000 calc(100% - 28px), transparent); }
 .field-row .cur--fixed { background: transparent; color: var(--muted); } /* валюту существующего кредита сменить нельзя: она подписью, а не кнопкой */

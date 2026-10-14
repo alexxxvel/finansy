@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'c7d0e6c2e3'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'a74ba9041b'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -327,7 +327,7 @@
       spent.appendChild(dayEl);
     }
     if (st.month === F.monthOf(F.today())) { // напоминание включает сам человек, когда заводит кредит; строка видна, пока платёж месяца не внесён
-      F.CREDITS.forEach(function (k) { if ((k.f & F.REMIND) && F.creditDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } });
+      F.CREDITS.forEach(function (k) { if (remindDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } });
     }
 
     var sheet = el('div', 'sheet');
@@ -805,7 +805,7 @@
   function remindRow(k, sample) {
     var row = el('div', 'remind' + (sample ? ' remind--sample' : '')), text = el('span'), sub = el('small');
     row.setAttribute('data-credit', k.id);
-    add(sub, document.createTextNode('не внесено · '), el('b', '', gmCur(k.p, k)));
+    if (k.p) { add(sub, document.createTextNode('не внесено · '), el('b', '', gmCur(k.p, k))); } else { sub.textContent = nb('платёж месяца не внесён'); } // платёж в месяц не указан: напоминание без суммы
     add(text, el('strong', '', k.name), sub);
     row.appendChild(text);
     if (sample) { // образец на листе вопроса: та же строка с кнопками, только не нажимается
@@ -831,13 +831,15 @@
     add(row, pay, x);
     return row;
   }
+  /** строка на главной: напоминание включено, кредит не погашен и не убран, в этом месяце платежей ещё не было. Платёж в месяц не обязателен */
+  function remindDue(k, s) { return !!(k.f & F.REMIND) && !(k.f & F.CLOSED) && s.left > 0 && s.month <= 0; }
   function setRemind(id, on, done) {
     saveCredits(function (list) { return list.map(function (x) { return x[0] === id ? [x[0], x[1], x[2], x[3], x[4], x[5], on ? x[6] | F.REMIND : x[6] & ~F.REMIND] : x; }); }, done);
   }
   /** один раз после нового кредита: показывать ли напоминание на главной. Выбор потом меняется в «Изменить» или крестиком на самой строке */
   function askRemind(id, after) {
     var k = F.find(F.CREDITS, id);
-    if (!k || !k.p) { after(); return; }
+    if (!k) { after(); return; }
     swapModal('list', false, function (m) {
       var box = el('div', 'pick pick--cat pick--ask'), foot = el('footer', 'modal__dock modal__dock--duo'), yes = btn('btn', 'Напоминать'), no = btn('btn btn--quiet', 'Не нужно'), busy = false;
       var lead = el('p', 'pick__info pick__info--lead', nb('Пока платёж месяца не внесён, на главной под шкалой будет такая строка. Убрать её можно прямо там, крестиком.'));
@@ -926,9 +928,22 @@
         sw.setAttribute('role', 'switch');
         var knob = el('i', 'switch');
         add(sw, el('span', '', 'Напоминать на главной'), knob);
-        var paint1 = function () { sw.setAttribute('aria-checked', String(remind)); };
+        var swInfo = el('p', 'pick__info pick__info--switch'), swBusy = false, kState = F.creditState(k, st.all, F.monthOf(F.today()));
+        swInfo.id = 'creditRemindInfo';
+        var paint1 = function () {
+          sw.setAttribute('aria-checked', String(remind));
+          // строка появляется не всегда: объясняем, когда её ждать (14.10.2026 разработчик включил напоминание и не увидел строку)
+          swInfo.textContent = nb(!remind ? 'Строки на главной нет.' : kState.left <= 0 ? 'Кредит погашен: строки на главной не будет.'
+            : kState.month > 0 ? F.monthLabel(F.monthOf(F.today())).split(F.NB)[0] + ' уже внесён: строка появится на главной в начале следующего месяца.'
+            : 'Строка уже на главной: она видна, пока платёж месяца не внесён.');
+        };
         sw.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
-        sw.addEventListener('click', function () { remind = !remind; haptic(); paint1(); });
+        sw.addEventListener('click', function () { // срабатывает сразу, как переключатель в iOS: «Сохранить» нажимать не нужно
+          if (swBusy) { return; }
+          swBusy = true;
+          var next = !remind;
+          setRemind(k.id, next, function (ok) { swBusy = false; if (ok) { remind = next; haptic('ok'); paint1(); } });
+        });
         paint1();
       }
       go.id = 'creditSave';
@@ -939,16 +954,16 @@
         var same = F.CREDITS.some(function (x) { return x.name.toLowerCase() === name.toLowerCase() && (!k || x.id !== k.id); });
         var why = !name ? 'Введите название кредита.' : same ? 'Кредит с таким названием уже есть.' : !a ? 'Введите сумму кредита цифрами: например 900.' : bad(start) ? 'Введите, сколько уже погашено, цифрами.' : bad(pay) ? 'Введите платёж в месяц цифрами или оставьте пустым.' : '';
         if (why) { info.textContent = why; haptic('err'); return; }
-        var id = k ? k.id : F.catId(idsOf(F.packCredits())), flags = k ? (remind ? k.f | F.REMIND : k.f & ~F.REMIND) : 0;
+        var id = k ? k.id : F.catId(idsOf(F.packCredits()));
         busy = true;
-        saveCredits(function (list) {
-          if (k) { return list.map(function (x) { return x[0] === id ? [id, name, a, u, s0, p, flags] : x; }); }
+        saveCredits(function (list) { // отметки (напоминание, погашенные) берутся из сохранённого списка: переключатель пишет их сам
+          if (k) { return list.map(function (x) { return x[0] === id ? [id, name, a, u, s0, p, x[6]] : x; }); }
           return list.concat([[id, name, a, u, s0, p, 0]]);
         }, function (ok) {
           if (!ok) { busy = false; return; }
           haptic('ok');
           var after = function () { if (done) { done(id); } else if (back) { back(); } else { closeModal(0); } };
-          if (!k && p) { askRemind(id, after); } else { after(); } // новый кредит с платежом: спросить про напоминание на главной
+          if (!k) { askRemind(id, after); } else { after(); } // новый кредит: спросить про напоминание на главной
         });
       });
       var del = null;
@@ -970,7 +985,7 @@
         });
       }
       texts();
-      add(box, el('h2', 'pick__title', k ? 'Изменить кредит' : 'Новый кредит'), label('Название', 'creditName'), nameEl, label('Сумма кредита', 'creditSum'), row, startLbl, start, hint, payLbl, pay, info, sw, del);
+      add(box, el('h2', 'pick__title', k ? 'Изменить кредит' : 'Новый кредит'), label('Название', 'creditName'), nameEl, label('Сумма кредита', 'creditSum'), row, startLbl, start, hint, payLbl, pay, info, sw, sw ? swInfo : null, del);
       foot.appendChild(go);
       add(m, box, foot);
     }, back);
