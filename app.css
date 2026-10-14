@@ -191,9 +191,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .entry__conv b { margin-left: 2px; font-weight: 600; color: var(--ink); word-spacing: .06em; font-variant-numeric: tabular-nums; }
 
 /* метки категорий: высота блока постоянная (три ряда), метки прижаты к клавиатуре — она не прыгает при переключении «Трата / Доход» */
-.chips { flex: none; display: grid; grid-template-columns: repeat(3, 1fr); align-content: end; gap: 6px; min-height: calc(var(--chip-h) * 3 + 12px + var(--chip-gap) + var(--chip-top)); padding: var(--chip-top) 0 var(--chip-gap); }
+.chips { flex: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-content: end; gap: 6px; min-height: calc(var(--chip-h) * 3 + 12px + var(--chip-gap) + var(--chip-top)); padding: var(--chip-top) 0 var(--chip-gap); }
 .chips { grid-auto-flow: row dense; }
-.chips--two { grid-template-columns: repeat(2, 1fr); }
+.chips--two { grid-template-columns: repeat(2, minmax(0, 1fr)); } /* minmax: длинное название сжимается с многоточием, а не раздвигает сетку за край */
 /* метка, которая листает категории: серая, чтобы не путать её с категорией */
 .chips .chips__nav button { background: var(--fill); color: var(--muted); font-weight: 600; }
 .chips__wide { grid-column: span 2; }
@@ -390,7 +390,7 @@ h1.month { margin: 0; cursor: default; }
 .pick .goal:last-of-type { border-bottom: 0; }
 /* лист цели: главное — сумма (крупно, с мелкими копейками, как на главной), процент тихо у шкалы */
 .goal__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.goal__top .pick__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal__top .pick__title { min-width: 0; overflow-wrap: anywhere; } /* длинное название встаёт в две строки, а не обрезается рядом с «Изменить» */
 .capsule { flex: none; display: grid; place-items: center; min-height: 44px; }
 .capsule span { display: block; padding: 0 14px; border-radius: 999px; background: var(--fill); font: 600 15px/32px var(--font); color: var(--ink); }
 .capsule:active span { opacity: .6; }
