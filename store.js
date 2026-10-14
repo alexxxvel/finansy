@@ -90,6 +90,12 @@
     if (typeof o.goalAsk === 'string' && /^[a-z0-9]{1,10}$/.test(o.goalAsk)) { out.goalAsk = o.goalAsk; } // у прежней цели ещё не спросили, сколько уже накоплено
     return out;
   }
+  /** кредиты: отдельный ключ crd. Не читается — пусто (записи от этого не страдают) */
+  function readCredits(text) {
+    var o = null;
+    try { o = JSON.parse(text || '[]'); } catch (e) { o = null; }
+    return F.validCredits(o) || [];
+  }
   /** списки из копии добавляются к своим и ничего не затирают: недостающие категории дописываются, свои названия и порядок остаются.
       Своего списка ещё нет (действует встроенный) — берётся список из копии, а встроенные категории, которых в нём нет, уходят в скрытые:
       записи в них сохраняют название, вернуть их можно в настройках */
@@ -197,7 +203,7 @@
           if (err) { cb(err); return; }
           var mine = keys.map(function (k) { var p = parseKey(k); return p ? { key: k, month: p.month, i: p.i } : null; }).filter(Boolean)
             .sort(function (a, b) { return a.month === b.month ? a.i - b.i : (a.month < b.month ? -1 : 1); });
-          ad.get(mine.map(function (c) { return c.key; }).concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : []), function (err2, values) {
+          ad.get(mine.map(function (c) { return c.key; }).concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
             var months = {}, ops = [], carry = 0, partial = false, seen = {}, all = {}, net = {}, first = '';
             for (var n = 0; n < mine.length; n++) {
@@ -215,7 +221,7 @@
               }
             }
             Object.keys(net).forEach(function (m) { if (first && m >= first && m < month) { carry += net[m]; } });
-            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial, all: all, cfg: readCfg(values.cfg) });
+            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial, all: all, cfg: readCfg(values.cfg), credits: readCredits(values.crd) });
           });
         });
       },
@@ -315,12 +321,24 @@
           ad.set('cfg', text, function (err2) { cb(err2, next); });
         });
       },
+      /** правка кредитов: ключ перечитывается, fn получает список для хранения и возвращает новый; пустой список убирает ключ */
+      patchCredits: function (fn, cb) {
+        ad.get(['crd'], function (err, values) {
+          if (err) { cb(err); return; }
+          var next = F.validCredits(fn(readCredits(values.crd)));
+          if (!next) { cb('invalid'); return; }
+          if (!next.length) { ad.del(['crd'], function (err2) { cb(err2 || null, next); }); return; }
+          var text = JSON.stringify(next);
+          if (F.utf8len(text) > LIMIT) { cb('too long'); return; }
+          ad.set('crd', text, function (err2) { cb(err2, next); });
+        });
+      },
       /** копия всех записей текстом */
       exportAll: function (cb) {
         ad.keys(function (err, keys) {
           if (err) { cb(err); return; }
           var mine = keys.filter(parseKey).sort();
-          ad.get(mine.concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : []), function (err2, values) {
+          ad.get(mine.concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
             var months = {}, count = 0, bad = false;
             mine.forEach(function (k) {
@@ -334,6 +352,8 @@
             delete cfg.seen; // отметка о первом экране к записям не относится
             delete cfg.goalAsk;
             if (Object.keys(cfg).length) { out.cfg = cfg; }
+            var credits = readCredits(values.crd);
+            if (credits.length) { out.credits = credits; }
             cb(null, { text: JSON.stringify(out), count: count });
           });
         });
@@ -359,8 +379,23 @@
             if (mergeLists(cur, inc, 'cats', 'e', used.e)) { changed = true; }
             if (mergeLists(cur, inc, 'srcs', 'i', used.i)) { changed = true; }
             var text = JSON.stringify(readCfg(JSON.stringify(cur)));
-            if (!changed || F.utf8len(text) > 4096) { cb(null, total); return; }
-            ad.set('cfg', text, function () { cb(null, total); });
+            if (!changed || F.utf8len(text) > 4096) { credits(); return; }
+            ad.set('cfg', text, function () { credits(); });
+          });
+        }
+        function credits() { // кредиты из копии дописываются к своим, свои не меняются
+          if (!data.credits) { cb(null, total); return; }
+          ad.get(['crd'], function (err, values) {
+            if (err) { cb(null, total); return; }
+            var mine = readCredits(values.crd), changed = false;
+            data.credits.forEach(function (k) {
+              if (mine.length >= F.CREDITS_MAX || mine.some(function (x) { return x[0] === k[0]; })) { return; }
+              mine.push(k);
+              changed = true;
+            });
+            var text = JSON.stringify(mine);
+            if (!changed || F.utf8len(text) > LIMIT) { cb(null, total); return; }
+            ad.set('crd', text, function () { cb(null, total); });
           });
         }
         (function next() {

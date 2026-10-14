@@ -183,6 +183,62 @@
     return { avg: Math.round(avg), when: MONTHS_DAT[idx % 12] + NB + year };
   }
 
+  // ---------- кредиты и рассрочки: сколько осталось погасить ----------
+  // Кредит: id, название, сумма кредита (копейки его валюты), валюта, сколько было погашено до начала учёта, платёж в месяц (0 — не указан),
+  // отметки: 1 — напоминать на главной, пока платёж месяца не внесён; 2 — убран в «Погашенные».
+  // Платёж — обычная трата с категорией «k_<id кредита>»: входит в «Потрачено», а шкала кредита сдвигается.
+  // Список лежит отдельным ключом хранилища (crd), а не в настройках: старая страница из кэша Telegram, переписывая настройки, его не потеряет.
+  var CREDITS = [], CREDITS_MAX = 12, REMIND = 1, CLOSED = 2;
+  function whole(v, min) { return typeof v === 'number' && v === Math.round(v) && v >= min && v < 1e12; }
+  /** список кредитов для хранения: [[id, название, сумма, валюта 0–2, погашено до учёта, платёж в месяц, отметки], …] */
+  function validCredits(list) {
+    if (!list || typeof list.length !== 'number' || list.length > CREDITS_MAX) { return null; }
+    var out = [], seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var k = list[i];
+      if (!k || typeof k.length !== 'number' || typeof k[0] !== 'string' || !/^[a-z0-9]{1,10}$/.test(k[0]) || seen[k[0]]) { return null; }
+      var name = cleanNote(k[1]).slice(0, 24), s = k[4] === undefined ? 0 : k[4], p = k[5] === undefined ? 0 : k[5], f = k[6] === undefined ? 0 : k[6];
+      if (!name || !whole(k[2], 1) || !CURS[k[3]] || !whole(s, 0) || !whole(p, 0) || (f !== 0 && f !== 1 && f !== 2 && f !== 3)) { return null; }
+      seen[k[0]] = 1;
+      out.push([k[0], name, k[2], k[3], s, p, f]);
+    }
+    return out;
+  }
+  function useCredits(list) {
+    var ok = validCredits(list) || [];
+    CREDITS.splice.apply(CREDITS, [0, CREDITS.length].concat(ok.map(function (k) { return { id: k[0], name: k[1], a: k[2], u: k[3], s: k[4], p: k[5], f: k[6] }; })));
+  }
+  function packCredits() { return CREDITS.map(function (k) { return [k.id, k.name, k.a, k.u, k.s, k.p, k.f]; }); }
+  function isCreditOp(op) { return !!op && typeof op.c === 'string' && op.c.indexOf('k_') === 0; }
+  function creditOf(cat) { return typeof cat === 'string' && cat.indexOf('k_') === 0 ? find(CREDITS, cat.slice(2)) : null; }
+  /** состояние кредита: сколько осталось (в его валюте; меньше нуля — переплата), сколько внесено в этом месяце (в его валюте и в рублях), платежи свежие сверху */
+  function creditState(k, all, month) {
+    var left = k.a - k.s, inMonth = 0, inMonthByn = 0, ops = [], cat = 'k_' + k.id;
+    Object.keys(all || {}).forEach(function (m) {
+      all[m].forEach(function (op) {
+        if (op.c !== cat || op.k !== 'e') { return; }
+        var v = goalAmount(k, op.a, op.u, op.r);
+        left -= v;
+        if (m === month) { inMonth += v; inMonthByn += bynOf(op); }
+        ops.push(op);
+      });
+    });
+    ops.sort(function (x, y) { return x.d === y.d ? (x.id < y.id ? 1 : -1) : (x.d < y.d ? 1 : -1); });
+    return { left: left, month: inMonth, monthByn: inMonthByn, ops: ops };
+  }
+  /** платёж этого месяца ждёт: кредит не погашен и не убран, платёж в месяц указан, в этом месяце платежей ещё не было */
+  function creditDue(k, state) { return !(k.f & CLOSED) && k.p > 0 && state.left > 0 && state.month <= 0; }
+  /** сколько платежей осталось, последний месяц и сумма последнего. Платёж этого месяца не внесён — он первый в счёте.
+      total — число платежей всего, если кредит делится на ровные платежи (рассрочка, не больше 24): тогда пишется «3 из 6» */
+  function creditPlan(k, state, now) {
+    if (!k.p || state.left <= 0) { return null; }
+    now = now || today();
+    var n = Math.ceil(state.left / k.p), idx = (+now.slice(5, 7) - 1) + (state.month > 0 ? 1 : 0) + n - 1, year = +now.slice(0, 4) + Math.floor(idx / 12);
+    var total = k.a % k.p === 0 && k.a / k.p <= 24 ? k.a / k.p : 0;
+    if (total && n > total) { total = 0; }
+    return { n: n, when: MONTHS_PRE[idx % 12] + (year === +now.slice(0, 4) ? '' : NB + year), last: state.left - (n - 1) * k.p, total: total };
+  }
+
   /** применить настройки: свои категории и источники, если они заданы, иначе встроенные; скрытые — отдельными списками; цели */
   function useCfg(cfg) {
     var goals = cfg ? validGoals(cfg.goals) : null;
@@ -195,6 +251,7 @@
   /** категория записи по id: из списка или из скрытых. Записи с категорией, которой нет нигде (список сменили), не теряются: они «без категории» */
   function dict(kind, id) {
     if (typeof id === 'string' && id.indexOf('g_') === 0) { var g = goalOf(id); return { id: id, name: g ? g.name : 'Удалённая цель', icon: 'wallet', goal: true }; }
+    if (typeof id === 'string' && id.indexOf('k_') === 0) { var k = creditOf(id); return { id: id, name: k ? k.name : 'Удалённый кредит', icon: 'card', credit: true }; } // платёж по кредиту — трата с названием кредита
     return find(kind === 'i' ? SRCS : CATS, id) || find(OFF[kind === 'i' ? 'i' : 'e'], id) || { id: id, name: 'Без категории', icon: 'dots' };
   }
   /** список для хранения: [[id, название, значок], …] */
@@ -271,7 +328,8 @@
       if (validGoals(data.cfg.goals)) { cfg.goals = validGoals(data.cfg.goals); }
       if (!Object.keys(cfg).length) { cfg = null; }
     }
-    return count ? { months: months, count: count, cfg: cfg } : null;
+    var credits = validCredits(data.credits); // кредиты лежат в копии рядом с настройками: в хранилище у них свой ключ
+    return count ? { months: months, count: count, cfg: cfg, credits: credits && credits.length ? credits : null } : null;
   }
 
   function plural(n, one, few, many) {
@@ -553,6 +611,8 @@
     prevMonth: prevMonth, inMonth: inMonth, daysLeft: daysLeft, perDay: perDay, fmtDay: fmtDay, frequent: frequent, validGoal: validGoal, parseAmount: parseAmount, balance: balance, table: table,
     validList: validList, useCfg: useCfg, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId,
     GOALS: GOALS, GOALS_MAX: GOALS_MAX, validGoals: validGoals, packGoals: packGoals, isGoalOp: isGoalOp, goalOf: goalOf, goalAmount: goalAmount, goalByn: goalByn, goalState: goalState, goalForecast: goalForecast,
-    parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX
+    parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX,
+    CREDITS: CREDITS, CREDITS_MAX: CREDITS_MAX, REMIND: REMIND, CLOSED: CLOSED, validCredits: validCredits, useCredits: useCredits, packCredits: packCredits,
+    isCreditOp: isCreditOp, creditOf: creditOf, creditState: creditState, creditDue: creditDue, creditPlan: creditPlan
   };
 })(window);

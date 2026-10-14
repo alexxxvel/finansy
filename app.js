@@ -1,4 +1,4 @@
-/* Учёт финансов: экраны. Главная («Месяц»), «История», «Цели», лист добавления, первый запуск, настройки (свои категории, перенос из заметок, копия данных).
+/* Учёт финансов: экраны. Главная («Месяц»), «История», «Цели» (с разделом «Кредиты»), лист добавления, первый запуск, настройки (свои категории, перенос из заметок, копия данных).
    Движение: лист на пружине (её можно перехватить пальцем), сумма досчитывается, полосы растут; частые действия (клавиши) без анимации.
    Стиль ES5: страница запускается и на старых встроенных браузерах Telegram. */
 (function () {
@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '4ced52667a'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'c7d0e6c2e3'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -49,6 +49,7 @@
     down: '<path d="m6 9 6 6 6-6"/>',
     right: '<path d="m9 6 6 6-6 6"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    close: '<path d="M18 6 6 18M6 6l12 12"/>',
     back: '<path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1ZM17 9l-6 6M11 9l6 6"/>'
   };
 
@@ -87,7 +88,7 @@
     month: F.monthOf(F.today()), months: [], ops: [], sum: F.summarize([]),
     carry: 0, partial: false, // остаток на начало месяца: доходы минус траты всех прошлых месяцев
     all: {}, cfg: {}, prev: F.summarize([]), balance: 0, // все записи по месяцам, настройки, сводка прошлого месяца, накоплено за всё время
-    tab: 'month', more: false, shown: 0, loaded: false, error: ''
+    tab: 'month', sect: 'goals', more: false, shown: 0, loaded: false, error: '' // sect: раздел вкладки «Цели» — цели или кредиты
   };
   var store = null;
   var ui = { y: 0, h: 0, raf: 0, open: false, kind: '', back: null }; // back: куда вернёт «Назад», если лист открыт из другого листа
@@ -183,6 +184,7 @@
     a.appendChild(icon('plus'));
     a.addEventListener('click', function () {
       if (st.tab !== 'goals') { openEntry(null); return; }
+      if (st.sect === 'credits') { payOrNew(); return; } // в разделе кредитов плюс вносит платёж; кредитов нет — заводит первый
       // на вкладке «Цели» плюс сразу откладывает; целей нет — заводит первую
       if (!F.GOALS.length) { openGoalEdit(null, null, null); } else { openEntry(null, { kind: 's', cat: F.GOALS.length === 1 ? 'g_' + F.GOALS[0].id : '' }); }
     });
@@ -212,10 +214,15 @@
     return head;
   }
 
-  /** размер крупной суммы по числу цифр до запятой: до четырёх — 68 px, пять — 52, шесть и больше — 44 */
+  /** начальный размер крупной суммы: 68 px до шести цифр, с семи — сразу 44. Дальше решает fitSum по измеренной ширине (14.10.2026: по числу цифр пятизначная сумма была на четверть тише, чем помещалась) */
   function sumClass(minor) {
     var n = String(Math.floor(Math.abs(minor) / 100)).length;
-    return 'spent__sum' + (n >= 6 ? ' is-s' : n === 5 ? ' is-m' : '');
+    return 'spent__sum' + (n >= 7 ? ' is-s' : '');
+  }
+  /** крупная сумма не помещается в ширину (узкий телефон, крупный шрифт системы) — уменьшается ещё на ступень. Мерится готовая строка, а не число цифр */
+  function fitSum(p) {
+    var steps = ['', ' is-m', ' is-s'], i = p.className.indexOf('is-s') >= 0 ? 2 : p.className.indexOf('is-m') >= 0 ? 1 : 0;
+    while (i < 2 && p.scrollWidth > p.clientWidth + 1) { i++; p.className = 'spent__sum' + steps[i]; }
   }
   function setSum(node, minor) {
     var p = F.fmtParts(minor);
@@ -261,7 +268,7 @@
       track.appendChild(f);
       b.appendChild(track);
     }
-    b.addEventListener('click', function () { openCategory(kind, c.id); });
+    b.addEventListener('click', function () { var k = kind === 'e' ? F.creditOf(c.id) : null; if (k) { openCreditView(k.id, null); } else { openCategory(kind, c.id); } });
     li.appendChild(b);
     return li;
   }
@@ -319,6 +326,9 @@
       dayEl.id = 'perDay';
       spent.appendChild(dayEl);
     }
+    if (st.month === F.monthOf(F.today())) { // напоминание включает сам человек, когда заводит кредит; строка видна, пока платёж месяца не внесён
+      F.CREDITS.forEach(function (k) { if ((k.f & F.REMIND) && F.creditDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } });
+    }
 
     var sheet = el('div', 'sheet');
     var cats = el('section', 'cats');
@@ -331,7 +341,7 @@
     }
     cats.appendChild(catsHead);
     if (!s.cats.length) {
-      cats.appendChild(el('p', 'empty', 'Трат пока нет. Нажмите «Добавить», чтобы внести первую.'));
+      cats.appendChild(el('p', 'empty', nb('Трат пока нет. Нажмите плюс внизу справа, чтобы внести первую.'))); // подписи «Добавить» у плюса нет
       if (!st.months.length) { // записей нет совсем: тому, кто вёл траты в заметках, не нужно начинать с нуля
         var fromNotes = btn('link link--empty', 'Перенести список из заметок');
         fromNotes.id = 'notesLink';
@@ -381,6 +391,8 @@
 
     clear(view);
     add(view, monthBar(), spent, sheet);
+    setSum(node, s.spent);
+    fitSum(sumEl); // размер по готовой сумме: досчёт идёт от меньшего числа
 
     if (animate && !reduce) {
       tweenSum(node, was, s.spent);
@@ -495,15 +507,39 @@
     return ul;
   }
   /** вкладка «Цели». Одна цель — она сама наверху крупно; несколько — общий итог в рублях и карточки */
-  function paintGoals() {
-    var goals = F.GOALS, now = F.monthOf(F.today()), head = el('div', 'bar'), title = el('h1', 'month', 'Цели');
+  /** переключатель «Цели / Кредиты» под заголовком вкладки */
+  function sectSeg() {
+    var seg = el('div', 'seg tabseg');
+    seg.setAttribute('role', 'group');
+    seg.setAttribute('aria-label', 'Раздел');
+    [['goals', 'Цели'], ['credits', 'Кредиты']].forEach(function (s) {
+      var b = btn('', s[1]);
+      b.setAttribute('data-sect', s[0]);
+      b.setAttribute('aria-pressed', String(st.sect === s[0]));
+      b.addEventListener('click', function () {
+        if (st.sect === s[0]) { return; }
+        st.sect = s[0];
+        haptic();
+        paint(true);
+      });
+      seg.appendChild(b);
+    });
+    return seg;
+  }
+  function tabHead(text) {
+    var head = el('div', 'bar'), title = el('h1', 'month', text);
     title.id = 'goalsTitle';
     add(head, title, gearBtn());
+    return head;
+  }
+  function paintGoals() {
+    if (st.sect === 'credits') { paintCredits(); return; }
+    var goals = F.GOALS, now = F.monthOf(F.today()), head = tabHead('Цели');
     clear(view);
     if (!goals.length) {
       var empty = el('div', 'sheet sheet--top');
       add(empty, el('p', 'empty', nb('Целей пока нет. Заведите первую: подушку, отпуск, технику. Приложение покажет, сколько накоплено и сколько ещё нужно.')), newGoalBtn(null));
-      add(view, head, empty);
+      add(view, head, sectSeg(), empty);
       return;
     }
     var hero = el('section', 'spent'), sumEl = el('p', 'spent__sum'), node = { whole: el('span'), frac: el('i') }, legend = el('div', 'spent__legend spent__legend--wrap'), sheet = el('div', 'sheet'), put;
@@ -550,7 +586,395 @@
       add(hero, el('p', 'spent__label', 'Накоплено'), sumEl, legend);
       add(sheet, cards, newGoalBtn(null));
     }
-    add(view, head, hero, sheet);
+    add(view, head, sectSeg(), hero, sheet);
+    fitSum(sumEl);
+  }
+
+  // ---------- кредиты и рассрочки: раздел, лист кредита, новый кредит, платёж ----------
+  function activeCredits() { return F.CREDITS.filter(function (k) { return !(k.f & F.CLOSED); }); }
+  /** набранная сумма для листа добавления: 1230,50 → «1230,5» */
+  function digitsOf(minor) { return F.fmt(minor).replace(/\s/g, '').replace(/,00$/, '').replace(/(,\d)0$/, '$1'); }
+  function payPreset(k) { return { kind: 'p', cat: k ? 'k_' + k.id : '', digits: k && k.p ? digitsOf(k.p) : '', cur: k ? F.CURS[k.u] : 'BYN' }; }
+  function payOrNew() {
+    var act = activeCredits(), now = F.monthOf(F.today()), due = null;
+    if (!act.length) { openCreditEdit(null, null, null); return; }
+    act.forEach(function (k) { if (!due && F.creditDue(k, F.creditState(k, st.all, now))) { due = k; } });
+    openEntry(null, payPreset(due || (act.length === 1 ? act[0] : null))); // первым предлагается кредит, платёж по которому в этом месяце ещё ждёт
+  }
+  function creditPct(k, s) { return Math.min(100, Math.floor(Math.max(0, k.a - Math.max(0, s.left)) / k.a * 100)); }
+  /** шкала кредита: отрезок на каждый платёж, погашенное залито; платёж этого месяца ещё не внесён — его отрезок контурный.
+      Платёж не указан или платежей больше 24 — сплошная шкала */
+  function segbar(k, s) {
+    var done = Math.max(0, Math.min(k.a, k.a - s.left)), n = k.p ? Math.ceil(k.a / k.p) : 0, bar;
+    if (!n || n > 24) {
+      bar = el('i', 'goal__bar');
+      var f = el('b');
+      f.style.transform = 'scaleX(' + (done / k.a).toFixed(4) + ')';
+      bar.appendChild(f);
+    } else {
+      var due = F.creditDue(k, s) ? Math.floor(done / k.p) : -1;
+      bar = el('span', 'segbar');
+      for (var i = 0; i < n; i++) {
+        var cell = el('i', i === due ? 'is-due' : ''), fill = el('b');
+        fill.style.width = (Math.max(0, Math.min(1, (done - i * k.p) / k.p)) * 100).toFixed(1) + '%';
+        cell.appendChild(fill);
+        bar.appendChild(cell);
+      }
+    }
+    bar.setAttribute('role', 'img');
+    bar.setAttribute('aria-label', 'Погашено ' + creditPct(k, s) + ' процентов');
+    return bar;
+  }
+  /** строка под шкалой: сколько платежей осталось и когда последний */
+  function creditRest(k, s, plan) {
+    if (s.left < 0) { return 'погашено, переплата ' + gmCur(-s.left, k); }
+    if (s.left === 0) { return 'всё погашено'; }
+    if (!plan) { return 'погашено ' + creditPct(k, s) + '%, платёж в месяц не указан'; }
+    if (plan.total) { return (plan.total - plan.n) + ' из ' + plan.total + ' ' + F.plural(plan.total, 'платежа', 'платежей', 'платежей') + ', последний в ' + plan.when; }
+    return plan.n === 1 ? 'остался один платёж, в ' + plan.when : 'ещё ' + plan.n + ' ' + F.plural(plan.n, 'платёж', 'платежа', 'платежей') + ', последний в ' + plan.when;
+  }
+  function creditCard(k, tap) {
+    var now = F.monthOf(F.today()), s = F.creditState(k, st.all, now), sec = el('section', 'goal'), b = btn('goal__btn'), head = el('span', 'cats__head'), pc = el('span', 'goal__pct'), line = el('span', 'goal__line');
+    b.setAttribute('data-credit', k.id);
+    pc.appendChild(icon('right', 'share__go'));
+    add(head, el('span', 'goal__title', k.name), pc);
+    if (s.left > 0) { add(line, document.createTextNode('осталось '), el('b', '', gm(s.left, k)), document.createTextNode(' из' + F.NB + gmCur(k.a, k))); }
+    else { add(line, el('b', '', 'всё погашено'), document.createTextNode(' ' + gmCur(k.a, k))); }
+    add(b, head, line, segbar(k, s), F.creditDue(k, s) ? el('span', 'goal__due', nb(F.inMonth(now) + ' не внесён')) : null, el('span', 'goal__rest', nb(creditRest(k, s, F.creditPlan(k, s)))));
+    b.addEventListener('click', function () { tap(k); });
+    sec.appendChild(b);
+    return sec;
+  }
+  function newCreditBtn(back) {
+    var b = btn('btn btn--quiet btn--new');
+    b.id = 'creditNew';
+    add(b, icon('plus'), document.createTextNode('Новый кредит'));
+    b.addEventListener('click', function () {
+      if (F.CREDITS.length >= F.CREDITS_MAX) { haptic('err'); toast('Кредитов уже двенадцать. Удалите погашенный.'); return; }
+      openCreditEdit(null, back || null, null);
+    });
+    return b;
+  }
+  function closedRow(list, back) {
+    var b = btn('more more--copy more--done');
+    b.id = 'closedBtn';
+    add(b, el('span', '', 'Погашенные'), el('data', '', String(list.length)), icon('right'));
+    b.addEventListener('click', function () { openClosed(back); });
+    return b;
+  }
+  /** раздел «Кредиты»: сколько осталось погасить по всем, у каждого кредита шкала по платежам */
+  function paintCredits() {
+    var now = F.monthOf(F.today()), head = tabHead('Кредиты'), act = activeCredits(), closed = F.CREDITS.filter(function (k) { return k.f & F.CLOSED; });
+    clear(view);
+    if (!act.length) {
+      var empty = el('div', 'sheet sheet--top');
+      add(empty, el('p', 'empty', nb(closed.length ? 'Все кредиты погашены. Новый появится здесь, как только вы его заведёте.' : 'Кредитов и рассрочек пока нет. Заведите их, и приложение покажет, сколько осталось погасить и когда последний платёж.')),
+        newCreditBtn(null), closed.length ? closedRow(closed, null) : null);
+      add(view, head, sectSeg(), empty);
+      return;
+    }
+    var left = 0, paid = 0, foreign = {}, cards = el('div', 'saved__goals');
+    act.forEach(function (k) {
+      var s = F.creditState(k, st.all, now);
+      left += F.goalByn(k, Math.max(0, s.left));
+      paid += s.monthByn;
+      if (k.u !== 0) { foreign[F.CURS[k.u]] = 1; }
+      cards.appendChild(creditCard(k, function (it) { openCreditView(it.id, null); }));
+    });
+    var hero = el('section', 'spent'), sumEl = el('p', sumClass(left)), node = { whole: el('span'), frac: el('i') }, legend = el('div', 'spent__legend spent__legend--wrap'), sheet = el('div', 'sheet'), codes = Object.keys(foreign);
+    sumEl.id = 'creditsSum';
+    setSum(node, left);
+    add(sumEl, node.whole, node.frac, el('abbr', '', 'BYN'));
+    var rate = !codes.length ? '' : codes.length > 1 ? 'валюта по' + F.NB + 'курсу приложения' : (codes[0] === 'USD' ? 'доллары' : 'евро') + ' по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[codes[0]]);
+    var paidEl = el('span', '', nb(paid ? F.inMonth(now) + ' внесено ' + F.fmt(paid) : F.inMonth(now) + ' платежей ещё не было'));
+    paidEl.id = 'creditsPaid';
+    add(legend, paidEl, rate ? el('span', '', rate) : null);
+    if (!rate) { legend.className = 'spent__legend'; } // одна подпись стоит слева, под суммой
+    add(hero, el('p', 'spent__label', 'Осталось погасить'), sumEl, legend);
+    add(sheet, cards, closed.length ? closedRow(closed, null) : null, newCreditBtn(null));
+    add(view, head, sectSeg(), hero, sheet);
+    fitSum(sumEl);
+  }
+  /** строка платежа на листе кредита: день, заметка, сумма в валюте кредита; нажатие открывает правку */
+  function creditRec(op, k) {
+    var li = el('li'), b = btn('op op--bare'), name = el('span', '', F.dayLabel(op.d));
+    b.setAttribute('data-id', op.id);
+    rowNote(name, [op.u !== F.CURS[k.u] ? F.fmtShort(op.a) + F.NB + op.u : '', op.n || ''].filter(Boolean).join(', '));
+    add(b, name, el('data', '', gm(F.goalAmount(k, op.a, op.u, op.r), k)), icon('right', 'share__go'));
+    b.addEventListener('click', function () { openEntry(op); });
+    li.appendChild(b);
+    return li;
+  }
+  /** лист кредита: сколько осталось крупно, шкала, срок и последний платёж, платежи; внизу «Внести», пока платёж месяца не внесён */
+  function openCreditView(id, back) {
+    var k = F.find(F.CREDITS, id);
+    if (!k) { return; }
+    var now = F.monthOf(F.today()), s = F.creditState(k, st.all, now), plan = F.creditPlan(k, s), closed = !!(k.f & F.CLOSED);
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--goalview'), top = el('div', 'goal__top'), edit = btn('capsule'), sum = el('p', 'goal__sum'), meter = el('div', 'goal__meter goal__meter--seg'), foot = null;
+      edit.id = 'creditEdit';
+      edit.appendChild(el('span', '', 'Изменить'));
+      edit.addEventListener('click', function () { openCreditEdit(k, function () { openCreditView(id, back); }, null); });
+      add(top, el('h2', 'pick__title', k.name), edit);
+      var text = gm(Math.max(0, s.left), k), comma = text.indexOf(','), num = el('span', 'goal__num');
+      sum.id = 'creditLeft';
+      if (k.u === 0 && comma < 0) { text += ',00'; comma = text.indexOf(','); }
+      add(num, el('span', '', comma >= 0 ? text.slice(0, comma) : text), el('i', '', comma >= 0 ? text.slice(comma) : ''));
+      add(sum, num, el('small', '', 'осталось из' + F.NB + gmCur(k.a, k)));
+      add(meter, segbar(k, s), el('span', '', 'погашено ' + creditPct(k, s) + '%'));
+      var line;
+      if (s.left <= 0) {
+        var count = k.p ? s.ops.length + Math.ceil(k.s / k.p) : 0; // погашенное до учёта — столько платежей, сколько в нём помещается
+        line = (count ? 'Всё погашено: ' + gmCur(k.a, k) + ' за ' + count + ' ' + F.plural(count, 'платёж', 'платежа', 'платежей') : 'Погашено полностью: ' + gmCur(k.a, k)) + '.';
+        if (s.left < 0) { line += ' Переплата ' + gmCur(-s.left, k) + '.'; }
+        line += ' Платежи остаются в «Истории» и в тратах своих месяцев.';
+      } else if (plan) {
+        line = 'Платёж ' + F.fmtShort(k.p) + (k.u === 0 ? '' : F.NB + F.CURS[k.u]) + ' в' + F.NB + 'месяц: ' + (plan.n === 1 ? 'остался один, в ' + plan.when : 'ещё ' + plan.n + ' ' + F.plural(plan.n, 'платёж', 'платежа', 'платежей') + ', последний в ' + plan.when + (plan.last !== k.p ? ', ' + gm(plan.last, k) : '')) + '.';
+      } else {
+        line = 'Платёж в месяц не указан: шкала идёт по внесённым платежам. Впишите его в «Изменить», и приложение посчитает, сколько платежей осталось.';
+      }
+      if (s.left > 0 && k.u !== 0) { line += ' Это ' + F.fmt(F.goalByn(k, s.left)) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[F.CURS[k.u]]) + '.'; }
+      var info = el('p', 'pick__info', nb(line));
+      info.id = 'creditInfo';
+      add(box, top, sum, meter, info);
+      if (s.left > 0 && s.month > 0 && !closed) { // платёж месяца внесён: вместо кнопки строка состояния, внести ещё можно серой кнопкой
+        var row = el('div', 'hintrow hintrow--state'), more = btn('capsule');
+        row.id = 'creditPaid';
+        more.id = 'creditMore';
+        more.appendChild(el('span', '', 'Внести ещё'));
+        more.addEventListener('click', function () { openEntry(null, payPreset(k)); });
+        add(row, el('p', '', F.monthLabel(now).split(F.NB)[0] + ' внесён'), more);
+        box.appendChild(row);
+      }
+      box.appendChild(el('p', 'lbl lbl--gap', 'Платежи'));
+      if (s.ops.length || k.s > 0) {
+        var ul = el('ul', 'rows rows--ops');
+        s.ops.slice(0, 40).forEach(function (op) { ul.appendChild(creditRec(op, k)); });
+        if (k.s > 0) {
+          var li = el('li'), start = el('div', 'op op--bare is-start');
+          add(start, el('span', '', 'Уже было погашено'), el('data', '', gm(k.s, k)), el('span'));
+          li.appendChild(start);
+          ul.appendChild(li);
+        }
+        box.appendChild(ul);
+      } else { box.appendChild(el('p', 'pick__info', nb('Платежей пока нет: нажмите «Внести».'))); }
+      if (closed || s.left <= 0) { // погашенный: убрать в «Погашенные» или вернуть оттуда
+        foot = el('footer', 'modal__dock');
+        var move = btn('btn btn--quiet', closed ? 'Вернуть в кредиты' : 'Убрать в погашенные');
+        move.id = 'creditMove';
+        move.addEventListener('click', function () {
+          saveCredits(function (list) { return list.map(function (x) { return x[0] === id ? [x[0], x[1], x[2], x[3], x[4], x[5], closed ? x[6] & ~F.CLOSED : (x[6] | F.CLOSED) & ~F.REMIND] : x; }); }, function (ok) {
+            if (!ok) { return; }
+            haptic('ok');
+            closeModal(0);
+            toast(closed ? 'Кредит снова в списке' : 'Кредит убран в погашенные');
+          });
+        });
+        foot.appendChild(move);
+      } else if (s.month <= 0) {
+        foot = el('footer', 'modal__dock');
+        var pay = btn('btn', k.p ? 'Внести ' + gmCur(k.p, k) : 'Внести платёж');
+        pay.id = 'creditPay';
+        pay.addEventListener('click', function () { openEntry(null, payPreset(k)); });
+        foot.appendChild(pay);
+      }
+      add(m, box, foot);
+    }, back);
+  }
+  /** список кредитов пишется одной записью; done(true) — сохранено и экран обновлён */
+  function saveCredits(fn, done) {
+    store.patchCredits(fn, function (err) {
+      if (err) { haptic('err'); toast(err === 'too long' ? 'Список кредитов не помещается: сократите названия.' : explain(err)); done(false); return; }
+      reload(false, function (e) { done(!e); });
+    });
+  }
+  /** погашенные кредиты листом: нажатие открывает кредит, там его можно вернуть */
+  function openClosed(back) {
+    var list = F.CREDITS.filter(function (k) { return k.f & F.CLOSED; });
+    if (!list.length) { return; }
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick');
+      add(box, el('h2', 'pick__title', 'Погашенные'), el('p', 'pick__info', nb('Платежи по ним остаются в «Истории» и в тратах своих месяцев.')));
+      list.forEach(function (k) { box.appendChild(creditCard(k, function (it) { openCreditView(it.id, function () { openClosed(back); }); })); });
+      m.appendChild(box);
+    }, back || null);
+  }
+  /** строка напоминания на главной: «Не внесено: Рассрочка 150,00», кнопка «Внести» и крестик, который убирает напоминание этого кредита */
+  function remindRow(k, sample) {
+    var row = el('div', 'remind' + (sample ? ' remind--sample' : '')), text = el('span'), sub = el('small');
+    row.setAttribute('data-credit', k.id);
+    add(sub, document.createTextNode('не внесено · '), el('b', '', gmCur(k.p, k)));
+    add(text, el('strong', '', k.name), sub);
+    row.appendChild(text);
+    if (sample) { // образец на листе вопроса: та же строка с кнопками, только не нажимается
+      var fake = el('span', 'capsule'), fx = el('span', 'remind__x');
+      fake.appendChild(el('span', '', 'Внести'));
+      fx.appendChild(icon('close'));
+      add(row, fake, fx);
+      row.setAttribute('aria-hidden', 'true');
+      return row;
+    }
+    var pay = btn('capsule remind__pay'), x = btn('remind__x');
+    pay.appendChild(el('span', '', 'Внести'));
+    pay.addEventListener('click', function () { openEntry(null, payPreset(k)); });
+    x.setAttribute('aria-label', 'Убрать напоминание');
+    x.appendChild(icon('close'));
+    x.addEventListener('click', function () {
+      setRemind(k.id, false, function (ok) {
+        if (!ok) { return; }
+        haptic('ok');
+        toast('Напоминание убрано\nВключить снова: «Изменить» в листе кредита', 'Вернуть', function () { setRemind(k.id, true, function () {}); });
+      });
+    });
+    add(row, pay, x);
+    return row;
+  }
+  function setRemind(id, on, done) {
+    saveCredits(function (list) { return list.map(function (x) { return x[0] === id ? [x[0], x[1], x[2], x[3], x[4], x[5], on ? x[6] | F.REMIND : x[6] & ~F.REMIND] : x; }); }, done);
+  }
+  /** один раз после нового кредита: показывать ли напоминание на главной. Выбор потом меняется в «Изменить» или крестиком на самой строке */
+  function askRemind(id, after) {
+    var k = F.find(F.CREDITS, id);
+    if (!k || !k.p) { after(); return; }
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat pick--ask'), foot = el('footer', 'modal__dock modal__dock--duo'), yes = btn('btn', 'Напоминать'), no = btn('btn btn--quiet', 'Не нужно'), busy = false;
+      var lead = el('p', 'pick__info pick__info--lead', nb('Пока платёж месяца не внесён, на главной под шкалой будет такая строка. Убрать её можно прямо там, крестиком.'));
+      lead.id = 'remindInfo';
+      add(box, el('h2', 'pick__title', 'Напоминать на главной?'), lead, remindRow(k, true));
+      yes.id = 'remindYes';
+      no.id = 'remindNo';
+      yes.addEventListener('click', function () {
+        if (busy) { return; }
+        busy = true;
+        setRemind(id, true, function (ok) { busy = false; if (ok) { haptic('ok'); after(); } });
+      });
+      no.addEventListener('click', function () { if (!busy) { haptic(); after(); } });
+      add(foot, yes, no);
+      add(m, box, foot);
+    }, null);
+  }
+  /** новый кредит или правка: название, сумма, валюта (у существующего не меняется), сколько было погашено до учёта, платёж в месяц (можно не писать) */
+  function openCreditEdit(k, back, done) {
+    var u = k ? k.u : 0, busy = false, nameEl = null, remind = k ? !!(k.f & F.REMIND) : false;
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat pick--newgoal'), foot = el('footer', 'modal__dock' + (k ? ' modal__dock--bar' : '')), go = btn('btn', 'Сохранить'), row = el('div', 'field-row'), cur = btn(k ? 'cur cur--fixed' : 'cur'), curText = el('span');
+      function field(id, value, ph, mode, max) {
+        var f = el('input', 'field');
+        f.id = id;
+        f.type = 'text';
+        f.maxLength = max;
+        f.placeholder = ph;
+        f.value = value;
+        if (mode) { f.setAttribute('inputmode', mode); }
+        f.setAttribute('enterkeyhint', 'done');
+        f.setAttribute('autocomplete', 'off');
+        f.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { f.blur(); } });
+        return f;
+      }
+      function label(text, id) { var l = el('label', 'lbl', text); l.setAttribute('for', id); return l; }
+      function plain(minor) { return minor ? F.fmt(minor).replace(/,00$/, '') : ''; }
+      function num(f) { var raw = f.value.replace(/\s/g, ''); return raw ? F.parseAmount(f.value) : 0; }
+      function bad(f) { var raw = f.value.replace(/\s/g, ''); return !!raw && !F.parseAmount(f.value) && !/^0+([.,]0+)?$/.test(raw); }
+      nameEl = field('creditName', k ? k.name : '', 'Например, рассрочка на телефон', '', 24);
+      var sum = field('creditSum', k ? plain(k.a) : '', 'например, 900', 'decimal', 14), start = field('creditStart', k ? plain(k.s) : '', '0', 'decimal', 14), pay = field('creditPayIn', k ? plain(k.p) : '', 'например, 150', 'decimal', 14);
+      var startLbl = label('', 'creditStart'), payLbl = label('', 'creditPayIn'), info = el('p', 'pick__info');
+      info.id = 'creditMsg';
+      // платежи, которые раньше записывали в категорию со значком карты («Кредиты»): их сумму можно вписать в «Уже было погашено» одним касанием
+      var old = 0, oldName = '';
+      if (!k) {
+        F.CATS.concat(F.OFF.e).forEach(function (c) { if (c.icon === 'card' && !oldName) { oldName = c.name; } });
+        Object.keys(st.all).forEach(function (month) { st.all[month].forEach(function (op) { var c = op.k === 'e' && !F.isCreditOp(op) ? F.dict('e', op.c) : null; if (c && c.icon === 'card' && c.name === oldName) { old += F.bynOf(op); } }); });
+      }
+      var hint = null;
+      if (old > 0) {
+        hint = el('div', 'hintrow');
+        var fill = btn('capsule');
+        fill.id = 'creditFill';
+        fill.appendChild(el('span', '', 'Вписать'));
+        fill.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+        fill.addEventListener('click', function () { start.value = plain(old); haptic(); texts(); });
+        add(hint, el('p', '', nb('В категории «' + oldName + '» уже записано ' + F.fmt(old))), fill);
+      }
+      function texts() {
+        var code = F.CURS[u], a = F.parseAmount(sum.value), s0 = num(start), p = num(pay), msg = [];
+        curText.textContent = code;
+        cur.setAttribute('aria-label', 'Валюта кредита: ' + code + (k ? '' : '. Нажмите, чтобы сменить'));
+        startLbl.textContent = 'Уже было погашено' + (code === 'BYN' ? '' : ', ' + code);
+        payLbl.textContent = 'Платёж в месяц' + (code === 'BYN' ? '' : ', ' + code) + ', можно не писать';
+        if (hint) { hint.hidden = code !== 'BYN'; }
+        if (a && p && a > s0) { var n = Math.ceil((a - s0) / p); msg.push((s0 ? 'Осталось ' : 'Это ') + n + ' ' + F.plural(n, 'платёж', 'платежа', 'платежей') + '.'); }
+        msg.push('Проценты приложение не считает: впишите остаток по выписке банка. Платёж записывается тратой и входит в «Потрачено».');
+        info.textContent = nb(msg.join(' '));
+      }
+      [sum, start, pay].forEach(function (f) { f.addEventListener('input', texts); });
+      cur.id = 'creditCur';
+      add(cur, curText, k ? null : icon('down'));
+      cur.addEventListener('click', function () { // валюта выбирается у нового кредита: у существующего в ней посчитаны платежи
+        if (k) { haptic('err'); toast('Валюту кредита сменить нельзя: в ней посчитаны платежи'); return; }
+        u = (u + 1) % F.CURS.length;
+        haptic();
+        texts();
+      });
+      add(row, sum, cur);
+      var sw = null;
+      if (k) { // напоминание на главной: включается и выключается здесь
+        sw = btn('switch-row');
+        sw.id = 'creditRemind';
+        sw.setAttribute('role', 'switch');
+        var knob = el('i', 'switch');
+        add(sw, el('span', '', 'Напоминать на главной'), knob);
+        var paint1 = function () { sw.setAttribute('aria-checked', String(remind)); };
+        sw.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+        sw.addEventListener('click', function () { remind = !remind; haptic(); paint1(); });
+        paint1();
+      }
+      go.id = 'creditSave';
+      go.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // нажатие не снимает фокус с поля: лист не прыгает под пальцем
+      go.addEventListener('click', function () {
+        if (busy) { return; }
+        var name = F.cleanNote(nameEl.value).slice(0, 24).replace(/ $/, ''), a = F.parseAmount(sum.value), s0 = num(start), p = num(pay);
+        var same = F.CREDITS.some(function (x) { return x.name.toLowerCase() === name.toLowerCase() && (!k || x.id !== k.id); });
+        var why = !name ? 'Введите название кредита.' : same ? 'Кредит с таким названием уже есть.' : !a ? 'Введите сумму кредита цифрами: например 900.' : bad(start) ? 'Введите, сколько уже погашено, цифрами.' : bad(pay) ? 'Введите платёж в месяц цифрами или оставьте пустым.' : '';
+        if (why) { info.textContent = why; haptic('err'); return; }
+        var id = k ? k.id : F.catId(idsOf(F.packCredits())), flags = k ? (remind ? k.f | F.REMIND : k.f & ~F.REMIND) : 0;
+        busy = true;
+        saveCredits(function (list) {
+          if (k) { return list.map(function (x) { return x[0] === id ? [id, name, a, u, s0, p, flags] : x; }); }
+          return list.concat([[id, name, a, u, s0, p, 0]]);
+        }, function (ok) {
+          if (!ok) { busy = false; return; }
+          haptic('ok');
+          var after = function () { if (done) { done(id); } else if (back) { back(); } else { closeModal(0); } };
+          if (!k && p) { askRemind(id, after); } else { after(); } // новый кредит с платежом: спросить про напоминание на главной
+        });
+      });
+      var del = null;
+      if (k) {
+        del = btn('link', 'Удалить кредит');
+        del.id = 'creditDel';
+        del.addEventListener('click', function () {
+          if (busy) { return; }
+          ask('Удалить кредит «' + k.name + '»? Его платежи останутся в тратах своих месяцев.', function (yes) {
+            if (!yes) { return; }
+            busy = true;
+            saveCredits(function (list) { return list.filter(function (x) { return x[0] !== k.id; }); }, function (ok) {
+              if (!ok) { busy = false; return; }
+              haptic('ok');
+              closeModal(0);
+              toast('Кредит удалён');
+            });
+          });
+        });
+      }
+      texts();
+      add(box, el('h2', 'pick__title', k ? 'Изменить кредит' : 'Новый кредит'), label('Название', 'creditName'), nameEl, label('Сумма кредита', 'creditSum'), row, startLbl, start, hint, payLbl, pay, info, sw, del);
+      foot.appendChild(go);
+      add(m, box, foot);
+    }, back);
+    if (!k && nameEl) { nameEl.focus(); }
   }
   /** лист цели: сколько накоплено крупно, процент у шкалы, прогноз по среднему темпу, записи; внизу «Отложить» и «Снять» */
   function openGoalView(id, back) {
@@ -782,6 +1206,7 @@
       st.all = v.all;
       st.cfg = v.cfg || {};
       F.useCfg(st.cfg); // свои категории, если заданы: до подсчёта сводок
+      F.useCredits(v.credits); // кредиты — до сводок: по ним строки «Куда ушло» получают названия
       st.prev = F.summarize(v.all[F.prevMonth(st.month)] || []);
       st.balance = F.balance(v.all);
       st.sum = F.summarize(v.ops);
@@ -919,13 +1344,13 @@
   }
 
   // ---------- лист добавления и правки ----------
-  /** preset — с чего открыть новый лист: { kind: 's' отложить | 't' снять, cat, digits, cur, date, note } */
+  /** preset — с чего открыть новый лист: { kind: 's' отложить | 't' снять | 'p' платёж по кредиту, cat, digits, cur, date, note } */
   function openEntry(op, preset) {
     if (!st.loaded || st.error) { return; }
     var pre = preset || {}, goalOp = !!op && F.isGoalOp(op);
     entry = {
       edit: op || null,
-      kind: op ? (goalOp ? (op.k === 'e' ? 's' : 't') : op.k) : pre.kind || 'e', // 'e' трата, 'i' доход, 's' отложить на цель, 't' снять с цели
+      kind: op ? (goalOp ? (op.k === 'e' ? 's' : 't') : op.k) : pre.kind || 'e', // 'e' трата, 'i' доход, 's' отложить на цель, 't' снять с цели, 'p' платёж (хранится тратой)
       digits: op ? F.fmt(op.a).replace(/\s/g, '').replace(/,00$/, '').replace(/(,\d)0$/, '$1') : pre.digits || '',
       cur: op ? op.u : pre.cur || 'BYN',
       cat: op ? op.c : pre.cat || '',
@@ -938,7 +1363,7 @@
       var screen = el('div', 'screen');
 
       // вид записи: у новой — «Трата / Доход / Отложить»; «Снять» и правка записи цели — отдельный режим с заголовком вместо переключателя
-      var mode = entry.kind === 't' ? (op ? 'Снято из накоплений' : 'Снять из накоплений') : goalOp ? 'Отложено на цель' : '';
+      var mode = entry.kind === 't' ? (op ? 'Снято из накоплений' : 'Снять из накоплений') : goalOp ? 'Отложено на цель' : entry.kind === 'p' ? 'Платёж' : '';
       var seg = mode ? el('p', 'entry__mode', nb(mode)) : el('div', 'seg');
       if (mode) { seg.id = 'entryMode'; } else { seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Что добавляем'); }
       entry.segBtns = (mode ? [] : [['e', 'Трата'], ['i', 'Доход']].concat(op ? [] : [['s', 'Отложить']])).map(function (k) {
@@ -1067,9 +1492,11 @@
     return pages;
   }
   function paintChips() {
-    var goalKind = entry.kind === 's' || entry.kind === 't';
-    var list = entry.kind === 'e' ? F.CATS : entry.kind === 'i' ? F.SRCS : F.GOALS.map(function (g) { return { id: 'g_' + g.id, name: g.name, wide: false, full: g.name.length > 13 }; }), cols = entry.kind === 'e' ? 3 : 2; // длинное название цели занимает весь ряд
+    var goalKind = entry.kind === 's' || entry.kind === 't', pay = entry.kind === 'p';
+    var credits = activeCredits().map(function (k) { return { id: 'k_' + k.id, name: k.name, wide: k.name.length > 11, full: k.name.length > 18 }; }); // в платеже метки по половине ряда, во весь ряд только длинные
+    var list = entry.kind === 'e' ? F.CATS.concat(credits) : entry.kind === 'i' ? F.SRCS : pay ? credits : F.GOALS.map(function (g) { return { id: 'g_' + g.id, name: g.name, wide: false, full: g.name.length > 13 }; }), cols = entry.kind === 'e' ? 3 : 2; // длинное название занимает весь ряд; кредиты стоят и в конце категорий трат
     if (entry.kind === 's' && !entry.edit) { list = list.concat([{ id: '+', name: 'Новая цель', fresh: true }]); } // снять можно только из цели, которая уже есть
+    if (pay) { list = list.concat([{ id: '+', name: 'Новый кредит', fresh: true, credit: true }]); }
     var pages = chipPages(list, cols);
     if (entry.page === undefined) { // при правке открыть страницу, на которой стоит категория записи
       entry.page = 0;
@@ -1077,17 +1504,27 @@
     }
     if (entry.page >= pages.length) { entry.page = 0; }
     clear(entry.chips);
-    entry.chips.className = 'chips' + (cols === 2 ? ' chips--two' : '');
-    entry.chips.setAttribute('aria-label', goalKind ? 'Цель' : entry.kind === 'e' ? 'Категория' : 'Источник');
+    entry.chips.className = 'chips' + (cols === 2 ? ' chips--two' : '') + (entry.segBtns.length ? '' : ' chips--fit'); // без переключателя вида высоту на три ряда держать незачем: сумма встаёт по центру, без дыры над метками
+    entry.chips.setAttribute('aria-label', goalKind ? 'Цель' : pay ? 'Кредит' : entry.kind === 'e' ? 'Категория' : 'Источник');
     entry.chipBtns = pages[entry.page].map(function (c) {
       if (c.fresh) { // «Новая цель» прямо с листа: набранная сумма не теряется
         var nl = el('li', 'chips__new'), nbn = btn('');
-        nbn.id = 'chipNewGoal';
+        nbn.id = c.credit ? 'chipNewCredit' : 'chipNewGoal';
         add(nbn, icon('plus'), document.createTextNode(c.name));
         nbn.addEventListener('click', function () {
           if (!entry || entry.busy) { return; }
+          var keep = { kind: entry.kind, digits: entry.digits, cur: entry.cur, date: entry.date, note: entry.note };
+          if (c.credit) { // новый кредит прямо с листа платежа: набранная сумма не теряется
+            if (F.CREDITS.length >= F.CREDITS_MAX) { haptic('err'); toast('Кредитов уже двенадцать. Удалите погашенный.'); return; }
+            openCreditEdit(null, function () { openEntry(null, keep); }, function (id) {
+              var k = F.find(F.CREDITS, id);
+              keep.cat = 'k_' + id;
+              if (!keep.digits && k && k.p) { keep.digits = digitsOf(k.p); keep.cur = F.CURS[k.u]; }
+              openEntry(null, keep);
+            });
+            return;
+          }
           if (F.GOALS.length >= F.GOALS_MAX) { haptic('err'); toast('Целей уже двенадцать. Удалите ту, что закрыта.'); return; }
-          var keep = { kind: 's', digits: entry.digits, cur: entry.cur, date: entry.date, note: entry.note };
           openGoalEdit(null, function () { openEntry(null, keep); }, function (id) { keep.cat = 'g_' + id; openEntry(null, keep); });
         });
         nl.appendChild(nbn);
@@ -1099,6 +1536,8 @@
       b.addEventListener('click', function () {
         if (!entry || entry.busy) { return; }
         entry.cat = entry.cat === c.id ? '' : c.id;
+        var k = F.creditOf(entry.cat);
+        if (k && k.p && !entry.digits && !entry.edit) { entry.digits = digitsOf(k.p); entry.cur = F.CURS[k.u]; } // сумма ещё не набрана: подставляется платёж кредита
         haptic();
         paintEntry();
       });
@@ -1160,6 +1599,7 @@
     e.hint2.hidden = true;
     e.over = '';
     if (e.kind === 's' || e.kind === 't') { goalHints(e, minor, byn); }
+    else if (e.kind !== 'i' && F.creditOf(e.cat)) { creditHints(e, minor, byn); }
     else if (e.cur !== 'BYN') {
       e.hint.textContent = minor ? 'это ' + F.fmt(byn) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[e.cur]) : 'курс ' + F.fmtRate(F.RATES[e.cur]) + F.NB + 'BYN за' + F.NB + '1' + F.NB + e.cur;
     } else if (!e.edit && F.monthOf(e.date) === st.month) { // сколько останется после этой записи
@@ -1173,11 +1613,11 @@
     var label, off = true;
     if (e.busy) { label = 'Сохраняем'; }
     else if (!minor) { label = 'Введите сумму'; }
-    else if (!e.cat) { label = e.kind === 'e' ? 'Выберите категорию' : e.kind === 'i' ? 'Выберите источник' : 'Выберите цель'; }
+    else if (!e.cat) { label = e.kind === 'e' ? 'Выберите категорию' : e.kind === 'i' ? 'Выберите источник' : e.kind === 'p' ? 'Выберите кредит' : 'Выберите цель'; }
     else if (e.over) { label = e.over; } // снять больше, чем есть в цели, нельзя: кнопка называет, сколько там
     else {
       var money = e.cur === 'BYN' ? F.fmt(minor) : F.fmtShort(minor) + F.NB + e.cur;
-      label = e.edit ? 'Сохранить' : e.kind === 'e' ? 'Добавить трату' : e.kind === 'i' ? 'Добавить доход' : (e.kind === 's' ? 'Отложить ' : 'Снять ') + money;
+      label = e.edit ? 'Сохранить' : e.kind === 'e' ? 'Добавить трату' : e.kind === 'i' ? 'Добавить доход' : (e.kind === 's' ? 'Отложить ' : e.kind === 'p' ? 'Внести ' : 'Снять ') + money;
       off = false;
     }
     e.go.textContent = label;
@@ -1207,6 +1647,23 @@
       e.hint2.hidden = false;
     }
   }
+  /** под суммой платежа: что станет с долгом и что останется на траты месяца */
+  function creditHints(e, minor, byn) {
+    var k = F.creditOf(e.cat), was = F.creditState(k, st.all, st.month).left, delta = F.goalAmount(k, minor, e.cur), cur = F.CURS[k.u], tail = k.u === 0 ? '' : F.NB + cur;
+    if (e.edit && e.edit.c === e.cat) { was += F.goalAmount(k, e.edit.a, e.edit.u, e.edit.r); } // правка: считаем так, будто прежнего платежа нет
+    var will = was - delta;
+    if (!minor) { add(e.hint, document.createTextNode(was > 0 ? 'Долг ' + gm(was, k) + tail : 'Кредит погашен')); }
+    else if (e.cur === cur) { add(e.hint, document.createTextNode('Долг ' + gm(Math.max(0, was), k) + ', ' + (will < 0 ? 'переплата ' : 'станет ')), el('b', '', gm(Math.abs(will), k))); }
+    else { // долг в одной валюте, платят в другой: пересчёт виден до сохранения
+      var one = e.cur === 'BYN' ? cur : cur === 'BYN' ? e.cur : '';
+      add(e.hint, el('b', '', gm(delta, k) + F.NB + cur), document.createTextNode(nb(one ? ' по курсу ' + F.fmtRate(F.RATES[one]) : ' по курсам приложения') + ', долг станет ' + gm(Math.max(0, will), k)));
+    }
+    if (minor && !e.edit && F.monthOf(e.date) === st.month && window.innerHeight >= 640) { // на низком экране остаётся главное: что станет с долгом
+      var left = st.sum.left + st.carry - byn;
+      add(e.hint2, document.createTextNode(nb(left < 0 ? 'Перерасход месяца ' : 'На траты ' + F.inMonth(st.month) + ' останется ')), el('b', '', F.fmt(Math.abs(left))));
+      e.hint2.hidden = false;
+    }
+  }
   function afterWrite(err, date, said) {
     if (!entry) { return; }
     if (err) { entry.busy = false; paintEntry(); haptic('err'); toast(explain(err)); return; }
@@ -1231,7 +1688,7 @@
   function addOp(op) {
     store.add(op, function (err) {
       afterWrite(err, op.d, function () { // случайную запись можно убрать сразу, не заходя в «Историю»
-        toast(F.isGoalOp(op) ? (op.k === 'e' ? 'Отложено на цель' : 'Снято из накоплений') : op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), undone); });
+        toast(F.isGoalOp(op) ? (op.k === 'e' ? 'Отложено на цель' : 'Снято из накоплений') : F.isCreditOp(op) ? 'Платёж внесён' : op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), undone); });
       });
     });
   }
