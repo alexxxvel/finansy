@@ -239,6 +239,125 @@
     return { n: n, when: MONTHS_PRE[idx % 12] + (year === +now.slice(0, 4) ? '' : NB + year), last: state.left - (n - 1) * k.p, total: total };
   }
 
+  // ---------- аналитика: период, сравнение с тем же отрезком прошлого, разбор ----------
+  var WEEKDAYS_SHORT = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+  function lastDay(month) { var p = month.split('-'); return new Date(+p[0], +p[1], 0).getDate(); }
+  function dow(date) { var p = date.split('-'); return (new Date(+p[0], +p[1] - 1, +p[2]).getDay() + 6) % 7; } // 0 — понедельник
+  function daysBetween(a, b) { var x = a.split('-'), y = b.split('-'); return Math.round((Date.UTC(+y[0], +y[1] - 1, +y[2]) - Date.UTC(+x[0], +x[1] - 1, +x[2])) / 864e5); }
+  /** тот же день другого месяца или года; 31-го в коротком месяце — его последний день */
+  function sameDay(year, month, day) { return year + '-' + pad(month) + '-' + pad(Math.min(day, new Date(year, month, 0).getDate())); }
+  /** Период аналитики. kind 'week' | 'month' | 'year', anchor — любая дата внутри него, now — сегодня (для теста).
+      from–to — весь период, end — его прошедшая часть (до сегодня), prevFrom–prevEnd — тот же отрезок прошлого периода:
+      неделя с понедельника по тот же день недели, месяц с 1-го по то же число, год с 1 января по тот же день */
+  function statsPeriod(kind, anchor, now) {
+    now = now || today();
+    var p = anchor.split('-'), y = +p[0], m = +p[1], from, to, prevFrom, prevEnd, label;
+    if (kind === 'week') {
+      from = shiftDay(anchor, -dow(anchor));
+      to = shiftDay(from, 6);
+    } else if (kind === 'year') {
+      from = y + '-01-01';
+      to = y + '-12-31';
+    } else {
+      from = y + '-' + pad(m) + '-01';
+      to = y + '-' + pad(m) + '-' + pad(lastDay(y + '-' + pad(m)));
+    }
+    var end = to < now ? to : now, e = end.split('-');
+    if (kind === 'week') { prevFrom = shiftDay(from, -7); prevEnd = shiftDay(end, -7); }
+    else if (kind === 'year') { prevFrom = (y - 1) + '-01-01'; prevEnd = sameDay(y - 1, +e[1], +e[2]); }
+    else { var pm = prevMonth(y + '-' + pad(m)).split('-'); prevFrom = pm[0] + '-' + pm[1] + '-01'; prevEnd = sameDay(+pm[0], +pm[1], +e[2]); }
+    if (kind === 'week') {
+      var a = from.split('-'), b = to.split('-');
+      label = (+a[2]) + (a[1] === b[1] ? '' : NB + MONTHS_GEN[+a[1] - 1]) + '–' + (+b[2]) + NB + MONTHS_GEN[+b[1] - 1] + (b[0] === now.slice(0, 4) ? '' : NB + b[0]);
+    } else if (kind === 'year') { label = String(y); }
+    else { label = monthLabel(y + '-' + pad(m)); }
+    return { kind: kind, from: from, to: to, end: end, prevFrom: prevFrom, prevEnd: prevEnd, label: label, current: to >= now, future: from > now };
+  }
+  /** соседний период: by −1 назад, +1 вперёд */
+  function periodShift(kind, anchor, by) {
+    var p = anchor.split('-');
+    if (kind === 'week') { return shiftDay(anchor, 7 * by); }
+    if (kind === 'year') { return (+p[0] + by) + '-' + p[1] + '-01'; }
+    var d = new Date(+p[0], +p[1] - 1 + by, 1);
+    return iso(d);
+  }
+  /** траты и доходы в границах дат (включительно). Записи целей не траты и не доходы; платёж по кредиту — трата */
+  function inRange(all, from, to) {
+    var out = [];
+    Object.keys(all || {}).forEach(function (m) {
+      if (m < from.slice(0, 7) || m > to.slice(0, 7)) { return; }
+      all[m].forEach(function (op) { if (op.d >= from && op.d <= to && !isGoalOp(op)) { out.push(op); } });
+    });
+    return out;
+  }
+  /** Сводка отрезка: траты, доходы, число трат, по дням, по категориям, крупнейшая трата, заметки (чаще всего) */
+  function rangeStats(all, from, to) {
+    var ops = inRange(all, from, to), s = { spent: 0, income: 0, count: 0, days: {}, cats: {}, biggest: null, notes: {}, months: {} };
+    ops.forEach(function (op) {
+      var b = bynOf(op), m = op.d.slice(0, 7), mo = s.months[m] || (s.months[m] = { spent: 0, income: 0 });
+      if (op.k === 'i') { s.income += b; mo.income += b; return; }
+      s.spent += b;
+      mo.spent += b;
+      s.count++;
+      s.days[op.d] = (s.days[op.d] || 0) + b;
+      s.cats[op.c] = (s.cats[op.c] || 0) + b;
+      if (!s.biggest || b > bynOf(s.biggest)) { s.biggest = op; }
+      if (op.n) {
+        var key = op.n.toLowerCase(), it = s.notes[key] || (s.notes[key] = { n: op.n, count: 0, sum: 0, cats: {} });
+        it.count++;
+        it.sum += b;
+        it.cats[op.c] = (it.cats[op.c] || 0) + 1;
+      }
+    });
+    return s;
+  }
+  /** категории отрезка строками, крупные сверху: { id, name, icon, sum } */
+  function catRows(map) {
+    return Object.keys(map).map(function (id) { var c = dict('e', id); return { id: id, name: c.name, icon: c.icon, sum: map[id] }; }).sort(function (a, b) { return b.sum - a.sum; });
+  }
+  /** изменения к тому же отрезку прошлого: только категории, где разница есть; больше — сверху */
+  function catChanges(now, prev, limit) {
+    var ids = {}, out = [];
+    Object.keys(now).concat(Object.keys(prev)).forEach(function (id) { ids[id] = 1; });
+    Object.keys(ids).forEach(function (id) {
+      var d = (now[id] || 0) - (prev[id] || 0);
+      if (d) { out.push({ id: id, name: dict('e', id).name, d: d, fresh: !prev[id], gone: !now[id] }); }
+    });
+    out.sort(function (a, b) { return Math.abs(b.d) - Math.abs(a.d); });
+    return out.slice(0, limit || 6).sort(function (a, b) { return b.d - a.d; });
+  }
+  /** заметки отрезка: чаще всего сверху, при равенстве — дороже. cat — категория, в которой эта заметка встречается чаще */
+  function topNotes(notes, limit, onlyCat) {
+    return Object.keys(notes).map(function (k) {
+      var it = notes[k], best = '';
+      Object.keys(it.cats).forEach(function (c) { if (!best || it.cats[c] > it.cats[best]) { best = c; } });
+      return { key: k, n: it.n, count: it.count, sum: it.sum, cat: best };
+    }).filter(function (it) { return !onlyCat || it.cat === onlyCat; }).sort(function (a, b) { return b.count - a.count || b.sum - a.sum; }).slice(0, limit || 5);
+  }
+  /** средняя трата по дням недели за всё время записей: сумма по дню недели делится на число таких дней от первой записи до сегодня */
+  function weekdayAvg(all, now) {
+    now = now || today();
+    var first = '', sums = [0, 0, 0, 0, 0, 0, 0], n = [0, 0, 0, 0, 0, 0, 0];
+    Object.keys(all || {}).forEach(function (m) { all[m].forEach(function (op) { if (!isGoalOp(op) && op.d <= now && (!first || op.d < first)) { first = op.d; } }); });
+    if (!first) { return null; }
+    inRange(all, first, now).forEach(function (op) { if (op.k === 'e') { sums[dow(op.d)] += bynOf(op); } });
+    var span = daysBetween(first, now) + 1;
+    for (var i = 0; i < span; i++) { n[(dow(first) + i) % 7]++; }
+    return { avg: sums.map(function (v, i) { return n[i] ? Math.round(v / n[i]) : 0; }), weeks: Math.floor(span / 7), first: first };
+  }
+  /** накопленная сумма по дням отрезка: [сумма к 1-му дню, ко 2-му, …] */
+  function cumulative(days, from, count) {
+    var out = [], acc = 0;
+    for (var i = 0; i < count; i++) { acc += days[shiftDay(from, i)] || 0; out.push(acc); }
+    return out;
+  }
+  /** первая дата с записями (без записей целей) */
+  function firstDate(all) {
+    var first = '';
+    Object.keys(all || {}).forEach(function (m) { all[m].forEach(function (op) { if (!isGoalOp(op) && (!first || op.d < first)) { first = op.d; } }); });
+    return first;
+  }
+
   /** применить настройки: свои категории и источники, если они заданы, иначе встроенные; скрытые — отдельными списками; цели */
   function useCfg(cfg) {
     var goals = cfg ? validGoals(cfg.goals) : null;
@@ -612,6 +731,8 @@
     validList: validList, useCfg: useCfg, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId,
     GOALS: GOALS, GOALS_MAX: GOALS_MAX, validGoals: validGoals, packGoals: packGoals, isGoalOp: isGoalOp, goalOf: goalOf, goalAmount: goalAmount, goalByn: goalByn, goalState: goalState, goalForecast: goalForecast,
     parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX,
+    WEEKDAYS_SHORT: WEEKDAYS_SHORT, MONTHS_GEN: MONTHS_GEN, dow: dow, daysBetween: daysBetween, lastDay: lastDay, statsPeriod: statsPeriod, periodShift: periodShift, inRange: inRange, rangeStats: rangeStats,
+    catRows: catRows, catChanges: catChanges, topNotes: topNotes, weekdayAvg: weekdayAvg, cumulative: cumulative, firstDate: firstDate,
     CREDITS: CREDITS, CREDITS_MAX: CREDITS_MAX, REMIND: REMIND, CLOSED: CLOSED, validCredits: validCredits, useCredits: useCredits, packCredits: packCredits,
     isCreditOp: isCreditOp, creditOf: creditOf, creditState: creditState, creditDue: creditDue, creditPlan: creditPlan
   };

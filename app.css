@@ -81,7 +81,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .spent__mark:active { opacity: .6; }
 .spent__day { margin-top: 4px; text-align: right; font: 500 15px/1.3 var(--font); color: var(--muted); white-space: nowrap; }
 
-.sheet { flex: 1 0 auto; margin: 0 -20px; padding: 18px 20px calc(104px + var(--safe-b)); background: var(--surface); border-radius: 28px 28px 0 0; }
+.sheet { flex: 1 0 auto; margin: 0 -20px; padding: 18px 20px calc(136px + var(--safe-b)); background: var(--surface); border-radius: 28px 28px 0 0; }
 .sheet--full { padding-top: 14px; }
 .cats--in { margin-top: 10px; }
 .shares, .plain { margin-top: 4px; }
@@ -142,7 +142,14 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .btn--plus svg { width: 24px; height: 24px; }
 .tabs button { min-height: 48px; border-radius: 999px; font: 600 15px/1 var(--font); color: var(--muted); transition: color 140ms var(--ease-out), background-color 140ms var(--ease-out); }
 .tabs button[aria-current="page"] { color: var(--ink); background: var(--surface); box-shadow: 0 1px 2px rgba(60,60,80,.1), 0 2px 6px rgba(60,60,80,.08); }
-.btn--add { width: auto; padding: 0 22px; border-radius: 999px; box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 16px 32px -16px rgba(30,30,60,.4); }
+/* низ с 14.10.2026 (решение разработчика): широкая «Добавить» с подписью над капсулой из четырёх вкладок, один край 16 px */
+.dock--stack { left: 16px; right: 16px; flex-direction: column; align-items: stretch; gap: 6px; }
+.btn--add { min-height: 48px; border-radius: 999px; box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 16px 32px -16px rgba(30,30,60,.4); }
+.btn--add svg { width: 22px; height: 22px; }
+.tabs--4 { grid-template-columns: repeat(4, auto); justify-content: space-between; padding: 2px; }
+.tabs--4 button { min-height: 44px; padding: 0 12px; letter-spacing: -.01em; }
+/* под низом сплошной фон, сверху растушёвка 24 px: строки не видны в щели между «Добавить» и вкладками и не режутся краем кнопки */
+.stage::after { height: calc(max(18px, var(--safe-b)) + 126px); background: linear-gradient(to top, var(--surface) calc(100% - 24px), rgba(255,255,255,0)); }
 
 /* ---------- листы ---------- */
 .scrim { display: none; position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 5; background: rgba(29,29,31,.36); opacity: 0; }
@@ -416,6 +423,105 @@ h1.month { margin: 0; cursor: default; }
 .pick--newgoal .field-row .field { margin-bottom: 0; }
 .pick--newgoal .pick__info { margin: 0; }
 .pick--newgoal .pick__info--lead { margin: -6px 0 16px; }
+/* ---------- аналитика ---------- */
+.period { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; margin: -8px -12px -10px; }
+.period p { text-align: center; font: 600 17px/1.25 var(--font); letter-spacing: -.015em; }
+.period__go { display: grid; place-items: center; width: 44px; height: 44px; color: var(--ink); }
+.period__go svg { width: 20px; height: 20px; }
+.period__go.is-off { color: #C7C7CC; }
+.spent--sum .spent__day { margin-top: 8px; text-align: left; white-space: normal; }
+.viz { margin-top: 28px; }
+.viz:first-child { margin-top: 0; }
+.viz .cats__head { margin-bottom: 12px; }
+/* как шли траты: накопленная сумма */
+.pace { display: block; width: 100%; height: auto; overflow: visible; }
+.pace__grid line { stroke: var(--line); stroke-width: 1; }
+.pace__grid text { font: 500 15px/1 var(--font); fill: var(--muted); stroke: none; }
+.pace__grid .pace__base { stroke: rgba(60,60,67,.3); }
+.pace__prev, .pace__now { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.pace__prev { stroke: #C7C7CC; }
+.pace__now { stroke: var(--ink); }
+.pace__today { stroke: var(--line); stroke-width: 1; }
+.pace__dot { fill: var(--ink); stroke: var(--surface); stroke-width: 2; }
+.pace__dot--prev { fill: #C7C7CC; }
+.pace__ticks { display: flex; justify-content: space-between; margin-top: 6px; font: 500 15px/1 var(--font); color: var(--muted); }
+.pace__legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; font: 500 15px/1.3 var(--font); color: var(--muted); }
+.pace__legend span { display: inline-flex; align-items: center; gap: 8px; }
+.pace__legend b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.key { flex: none; display: inline-block; width: 10px; height: 10px; border-radius: 999px; }
+.key--now { background: var(--ink); }
+.key--prev, .key--in { background: #C7C7CC; }
+/* коротко и легенда: строки с суммой справа */
+.legend li { border-bottom: 1px solid var(--line); }
+.legend li:last-child { border-bottom: 0; }
+.legend__row, .legend--facts li { display: grid; grid-template-columns: 10px 1fr auto auto; align-items: center; column-gap: 10px; width: 100%; min-height: 44px; text-align: left; }
+.legend__row:active { opacity: .6; }
+.legend--facts li { grid-template-columns: 1fr auto; }
+.legend span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 17px/1.25 var(--font); letter-spacing: -.015em; }
+.legend small { font: 500 15px/1 var(--font); color: var(--muted); font-variant-numeric: tabular-nums; }
+.legend data { min-width: 76px; text-align: right; font: 600 17px/1.25 var(--font); letter-spacing: -.015em; font-variant-numeric: tabular-nums; }
+.legend--facts data { min-width: 0; }
+.legend--facts data small { margin-left: 6px; }
+/* кольцо долей */
+.donut { position: relative; width: 200px; margin: 4px auto 0; }
+.donut svg { display: block; width: 100%; height: auto; }
+.donut circle { stroke-linecap: butt; cursor: pointer; }
+.donut__mid { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
+.donut__mid b { font: 700 34px/1.05 var(--font); letter-spacing: -.035em; word-spacing: .2em; font-variation-settings: "opsz" 32; }
+.donut__mid span { font: 500 15px/1.3 var(--font); color: var(--muted); }
+.donut + .legend { margin-top: 16px; }
+/* что изменилось: столбики от середины */
+.chg li { display: grid; grid-template-columns: 96px 1fr 104px; align-items: center; column-gap: 10px; min-height: 44px; }
+.chg span { display: grid; min-width: 0; font: 500 17px/1.25 var(--font); letter-spacing: -.015em; }
+.chg span small { font: 500 15px/1.2 var(--font); color: var(--muted); }
+.chg__track { position: relative; height: 16px; background: linear-gradient(rgba(60,60,67,.3), rgba(60,60,67,.3)) 50% 0 / 1px 100% no-repeat; }
+.chg__track i { position: absolute; top: 2px; bottom: 2px; }
+.chg .is-up .chg__track i { left: 50%; border-radius: 0 4px 4px 0; background: var(--ink); }
+.chg .is-down .chg__track i { right: 50%; border-radius: 4px 0 0 4px; background: #C7C7CC; }
+.chg data { text-align: right; font: 600 15px/1.2 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.chg .is-down data { color: var(--muted); }
+/* календарь: круги как в календаре iOS, оттенок графита по сумме дня */
+.cal__head, .cal__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal__head span { padding-bottom: 6px; text-align: center; font: 500 15px/1 var(--font); color: var(--muted); }
+.cal__grid .cal__d { justify-self: center; width: 44px; height: 44px; }
+.cal__d { display: grid; place-items: center; border-radius: 999px; background: #F2F2F7; }
+.cal__d b { font: 500 15px/1 var(--font); color: var(--ink); font-variant-numeric: tabular-nums; }
+.cal__d.lvl-1 { background: #E5E5EA; }
+.cal__d.lvl-2 { background: #C7C7CC; }
+.cal__d.lvl-3 { background: #6E6E73; }
+.cal__d.lvl-4 { background: #3A3A3C; }
+.cal__d.lvl-3 b, .cal__d.lvl-4 b { color: #FFFFFF; }
+.cal__d.is-future { background: transparent; }
+.cal__d.is-future b { font-weight: 400; color: var(--muted); }
+.cal__d.is-today { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+.cal__d:disabled { opacity: 1; }
+.cal__scale { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 10px; font: 500 15px/1 var(--font); color: var(--muted); }
+.cal__scale .cal__d { width: 18px; height: 18px; }
+.cal__scale span { margin: 0 4px; }
+/* столбики по дням: выделен самый большой, над ним сумма */
+.bars { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; height: 112px; align-items: end; border-bottom: 1px solid rgba(60,60,67,.3); }
+.bars__col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; }
+.bars__col b { display: block; width: 100%; max-width: 24px; border-radius: 4px 4px 0 0; background: #C7C7CC; }
+.bars__col.is-on b { background: var(--ink); }
+.bars__col em { font: 600 15px/1 var(--font); font-style: normal; color: var(--ink); font-variant-numeric: tabular-nums; }
+.bars__col:disabled { opacity: 1; }
+.bars__ticks { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px; margin-top: 6px; font: 500 15px/1 var(--font); color: var(--muted); }
+.bars__ticks span { text-align: center; white-space: nowrap; }
+.bars__ticks--pairs { gap: 10px; margin-right: 52px; }
+/* доходы и траты: пары столбиков, линия сетки с подписью в правом поле */
+.pairs { position: relative; display: grid; gap: 10px; align-items: end; height: 130px; margin-right: 52px; border-bottom: 1px solid rgba(60,60,67,.3); }
+.pair { display: flex; align-items: flex-end; justify-content: center; gap: 2px; height: 100%; }
+.pair b { display: block; width: 50%; max-width: 16px; border-radius: 4px 4px 0 0; }
+.pair__in { background: #C7C7CC; }
+.pair__out { background: var(--ink); }
+.pairs__grid { position: absolute; left: 0; right: -52px; height: 0; }
+.pairs__grid::before { content: ""; position: absolute; left: 0; right: 52px; top: 0; border-top: 1px solid var(--line); }
+.pairs__grid b { position: absolute; right: 0; bottom: 2px; font: 500 15px/1 var(--font); color: var(--muted); }
+/* частые заметки: две строки */
+.op--two { min-height: 56px; }
+.op--two span { display: grid; gap: 2px; white-space: normal; }
+.op--two span small { margin-left: 0; }
+.op.is-plain span { color: var(--muted); }
 /* ---------- кредиты и рассрочки ---------- */
 /* переключатель «Цели / Кредиты» под заголовком вкладки */
 .tabseg { margin: 4px 0 6px; }
@@ -469,7 +575,7 @@ h1.month { margin: 0; cursor: default; }
 .fail h2 { font: 700 28px/1.15 var(--font); letter-spacing: -.03em; color: var(--ink); }
 .fail p { margin: 10px 0 20px; color: var(--muted); }
 
-.toast { position: absolute; left: 20px; right: 20px; bottom: calc(96px + var(--safe-b)); z-index: 8; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 4px 18px; border-radius: 18px; background: var(--ink); color: #FFFFFF; font: 500 15px/1.35 var(--font); opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
+.toast { position: absolute; left: 20px; right: 20px; bottom: calc(132px + var(--safe-b)); z-index: 8; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 4px 18px; border-radius: 18px; background: var(--ink); color: #FFFFFF; font: 500 15px/1.35 var(--font); opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out); }
 .toast.is-on { opacity: 1; transform: none; }
 .toast--act.is-on { pointer-events: auto; }
 .toast--dock { bottom: calc(74px + max(20px, var(--safe-b))); }
@@ -495,3 +601,15 @@ h1.month { margin: 0; cursor: default; }
 /* самый низкий экран (568 px): ужимаются промежутки, клавиши и метки остаются 40 px */
 @media (max-height: 580px) { :root { --chip-gap: 4px; --chip-top: 0px; } .grab { height: 14px; } .modal__dock { padding-top: 6px; } .strip { margin-top: 0; } .entry { gap: 0; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+/* календарь на узком экране: круги сжимаются вместе с сеткой (на 320 px — около 36 px), а не раздвигают экран */
+.cal__grid .cal__d { width: 100%; max-width: 44px; height: auto; aspect-ratio: 1; }
+/* длинное название категории в аналитике переносится, а не обрезается */
+.legend span, .chg span { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.chg li { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto; }
+/* подпись справа в шапке блока аналитики переносится: на 320 px длинная подпись раздвигала экран и он уезжал вбок (15.10.2026) */
+.viz .cats__head > span { white-space: normal; text-align: right; }
+/* четыре вкладки на узком телефоне: поля уже, иначе капсула шире себя и экран уезжает вбок за нажатой «Аналитикой» (15.10.2026, 320 px) */
+@media (max-width: 379px) { .tabs--4 button { padding: 0 6px; letter-spacing: -.02em; } }
+.pick__head { display: flex; align-items: center; gap: 10px; }
+.key--title { width: 12px; height: 12px; }
+#vizNotes .pick__info--after { margin-top: 12px; }
