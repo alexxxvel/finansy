@@ -657,3 +657,32 @@ h1.month { margin: 0; cursor: default; }
 .entry__done { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .entry__undo { flex: none; min-height: 44px; }
 .entry__undo span { line-height: 28px; padding: 0 12px; }
+/* ---------- платежи месяца (вариант В) ---------- */
+.remind__text { display: grid; min-width: 0; text-align: left; padding: 8px 0; }
+.remind__text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 15px/1.3 var(--font); letter-spacing: -.005em; color: var(--ink); }
+.remind__text small { font: 500 14px/1.3 var(--font); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.remind__text small.is-late { color: var(--ink); font-weight: 600; }
+.remind__text:active { opacity: .6; }
+.pays-list { margin-top: 12px; border-radius: 18px; background: var(--surface); padding: 0 12px 0 14px; }
+.pay { display: grid; grid-template-columns: 1fr auto 92px; column-gap: 12px; align-items: center; min-height: 60px; border-bottom: 1px solid var(--line); }
+.pays-list .pay:last-child { border-bottom: 0; }
+.pay__name { display: grid; min-width: 0; min-height: 44px; align-content: center; text-align: left; font: 500 17px/1.25 var(--font); letter-spacing: -.015em; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pay__name small { font: 500 15px/1.2 var(--font); color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.pay__name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pay.is-late .pay__name small { color: var(--ink); font-weight: 600; }
+.pay data { font: 600 17px/1.25 var(--font); font-variant-numeric: tabular-nums; }
+.pay.is-paid data { color: var(--muted); font-weight: 500; }
+.pay .capsule { justify-self: center; }
+.pay__done { display: grid; place-items: center; width: 92px; color: var(--ink); }
+.pay__done svg { width: 20px; height: 20px; }
+.chips--form { display: flex; flex-wrap: wrap; gap: 8px; min-height: 0; padding: 0; margin-bottom: 16px; }
+.chips--form li { flex: none; }
+.chips--form button { padding: 0 16px; }
+.remind--pay .remind__text small { white-space: normal; overflow: visible; }
+@media (max-width: 379px) { /* узкий экран: сумма под названием, иначе название сжимается до пары букв */
+  .pay { grid-template-columns: 1fr auto; grid-template-areas: "name act" "sum act"; padding: 8px 0; }
+  .pay__name { grid-area: name; min-height: 0; }
+  .pay data { grid-area: sum; font-size: 15px; }
+  .pay .capsule, .pay__done { grid-area: act; }
+  .pay__done { width: 72px; }
+}

@@ -225,6 +225,27 @@
     }
     return out;
   }
+  /** платежи месяца: { list: [[id, название, сумма в копейках BYN, категория, до какого числа (0 — без срока)], …] до 20, hide: 'ГГГГ-ММ' — карточку убрали до конца этого месяца }.
+      Отдельный ключ хранилища (pay), как бюджет, кредиты и лимиты */
+  function validPays(o) {
+    if (!o || typeof o !== 'object' || !o.list || typeof o.list.length !== 'number' || o.list.length > 20) { return null; }
+    var out = [], seen = {};
+    for (var i = 0; i < o.list.length; i++) {
+      var p = o.list[i];
+      if (!p || typeof p.length !== 'number' || typeof p[0] !== 'string' || !/^[a-z0-9]{1,10}$/.test(p[0]) || seen[p[0]]) { return null; }
+      var name = cleanNote(p[1]).slice(0, 24), a = p[2], c = p[3], d = p[4] === undefined ? 0 : p[4];
+      if (!name || !whole(a, 1) || typeof c !== 'string' || !/^[a-z0-9_]{1,12}$/.test(c) || typeof d !== 'number' || d !== Math.round(d) || d < 0 || d > 31) { return null; }
+      seen[p[0]] = 1;
+      out.push([p[0], name, a, c, d]);
+    }
+    return { list: out, hide: isMonth(o.hide) ? o.hide : '' };
+  }
+  /** внесён ли платёж в этом месяце: есть трата той же категории с такой же заметкой или на ту же сумму */
+  function payPaid(p, ops) {
+    var key = p[1].toLowerCase(), hit = null;
+    (ops || []).forEach(function (op) { if (!hit && op.k === 'e' && op.c === p[3] && ((op.n || '').toLowerCase() === key || bynOf(op) === p[2])) { hit = op; } });
+    return hit;
+  }
   function useCredits(list) {
     var ok = validCredits(list) || [];
     CREDITS.splice.apply(CREDITS, [0, CREDITS.length].concat(ok.map(function (k) { return { id: k[0], name: k[1], a: k[2], u: k[3], s: k[4], p: k[5], f: k[6] }; })));
@@ -468,8 +489,9 @@
       if (validGoals(data.cfg.goals)) { cfg.goals = validGoals(data.cfg.goals); }
       if (!Object.keys(cfg).length) { cfg = null; }
     }
-    var credits = validCredits(data.credits), budget = validBudget(data.budget), limits = validLimits(data.limits); // кредиты, бюджет и лимиты лежат в копии рядом с настройками: в хранилище у них свои ключи
-    return count ? { months: months, count: count, cfg: cfg, credits: credits && credits.length ? credits : null, budget: budget && budget.a ? budget : null, limits: limits && Object.keys(limits).length ? limits : null } : null;
+    var credits = validCredits(data.credits), budget = validBudget(data.budget), limits = validLimits(data.limits), pays = validPays(data.pays); // у этих настроек в хранилище свои ключи
+    return count ? { months: months, count: count, cfg: cfg, credits: credits && credits.length ? credits : null, budget: budget && budget.a ? budget : null, limits: limits && Object.keys(limits).length ? limits : null,
+      pays: pays && pays.list.length ? pays : null } : null;
   }
 
   function plural(n, one, few, many) {
@@ -754,7 +776,7 @@
     parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX,
     WEEKDAYS_SHORT: WEEKDAYS_SHORT, MONTHS_GEN: MONTHS_GEN, dow: dow, daysBetween: daysBetween, lastDay: lastDay, statsPeriod: statsPeriod, periodShift: periodShift, inRange: inRange, rangeStats: rangeStats,
     catRows: catRows, catChanges: catChanges, topNotes: topNotes, weekdayAvg: weekdayAvg, cumulative: cumulative, firstDate: firstDate,
-    validBudget: validBudget, validLimits: validLimits,
+    validBudget: validBudget, validLimits: validLimits, validPays: validPays, payPaid: payPaid,
     CREDITS: CREDITS, CREDITS_MAX: CREDITS_MAX, REMIND: REMIND, CLOSED: CLOSED, validCredits: validCredits, useCredits: useCredits, packCredits: packCredits,
     isCreditOp: isCreditOp, creditOf: creditOf, creditState: creditState, creditDue: creditDue, creditPlan: creditPlan
   };

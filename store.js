@@ -90,6 +90,12 @@
     if (typeof o.goalAsk === 'string' && /^[a-z0-9]{1,10}$/.test(o.goalAsk)) { out.goalAsk = o.goalAsk; } // у прежней цели ещё не спросили, сколько уже накоплено
     return out;
   }
+  /** платежи месяца: отдельный ключ pay. Не читается — платежей нет */
+  function readPays(text) {
+    var o = null;
+    try { o = JSON.parse(text || 'null'); } catch (e) { o = null; }
+    return F.validPays(o) || { list: [], hide: '' };
+  }
   /** лимиты на категории: отдельный ключ lim. Не читается — лимитов нет */
   function readLimits(text) {
     var o = null;
@@ -215,7 +221,7 @@
           if (err) { cb(err); return; }
           var mine = keys.map(function (k) { var p = parseKey(k); return p ? { key: k, month: p.month, i: p.i } : null; }).filter(Boolean)
             .sort(function (a, b) { return a.month === b.month ? a.i - b.i : (a.month < b.month ? -1 : 1); });
-          ad.get(mine.map(function (c) { return c.key; }).concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : [], keys.indexOf('bud') >= 0 ? ['bud'] : [], keys.indexOf('lim') >= 0 ? ['lim'] : []), function (err2, values) {
+          ad.get(mine.map(function (c) { return c.key; }).concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : [], keys.indexOf('bud') >= 0 ? ['bud'] : [], keys.indexOf('lim') >= 0 ? ['lim'] : [], keys.indexOf('pay') >= 0 ? ['pay'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
             var months = {}, ops = [], carry = 0, partial = false, seen = {}, all = {}, net = {}, first = '';
             for (var n = 0; n < mine.length; n++) {
@@ -233,7 +239,7 @@
               }
             }
             Object.keys(net).forEach(function (m) { if (first && m >= first && m < month) { carry += net[m]; } });
-            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial, all: all, cfg: readCfg(values.cfg), credits: readCredits(values.crd), budget: readBudget(values.bud), limits: readLimits(values.lim) });
+            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial, all: all, cfg: readCfg(values.cfg), credits: readCredits(values.crd), budget: readBudget(values.bud), limits: readLimits(values.lim), pays: readPays(values.pay) });
           });
         });
       },
@@ -333,6 +339,18 @@
           ad.set('cfg', text, function (err2) { cb(err2, next); });
         });
       },
+      /** платежи месяца: fn получает { list, hide } и возвращает новый; пустой список и нет «спрятано» — ключ убирается */
+      patchPays: function (fn, cb) {
+        ad.get(['pay'], function (err, values) {
+          if (err) { cb(err); return; }
+          var next = F.validPays(fn(readPays(values.pay)));
+          if (!next) { cb('invalid'); return; }
+          if (!next.list.length && !next.hide) { ad.del(['pay'], function (err2) { cb(err2 || null, next); }); return; }
+          var text = JSON.stringify(next);
+          if (F.utf8len(text) > LIMIT) { cb('too long'); return; }
+          ad.set('pay', text, function (err2) { cb(err2, next); });
+        });
+      },
       /** лимит одной категории: копейки или 0 (убрать). Ключ перечитывается, меняется только эта категория */
       setLimit: function (id, minor, cb) {
         ad.get(['lim'], function (err, values) {
@@ -368,7 +386,7 @@
         ad.keys(function (err, keys) {
           if (err) { cb(err); return; }
           var mine = keys.filter(parseKey).sort();
-          ad.get(mine.concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : [], keys.indexOf('bud') >= 0 ? ['bud'] : [], keys.indexOf('lim') >= 0 ? ['lim'] : []), function (err2, values) {
+          ad.get(mine.concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : [], keys.indexOf('bud') >= 0 ? ['bud'] : [], keys.indexOf('lim') >= 0 ? ['lim'] : [], keys.indexOf('pay') >= 0 ? ['pay'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
             var months = {}, count = 0, bad = false;
             mine.forEach(function (k) {
@@ -388,6 +406,8 @@
             if (budget.a) { out.budget = { a: budget.a }; }
             var limits = readLimits(values.lim);
             if (Object.keys(limits).length) { out.limits = limits; }
+            var pays = readPays(values.pay);
+            if (pays.list.length) { out.pays = { list: pays.list }; }
             cb(null, { text: JSON.stringify(out), count: count });
           });
         });
@@ -425,13 +445,23 @@
           });
         }
         function limits() { // лимиты из копии дописываются к своим, свои не меняются
-          if (!data.limits) { cb(null, total); return; }
+          if (!data.limits) { pays(); return; }
           ad.get(['lim'], function (err, values) {
-            if (err) { cb(null, total); return; }
+            if (err) { pays(); return; }
             var mine = readLimits(values.lim), changed = false;
             Object.keys(data.limits).forEach(function (id) { if (!mine[id]) { mine[id] = data.limits[id]; changed = true; } });
-            if (!changed || !F.validLimits(mine)) { cb(null, total); return; }
-            ad.set('lim', JSON.stringify(mine), function () { cb(null, total); });
+            if (!changed || !F.validLimits(mine)) { pays(); return; }
+            ad.set('lim', JSON.stringify(mine), function () { pays(); });
+          });
+        }
+        function pays() { // платежи из копии дописываются к своим, свои не меняются
+          if (!data.pays) { cb(null, total); return; }
+          ad.get(['pay'], function (err, values) {
+            if (err) { cb(null, total); return; }
+            var mine = readPays(values.pay), changed = false;
+            data.pays.list.forEach(function (p) { if (mine.list.length < 20 && !mine.list.some(function (x) { return x[0] === p[0]; })) { mine.list.push(p); changed = true; } });
+            if (!changed) { cb(null, total); return; }
+            ad.set('pay', JSON.stringify(mine), function () { cb(null, total); });
           });
         }
         function credits() { // кредиты из копии дописываются к своим, свои не меняются

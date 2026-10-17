@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '9f015924a8'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '3ffc979457'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -50,6 +50,7 @@
     right: '<path d="m9 6 6 6-6 6"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
     back: '<path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1ZM17 9l-6 6M11 9l6 6"/>'
   };
 
@@ -90,6 +91,7 @@
     all: {}, cfg: {}, prev: F.summarize([]), balance: 0, // все записи по месяцам, настройки, сводка прошлого месяца, накоплено за всё время
     budget: { a: 0, off: 0 }, // бюджет на месяц (ключ bud): a — сумма, off — подсказку убрали
     limits: {}, // лимиты на категории (ключ lim): { id: копейки в месяц }
+    pays: { list: [], hide: '' }, // платежи месяца (ключ pay)
     tab: 'month', sect: 'goals', stats: { kind: 'month', at: '' }, more: false, shown: 0, loaded: false, error: '' // sect: раздел вкладки «Цели» — цели или кредиты
   };
   var store = null;
@@ -355,8 +357,11 @@
       goneEl.id = 'budgetGone';
       if (gone) { spent.appendChild(goneEl); }
     }
-    if (st.month === F.monthOf(F.today())) { // напоминание включает сам человек, когда заводит кредит; строка видна, пока платёж месяца не внесён
-      F.CREDITS.forEach(function (k) { if (remindDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } });
+    if (st.month === F.monthOf(F.today())) {
+      var payNode = payCard();
+      if (payNode) { spent.appendChild(payNode); }
+      // напоминание о кредите включает сам человек; когда заведены платежи месяца, кредит — в их списке, и отдельной строки нет (о кредите одна строка, не две)
+      if (!(st.pays.list || []).length) { F.CREDITS.forEach(function (k) { if (remindDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } }); }
     }
 
     var sheet = el('div', 'sheet');
@@ -428,6 +433,213 @@
       fill.className = 'spent__fill is-in';
       sheet.className = 'sheet is-in';
     } else { setSum(node, s.spent); }
+  }
+
+
+  // ---------- платежи месяца (вариант В, решение разработчика 17.10.2026) ----------
+  /** строки платежей этого месяца: свои платежи и кредиты с платежом в месяц (кредиты — только когда заведён хоть один свой платёж) */
+  function payItems() {
+    var now = F.monthOf(F.today()), ops = st.all[now] || [], out = [];
+    (st.pays.list || []).forEach(function (p) {
+      var hit = F.payPaid(p, ops);
+      out.push({ id: p[0], name: p[1], a: p[2], cat: p[3], day: p[4], paid: hit ? hit.d : '', raw: p });
+    });
+    if (out.length) {
+      F.CREDITS.forEach(function (k) {
+        if ((k.f & F.CLOSED) || !k.p) { return; }
+        var s = F.creditState(k, st.all, now);
+        if (s.left <= 0) { return; }
+        var paidOp = s.ops.filter(function (op) { return F.monthOf(op.d) === now; })[0];
+        out.push({ id: 'k_' + k.id, name: k.name, a: F.goalByn(k, k.p), cat: 'k_' + k.id, day: 0, paid: paidOp ? paidOp.d : '', credit: k });
+      });
+    }
+    return out;
+  }
+  function payDue(it) { return it.day || 99; }
+  function payLate(it) { return !it.paid && it.day && it.day < +F.today().slice(8, 10); }
+  /** невнесённые: просроченные и ближайшие сверху, без срока — в конце */
+  function unpaidPays() { return payItems().filter(function (it) { return !it.paid; }).sort(function (x, y) { return payDue(x) - payDue(y); }); }
+  function payWhen(it) { return it.paid ? 'внесено ' + F.dayLabel(it.paid).toLowerCase() : payLate(it) ? 'срок прошёл ' + it.day + '\u2011го' : it.day ? 'до' + F.NB + it.day + '\u2011го' : 'каждый месяц'; }
+  /** «Внести» одним касанием: трата на сегодня с суммой, категорией и названием платежа; сообщение с «Отменить» */
+  function payNow(it, after) {
+    var op = it.credit ? F.makeOp('e', 'k_' + it.credit.id, it.credit.p, F.CURS[it.credit.u], F.today(), null, '') : F.makeOp('e', it.cat, it.a, 'BYN', F.today(), null, it.name);
+    store.add(op, function (err) {
+      if (err) { haptic('err'); toast(explain(err)); return; }
+      haptic('ok');
+      reload(false, function () {
+        if (after) { after(); }
+        toast('Записано: ' + it.name + ' ' + F.fmt(it.a), 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), function (e) { if (!e) { reload(false, function () { if (after) { after(); } }); } }); });
+      });
+    });
+  }
+  function savePays(fn, done) {
+    store.patchPays(fn, function (err) {
+      if (err) { haptic('err'); toast(err === 'too long' ? 'Список платежей не помещается: сократите названия.' : explain(err)); done(false); return; }
+      reload(false, function (e) { done(!e); });
+    });
+  }
+  /** карточка на главной: один невнесённый — он сам и «Внести»; несколько — сводка и «Список»; крестик прячет до конца месяца */
+  function payCard() {
+    var list = unpaidPays(), now = F.monthOf(F.today());
+    if (!list.length || st.pays.hide === now) { return null; }
+    var row = el('div', 'remind remind--pay'), text = btn('remind__text'), act = btn('capsule remind__pay'), x = btn('remind__x');
+    row.id = 'payCard';
+    if (list.length === 1) {
+      var it = list[0], sm = el('small', payLate(it) ? 'is-late' : '', F.fmt(it.a) + ' · ' + payWhen(it));
+      add(text, el('strong', '', it.name), sm);
+      act.appendChild(el('span', '', 'Внести'));
+      act.addEventListener('click', function () { payNow(it); });
+    } else {
+      var late = list.filter(payLate).length;
+      add(text, el('strong', '', 'Не внесено ' + list.length + F.NB + F.plural(list.length, 'платёж', 'платежа', 'платежей')),
+        el('small', late ? 'is-late' : '', late ? 'у' + F.NB + late + ' срок прошёл' : 'ближайший: ' + list[0].name + (list[0].day ? ', до' + F.NB + list[0].day + '\u2011го' : '')));
+      act.appendChild(el('span', '', 'Список'));
+      act.addEventListener('click', function () { openPays(null); });
+    }
+    act.id = 'payCardAct';
+    text.addEventListener('click', function () { openPays(null); });
+    x.id = 'payCardHide';
+    x.setAttribute('aria-label', 'Не напоминать в этом месяце');
+    x.appendChild(icon('close'));
+    x.addEventListener('click', function () {
+      savePays(function (o) { o.hide = now; return o; }, function (ok) {
+        if (!ok) { return; }
+        haptic('ok');
+        toast('Напомню в следующем месяце\nСписок платежей — в настройках', 'Вернуть', function () { savePays(function (o) { o.hide = ''; return o; }, function () {}); });
+      });
+    });
+    add(row, text, act, x);
+    return row;
+  }
+  /** лист «Платежи месяца»: сколько осталось внести, шкала по платежам, невнесённые сверху; порядок держится, пока лист открыт */
+  function openPays(back, order) {
+    var items = payItems();
+    if (!order) { order = items.filter(function (it) { return !it.paid; }).sort(function (x, y) { return payDue(x) - payDue(y); }).concat(items.filter(function (it) { return it.paid; })).map(function (it) { return it.id; }); }
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--goalview pick--pays');
+      box.appendChild(el('h2', 'pick__title', 'Платежи месяца'));
+      if (!items.length) {
+        box.appendChild(el('p', 'pick__info', nb('Связь, подписки, интернет: заведите их один раз, и каждый месяц будет видно, что уже внесено, а что нет. Внести можно одним касанием.')));
+      } else {
+        var all = 0, left = 0, paid = 0;
+        items.forEach(function (it) { all += it.a; if (it.paid) { paid++; } else { left += it.a; } });
+        var sum = el('p', 'goal__sum'), num = el('span', 'goal__num'), parts = F.fmtParts(left), meter = el('div', 'goal__meter goal__meter--seg'), seg = el('span', 'segbar');
+        sum.id = 'paysLeft';
+        add(num, el('span', '', parts.whole), el('i', '', parts.frac));
+        add(sum, num, el('small', '', 'осталось внести из' + F.NB + F.fmt(all)));
+        items.forEach(function (it, n) { var c = el('i'), f = el('b'); f.style.width = (n < paid ? 100 : 0) + '%'; c.appendChild(f); seg.appendChild(c); });
+        add(meter, seg, el('span', '', 'внесено ' + paid + ' из ' + items.length));
+        var ul = el('ul', 'pays-list');
+        ul.id = 'paysList';
+        order.map(function (id) { return F.find(items, id); }).filter(Boolean).concat(items.filter(function (it) { return order.indexOf(it.id) < 0; })).forEach(function (it) {
+          var li = el('li', 'pay' + (it.paid ? ' is-paid' : '') + (payLate(it) ? ' is-late' : '')), name = btn('pay__name');
+          li.setAttribute('data-pay', it.id);
+          add(name, el('span', '', it.name), el('small', '', payWhen(it))); // название в своём span: у текста прямо в сетке многоточия нет
+          name.addEventListener('click', function () { if (it.credit) { openCreditView(it.credit.id, function () { openPays(back, order); }); } else { openPayEdit(it.raw, function () { openPays(back, order); }); } });
+          var act;
+          if (it.paid) { act = el('span', 'pay__done'); act.setAttribute('aria-label', 'внесено'); act.appendChild(icon('check')); }
+          else {
+            act = btn('capsule');
+            act.appendChild(el('span', '', 'Внести'));
+            act.addEventListener('click', function () { payNow(it, function () { openPays(back, order); }); });
+          }
+          add(li, name, el('data', '', F.fmt(it.a)), act);
+          ul.appendChild(li);
+        });
+        add(box, sum, meter, ul);
+      }
+      var add1 = btn('btn btn--quiet btn--new');
+      add1.id = 'payNew';
+      add(add1, icon('plus'), document.createTextNode('Новый платёж'));
+      add1.addEventListener('click', function () {
+        if ((st.pays.list || []).length >= 20) { haptic('err'); toast('Платежей уже двадцать. Удалите ненужный.'); return; }
+        openPayEdit(null, function () { openPays(back); });
+      });
+      box.appendChild(add1);
+      m.appendChild(box);
+    }, back || null);
+  }
+  /** новый платёж или правка: название, сумма в месяц, категория, до какого числа (можно не писать) */
+  function openPayEdit(p, back) {
+    var busy = false, cat = p ? p[3] : '', nameEl = el('input', 'field');
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat pick--newgoal'), foot = el('footer', 'modal__dock'), go = btn('btn', 'Сохранить'), info = el('p', 'pick__info'), row = el('div', 'field-row'), cur = el('span', 'cur cur--fixed');
+      function field(f, id, value, ph, mode, max) {
+        f.id = id; f.type = 'text'; f.maxLength = max; f.placeholder = ph; f.value = value;
+        if (mode) { f.setAttribute('inputmode', mode); }
+        f.setAttribute('enterkeyhint', 'done');
+        f.setAttribute('autocomplete', 'off');
+        f.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { f.blur(); } });
+        return f;
+      }
+      function label(text, id) { var l = el('label', 'lbl', text); l.setAttribute('for', id); return l; }
+      field(nameEl, 'payName', p ? p[1] : '', 'Например, интернет', '', 24);
+      var sum = field(el('input', 'field'), 'paySum', p ? F.fmt(p[2]).replace(/,00$/, '') : '', 'например, 30', 'decimal', 14), day = field(el('input', 'field'), 'payDay', p && p[4] ? String(p[4]) : '', 'например, 20', 'numeric', 2);
+      cur.appendChild(el('span', '', 'BYN'));
+      add(row, sum, cur);
+      var chips = el('ul', 'chips chips--form');
+      chips.id = 'payCats';
+      function paintCats() {
+        clear(chips);
+        F.CATS.forEach(function (c) {
+          var li = el('li'), b = btn('', c.name);
+          b.setAttribute('data-cat', c.id);
+          b.setAttribute('aria-pressed', String(cat === c.id));
+          b.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+          b.addEventListener('click', function () { cat = c.id; haptic(); paintCats(); });
+          li.appendChild(b);
+          chips.appendChild(li);
+        });
+      }
+      paintCats();
+      info.id = 'payMsg';
+      go.id = 'paySave';
+      go.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+      go.addEventListener('click', function () {
+        if (busy) { return; }
+        var name = F.cleanNote(nameEl.value).slice(0, 24).replace(/ $/, ''), a = F.parseAmount(sum.value), d = day.value.replace(/\s/g, '') ? parseInt(day.value, 10) : 0;
+        var why = !name ? 'Введите название платежа.' : !a ? 'Введите сумму цифрами, например 30.' : !cat ? 'Выберите категорию.' : (isNaN(d) || d < 0 || d > 31) ? 'Число — от 1 до 31 или пусто.' : '';
+        if (why) { info.textContent = why; haptic('err'); return; }
+        var id = p ? p[0] : F.catId(idsOf((st.pays.list || []).map(function (x) { return [x[0]]; })));
+        busy = true;
+        savePays(function (o) {
+          if (p) { o.list = o.list.map(function (x) { return x[0] === id ? [id, name, a, cat, d] : x; }); } else { o.list.push([id, name, a, cat, d]); }
+          return o;
+        }, function (ok) {
+          busy = false;
+          if (!ok) { return; }
+          haptic('ok');
+          if (back) { back(); } else { closeModal(0); }
+          toast(p ? 'Платёж изменён' : 'Платёж добавлен');
+        });
+      });
+      var del = null;
+      if (p) {
+        del = btn('link', 'Удалить платёж');
+        del.id = 'payDel';
+        del.addEventListener('click', function () {
+          if (busy) { return; }
+          ask('Удалить платёж «' + p[1] + '»? Записанные траты останутся.', function (yes) {
+            if (!yes) { return; }
+            busy = true;
+            savePays(function (o) { o.list = o.list.filter(function (x) { return x[0] !== p[0]; }); return o; }, function (ok) {
+              busy = false;
+              if (!ok) { return; }
+              haptic('ok');
+              if (back) { back(); } else { closeModal(0); }
+              toast('Платёж удалён');
+            });
+          });
+        });
+      }
+      add(box, el('h2', 'pick__title', p ? 'Изменить платёж' : 'Новый платёж'), label('Название', 'payName'), nameEl, label('Сумма в месяц', 'paySum'), row,
+        el('p', 'lbl', 'Категория'), chips, label('До какого числа, можно не писать', 'payDay'), day, info, del);
+      foot.appendChild(go);
+      add(m, box, foot);
+    }, back);
+    if (!p) { nameEl.focus(); }
   }
 
   // ---------- лимиты на категории ----------
@@ -1804,6 +2016,7 @@
       F.useCredits(v.credits); // кредиты — до сводок: по ним строки «Куда ушло» получают названия
       st.budget = v.budget || { a: 0, off: 0 };
       st.limits = v.limits || {};
+      st.pays = v.pays || { list: [], hide: '' };
       st.prev = F.summarize(v.all[F.prevMonth(st.month)] || []);
       st.balance = F.balance(v.all);
       st.sum = F.summarize(v.ops);
@@ -2601,6 +2814,7 @@
       row('setCats', WORDS.e.list, String(F.CATS.length), function () { openCats('e'); });
       row('setSrcs', WORDS.i.list, String(F.SRCS.length), function () { openCats('i'); });
       row('budgetBtn', 'Бюджет на месяц', budgetOn() ? F.fmt(st.budget.a) : 'не задан', function () { openBudget(openSettings); }); // отдельно от подсказки: задать можно, даже если её убрали
+      row('paysBtn', 'Платежи месяца', (st.pays.list || []).length ? String(st.pays.list.length) : 'нет', function () { openPays(openSettings); });
       row('notesBtn', 'Перенос из заметок', '', function () { openNotes(openSettings); });
       row('backupBtn', 'Копия данных', '', function () { openBackup(openSettings); });
       add(box, el('h2', '', 'Настройки'), ul);
