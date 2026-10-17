@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'bf48377a24'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '9f015924a8'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -2061,7 +2061,7 @@
       entry.go.addEventListener('click', submitEntry);
       if (!op && (entry.kind === 'e' || entry.kind === 'i')) { // записи подряд (решение разработчика 17.10.2026, вариант В): серая кнопка записывает и оставляет лист
         foot.className = 'modal__dock modal__dock--duo modal__dock--series';
-        entry.more = btn('btn btn--quiet', 'Добавить и следующую');
+        entry.more = btn('btn btn--quiet', 'Добавить и сразу ещё') // подпись разработчика 17.10.2026;
         entry.more.id = 'goMore';
         entry.more.addEventListener('click', function () { submitEntry(true); });
         foot.appendChild(entry.more);
