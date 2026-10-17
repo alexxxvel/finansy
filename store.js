@@ -90,6 +90,12 @@
     if (typeof o.goalAsk === 'string' && /^[a-z0-9]{1,10}$/.test(o.goalAsk)) { out.goalAsk = o.goalAsk; } // у прежней цели ещё не спросили, сколько уже накоплено
     return out;
   }
+  /** бюджет: отдельный ключ bud. Не читается — бюджета нет */
+  function readBudget(text) {
+    var o = null;
+    try { o = JSON.parse(text || 'null'); } catch (e) { o = null; }
+    return F.validBudget(o) || { a: 0, off: 0 };
+  }
   /** кредиты: отдельный ключ crd. Не читается — пусто (записи от этого не страдают) */
   function readCredits(text) {
     var o = null;
@@ -203,7 +209,7 @@
           if (err) { cb(err); return; }
           var mine = keys.map(function (k) { var p = parseKey(k); return p ? { key: k, month: p.month, i: p.i } : null; }).filter(Boolean)
             .sort(function (a, b) { return a.month === b.month ? a.i - b.i : (a.month < b.month ? -1 : 1); });
-          ad.get(mine.map(function (c) { return c.key; }).concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : []), function (err2, values) {
+          ad.get(mine.map(function (c) { return c.key; }).concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : [], keys.indexOf('bud') >= 0 ? ['bud'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
             var months = {}, ops = [], carry = 0, partial = false, seen = {}, all = {}, net = {}, first = '';
             for (var n = 0; n < mine.length; n++) {
@@ -221,7 +227,7 @@
               }
             }
             Object.keys(net).forEach(function (m) { if (first && m >= first && m < month) { carry += net[m]; } });
-            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial, all: all, cfg: readCfg(values.cfg), credits: readCredits(values.crd) });
+            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial, all: all, cfg: readCfg(values.cfg), credits: readCredits(values.crd), budget: readBudget(values.bud) });
           });
         });
       },
@@ -321,6 +327,13 @@
           ad.set('cfg', text, function (err2) { cb(err2, next); });
         });
       },
+      /** бюджет пишется одной записью: { a, off }; ничего не задано — ключ убирается */
+      setBudget: function (b, cb) {
+        var v = F.validBudget(b);
+        if (!v) { cb('invalid'); return; }
+        if (!v.a && !v.off) { ad.del(['bud'], function (err) { cb(err || null, v); }); return; }
+        ad.set('bud', JSON.stringify(v), function (err) { cb(err, v); });
+      },
       /** правка кредитов: ключ перечитывается, fn получает список для хранения и возвращает новый; пустой список убирает ключ */
       patchCredits: function (fn, cb) {
         ad.get(['crd'], function (err, values) {
@@ -338,7 +351,7 @@
         ad.keys(function (err, keys) {
           if (err) { cb(err); return; }
           var mine = keys.filter(parseKey).sort();
-          ad.get(mine.concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : []), function (err2, values) {
+          ad.get(mine.concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : [], keys.indexOf('bud') >= 0 ? ['bud'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
             var months = {}, count = 0, bad = false;
             mine.forEach(function (k) {
@@ -354,6 +367,8 @@
             if (Object.keys(cfg).length) { out.cfg = cfg; }
             var credits = readCredits(values.crd);
             if (credits.length) { out.credits = credits; }
+            var budget = readBudget(values.bud);
+            if (budget.a) { out.budget = { a: budget.a }; }
             cb(null, { text: JSON.stringify(out), count: count });
           });
         });
@@ -383,8 +398,15 @@
             ad.set('cfg', text, function () { credits(); });
           });
         }
+        function budget() { // бюджет из копии берётся, только если своего нет
+          if (!data.budget) { cb(null, total); return; }
+          ad.get(['bud'], function (err, values) {
+            if (err || readBudget(values.bud).a) { cb(null, total); return; }
+            ad.set('bud', JSON.stringify({ a: data.budget.a, off: 0 }), function () { cb(null, total); });
+          });
+        }
         function credits() { // кредиты из копии дописываются к своим, свои не меняются
-          if (!data.credits) { cb(null, total); return; }
+          if (!data.credits) { budget(); return; }
           ad.get(['crd'], function (err, values) {
             if (err) { cb(null, total); return; }
             var mine = readCredits(values.crd), changed = false;
@@ -394,8 +416,8 @@
               changed = true;
             });
             var text = JSON.stringify(mine);
-            if (!changed || F.utf8len(text) > LIMIT) { cb(null, total); return; }
-            ad.set('crd', text, function () { cb(null, total); });
+            if (!changed || F.utf8len(text) > LIMIT) { budget(); return; }
+            ad.set('crd', text, function () { budget(); });
           });
         }
         (function next() {

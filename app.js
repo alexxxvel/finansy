@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '397b0874d4'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '41b3b953a6'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -88,6 +88,7 @@
     month: F.monthOf(F.today()), months: [], ops: [], sum: F.summarize([]),
     carry: 0, partial: false, // остаток на начало месяца: доходы минус траты всех прошлых месяцев
     all: {}, cfg: {}, prev: F.summarize([]), balance: 0, // все записи по месяцам, настройки, сводка прошлого месяца, накоплено за всё время
+    budget: { a: 0, off: 0 }, // бюджет на месяц (ключ bud): a — сумма, off — подсказку убрали
     tab: 'month', sect: 'goals', stats: { kind: 'month', at: '' }, more: false, shown: 0, loaded: false, error: '' // sect: раздел вкладки «Цели» — цели или кредиты
   };
   var store = null;
@@ -287,9 +288,12 @@
 
     // шкала: дорожка = доход (при перерасходе и без дохода — сами траты); не больше трёх сегментов
     // отложенное на цели потратить нельзя: оно вычитается из доступного; снятое с целей сверх отложенного, наоборот, добавляется
-    var back = Math.max(0, s.taken - s.saved), put = Math.max(0, s.saved - s.taken);
+    var back = Math.max(0, s.taken - s.saved), put = Math.max(0, s.saved - s.taken), B = budgetOn() ? st.budget.a : 0;
     var avail = s.income + st.carry + back, left = avail - s.spent - put; // доступно в этом месяце: доход, остаток с прошлых и снятое из накоплений
-    var base = Math.max(avail, s.spent + put, 1);
+    // бюджет (решение 17.10.2026): если задан, шкала считается от него, даже когда доходы записаны — это сумма, которую человек решил тратить сам
+    if (B) { avail = B; left = B - s.spent; }
+    var noBase = !B && !s.income && !st.carry && !back; // ни дохода, ни бюджета: шкалу не с чем сравнить — её нет (залитая читалась как «всё потрачено»)
+    var base = B ? Math.max(B, s.spent, 1) : Math.max(avail, s.spent + put, 1);
     var bar = el('div', 'spent__bar');
     bar.setAttribute('role', 'img');
     bar.setAttribute('aria-label', avail > 0 ? 'Потрачено ' + Math.round(s.spent / avail * 100) + ' процентов доступного' : 'Доход ещё не внесён');
@@ -299,19 +303,33 @@
     var fill = el('div', 'spent__fill');
     segs.forEach(function (v) { var i = el('i'); i.style.width = (v / base * 100).toFixed(2) + '%'; fill.appendChild(i); });
     bar.appendChild(fill);
-    if (put > 0) { // траты растут слева, отложенное отнимает доступное справа контурным отрезком: «осталось» — промежуток между ними
+    if (B && s.spent > B) { // перерасход: за риской конца бюджета — самый тёмный отрезок
+      var over = el('i', 'spent__over'), mark = el('b', 'spent__limit');
+      over.style.left = (B / base * 100).toFixed(2) + '%';
+      over.style.width = ((s.spent - B) / base * 100).toFixed(2) + '%';
+      mark.style.left = (B / base * 100).toFixed(2) + '%';
+      bar.className = 'spent__bar spent__bar--over'; // риска выходит за шкалу сверху и снизу
+      add(bar, over, mark);
+    }
+    if (put > 0 && !B) { // траты растут слева, отложенное отнимает доступное справа контурным отрезком: «осталось» — промежуток между ними
       var sv = el('i', 'spent__saved');
       sv.style.width = Math.max(3, put / base * 100).toFixed(2) + '%';
       bar.className = 'spent__bar spent__bar--saved';
       bar.appendChild(sv);
     }
-    var legend = el('div', 'spent__legend');
-    if (!s.income && !st.carry && !back) { add(legend, el('span', '', s.spent || put ? 'доход ещё не внесён' : 'записей в этом месяце нет')); }
+    var legend = el('div', 'spent__legend'), tip = noBase && s.spent && !st.budget.off && st.month === F.monthOf(F.today());
+    if (B) {
+      var baseBtn = btn('spent__base');
+      baseBtn.id = 'budgetLine';
+      add(baseBtn, document.createTextNode('из бюджета' + F.NB + F.fmt(B)), icon('right'));
+      baseBtn.addEventListener('click', function () { openBudget(null); });
+      add(legend, baseBtn, left < 0 ? el('span', 'is-over', 'перерасход ' + F.fmt(-left)) : el('span', 'is-left', 'осталось ' + F.fmt(left)));
+    } else if (noBase) { if (!tip) { add(legend, el('span', '', s.spent || put ? 'доход ещё не внесён' : 'записей в этом месяце нет')); } }
     else {
       add(legend, el('span', '', avail > 0 ? 'из' + F.NB + F.fmt(avail) : (s.income ? 'из' + F.NB + F.fmt(s.income) : 'доход ещё не внесён')));
       add(legend, left < 0 ? el('span', 'is-over', 'перерасход ' + F.fmt(-left)) : el('span', 'is-left', 'осталось ' + F.fmt(left)));
     }
-    add(spent, bar, legend);
+    add(spent, noBase ? null : bar, tip ? budgetTip() : legend);
     var days = F.daysLeft(st.month), per = F.perDay(left, days);
     // сколько можно тратить в день, чтобы остатка хватило до конца месяца; рядом с «отложено» слово BYN опускается, иначе строка не помещается
     var dayText = !per ? '' : days === 1 ? 'сегодня последний день месяца' : 'по' + F.NB + F.fmtDay(per) + F.NB + (put > 0 ? '' : 'BYN' + F.NB) + 'в' + F.NB + 'день, ещё ' + days + F.NB + F.plural(days, 'день', 'дня', 'дней');
@@ -326,6 +344,11 @@
       var dayEl = el('p', 'spent__day', dayText);
       dayEl.id = 'perDay';
       spent.appendChild(dayEl);
+    }
+    if (B && left < 0) { // бюджет кончился: в какой день траты месяца его перешли
+      var gone = budgetGone(B), goneEl = el('p', 'spent__day', gone ? nb('бюджет кончился ' + F.dayLabel(gone).toLowerCase()) : '');
+      goneEl.id = 'budgetGone';
+      if (gone) { spent.appendChild(goneEl); }
     }
     if (st.month === F.monthOf(F.today())) { // напоминание включает сам человек, когда заводит кредит; строка видна, пока платёж месяца не внесён
       F.CREDITS.forEach(function (k) { if (remindDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } });
@@ -400,6 +423,111 @@
       fill.className = 'spent__fill is-in';
       sheet.className = 'sheet is-in';
     } else { setSum(node, s.spent); }
+  }
+
+  // ---------- бюджет на месяц ----------
+  function budgetOn() { return !!st.budget && st.budget.a > 0; }
+  /** сколько останется на траты в этом месяце: от бюджета, если он задан, иначе от доходов и остатка прошлых месяцев */
+  function monthLeft() { return budgetOn() ? st.budget.a - st.sum.spent : st.sum.left + st.carry; }
+  /** день, в который траты месяца перешли бюджет */
+  function budgetGone(B) {
+    var acc = 0, day = '';
+    st.ops.filter(function (op) { return op.k === 'e' && !F.isGoalOp(op); }).sort(function (x, y) { return x.d === y.d ? (x.id < y.id ? -1 : 1) : (x.d < y.d ? -1 : 1); })
+      .some(function (op) { acc += F.bynOf(op); if (acc > B) { day = op.d; return true; } return false; });
+    return day;
+  }
+  function saveBudget(b, done) {
+    store.setBudget(b, function (err) {
+      if (err) { haptic('err'); toast(explain(err)); done(false); return; }
+      reload(false, function (e) { done(!e); });
+    });
+  }
+  /** подсказка на главной (вариант А, решение разработчика 17.10.2026): траты есть, ни дохода, ни бюджета; крестик убирает её насовсем, бюджет остаётся в настройках */
+  function budgetTip() {
+    var row = el('div', 'remind remind--tip'), text = el('span'), set = btn('capsule remind__pay'), x = btn('remind__x');
+    row.id = 'budgetTip';
+    add(text, el('strong', '', 'Доход не записываете?'), el('small', '', nb('Задайте бюджет, и будет видно, сколько') + F.NB + 'осталось'));
+    set.id = 'budgetTipSet';
+    set.appendChild(el('span', '', 'Задать'));
+    set.addEventListener('click', function () { openBudget(null); });
+    x.id = 'budgetTipHide';
+    x.setAttribute('aria-label', 'Не показывать');
+    x.appendChild(icon('close'));
+    x.addEventListener('click', function () {
+      saveBudget({ a: st.budget.a, off: 1 }, function (ok) {
+        if (!ok) { return; }
+        haptic('ok');
+        toast('Подсказка убрана\nБюджет можно задать в настройках под шестерёнкой');
+      });
+    });
+    add(row, text, set, x);
+    return row;
+  }
+  /** лист бюджета: одна сумма на каждый месяц; подставить можно траты прошлого месяца */
+  function openBudget(back) {
+    var had = st.budget.a || 0, busy = false, field = el('input', 'field');
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat pick--newgoal'), foot = el('footer', 'modal__dock'), go = btn('btn', 'Сохранить'), row = el('div', 'field-row'), cur = el('span', 'cur cur--fixed'), info = el('p', 'pick__info');
+      var lbl = el('label', 'lbl', 'Сумма в месяц'), prevMonth = F.prevMonth(F.monthOf(F.today())), prevSpent = F.summarize(st.all[prevMonth] || []).spent, hint = null;
+      lbl.setAttribute('for', 'budgetSum');
+      field.id = 'budgetSum';
+      field.type = 'text';
+      field.maxLength = 14;
+      field.placeholder = 'например, 1 500';
+      field.value = had ? F.fmt(had).replace(/,00$/, '') : '';
+      field.setAttribute('inputmode', 'decimal');
+      field.setAttribute('enterkeyhint', 'done');
+      field.setAttribute('autocomplete', 'off');
+      field.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { field.blur(); } });
+      cur.appendChild(el('span', '', 'BYN'));
+      add(row, field, cur);
+      if (prevSpent > 0) {
+        hint = el('div', 'hintrow');
+        var fill = btn('capsule');
+        fill.id = 'budgetFill';
+        fill.appendChild(el('span', '', 'Подставить'));
+        fill.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+        fill.addEventListener('click', function () { field.value = F.fmt(prevSpent).replace(/,00$/, ''); haptic(); });
+        add(hint, el('p', '', nb(F.inMonth(prevMonth).replace(/^в /, 'В' + F.NB) + ' ушло ' + F.fmt(prevSpent))), fill);
+      }
+      info.id = 'budgetMsg';
+      go.id = 'budgetSave';
+      go.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+      go.addEventListener('click', function () {
+        if (busy) { return; }
+        var a = F.parseAmount(field.value);
+        if (!a) { info.textContent = 'Введите сумму цифрами, например 1500.'; haptic('err'); return; }
+        busy = true;
+        saveBudget({ a: a, off: st.budget.off }, function (ok) {
+          busy = false;
+          if (!ok) { return; }
+          haptic('ok');
+          if (back) { back(); } else { closeModal(0); }
+          toast(had ? 'Бюджет изменён' : 'Бюджет задан');
+        });
+      });
+      var del = null;
+      if (had) {
+        del = btn('link', 'Убрать бюджет');
+        del.id = 'budgetDel';
+        del.addEventListener('click', function () {
+          if (busy) { return; }
+          busy = true;
+          saveBudget({ a: 0, off: st.budget.off }, function (ok) {
+            busy = false;
+            if (!ok) { return; }
+            haptic('ok');
+            if (back) { back(); } else { closeModal(0); }
+            toast('Бюджет убран', 'Вернуть', function () { saveBudget({ a: had, off: st.budget.off }, function () {}); });
+          });
+        });
+      }
+      add(box, el('h2', 'pick__title', 'Бюджет на месяц'), el('p', 'pick__info pick__info--lead', nb('Сколько готовы тратить в месяц. Будет видно, сколько осталось и сколько можно в день.')), lbl, row, hint, info, del);
+      foot.appendChild(go);
+      add(m, box, foot);
+    }, back);
+    if (!had) { field.focus(); }
   }
 
   // ---------- история ----------
@@ -1580,6 +1708,7 @@
       st.cfg = v.cfg || {};
       F.useCfg(st.cfg); // свои категории, если заданы: до подсчёта сводок
       F.useCredits(v.credits); // кредиты — до сводок: по ним строки «Куда ушло» получают названия
+      st.budget = v.budget || { a: 0, off: 0 };
       st.prev = F.summarize(v.all[F.prevMonth(st.month)] || []);
       st.balance = F.balance(v.all);
       st.sum = F.summarize(v.ops);
@@ -1976,8 +2105,9 @@
     else if (e.cur !== 'BYN') {
       e.hint.textContent = minor ? 'это ' + F.fmt(byn) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[e.cur]) : 'курс ' + F.fmtRate(F.RATES[e.cur]) + F.NB + 'BYN за' + F.NB + '1' + F.NB + e.cur;
     } else if (!e.edit && F.monthOf(e.date) === st.month) { // сколько останется после этой записи
-      var s = st.sum, text, val, left = s.left + st.carry + (minor ? (e.kind === 'e' ? -byn : byn) : 0);
-      if (!s.income && !st.carry && e.kind === 'e') { text = minor ? 'Будет потрачено' : 'Потрачено'; val = s.spent + (minor ? byn : 0); }
+      var s = st.sum, text, val, left = budgetOn() ? monthLeft() - (minor && e.kind === 'e' ? byn : 0) : s.left + st.carry + (minor ? (e.kind === 'e' ? -byn : byn) : 0);
+      if (budgetOn() && e.kind === 'i') { text = 'Бюджет'; val = st.budget.a; } // доход бюджет не меняет
+      else if (!budgetOn() && !s.income && !st.carry && e.kind === 'e') { text = minor ? 'Будет потрачено' : 'Потрачено'; val = s.spent + (minor ? byn : 0); }
       else if (left < 0) { text = 'Перерасход'; val = -left; }
       else { text = minor ? (e.kind === 'e' ? 'Останется' : 'Станет') : 'Осталось'; val = left; }
       add(e.hint, document.createTextNode(text + ' '), el('b', '', F.fmt(val)));
@@ -2014,7 +2144,7 @@
       var one = e.cur === 'BYN' ? cur : cur === 'BYN' ? e.cur : '';
       add(e.hint, el('b', '', gm(delta, g) + F.NB + cur), document.createTextNode(nb(one ? ' по курсу ' + F.fmtRate(F.RATES[one]) : ' по курсам приложения') + ', станет ' + gm(will, g)));
     }
-    if (minor && !e.edit && F.monthOf(e.date) === st.month && window.innerHeight >= 640) { // на низком экране второй строке нет места: остаётся главное, что станет с целью
+    if (minor && !e.edit && F.monthOf(e.date) === st.month && window.innerHeight >= 640 && !budgetOn()) { // на низком экране второй строке нет места; при бюджете отложенное трат не меняет
       var s = st.sum, left = s.left + st.carry + (take ? byn : -byn);
       add(e.hint2, document.createTextNode(nb(left < 0 ? 'Перерасход месяца ' : 'На траты ' + F.inMonth(st.month) + (take ? ' станет ' : ' останется '))), el('b', '', F.fmt(Math.abs(left))));
       e.hint2.hidden = false;
@@ -2032,7 +2162,7 @@
       add(e.hint, el('b', '', gm(delta, k) + F.NB + cur), document.createTextNode(nb(one ? ' по курсу ' + F.fmtRate(F.RATES[one]) : ' по курсам приложения') + ', долг станет ' + gm(Math.max(0, will), k)));
     }
     if (minor && !e.edit && F.monthOf(e.date) === st.month && window.innerHeight >= 640) { // на низком экране остаётся главное: что станет с долгом
-      var left = st.sum.left + st.carry - byn;
+      var left = monthLeft() - byn;
       add(e.hint2, document.createTextNode(nb(left < 0 ? 'Перерасход месяца ' : 'На траты ' + F.inMonth(st.month) + ' останется ')), el('b', '', F.fmt(Math.abs(left))));
       e.hint2.hidden = false;
     }
@@ -2288,6 +2418,7 @@
       }
       row('setCats', WORDS.e.list, String(F.CATS.length), function () { openCats('e'); });
       row('setSrcs', WORDS.i.list, String(F.SRCS.length), function () { openCats('i'); });
+      row('budgetBtn', 'Бюджет на месяц', budgetOn() ? F.fmt(st.budget.a) : 'не задан', function () { openBudget(openSettings); }); // отдельно от подсказки: задать можно, даже если её убрали
       row('notesBtn', 'Перенос из заметок', '', function () { openNotes(openSettings); });
       row('backupBtn', 'Копия данных', '', function () { openBackup(openSettings); });
       add(box, el('h2', '', 'Настройки'), ul);

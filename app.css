@@ -613,3 +613,18 @@ h1.month { margin: 0; cursor: default; }
 .pick__head { display: flex; align-items: center; gap: 10px; }
 .key--title { width: 12px; height: 12px; }
 #vizNotes .pick__info--after { margin-top: 12px; }
+/* ---------- бюджет на месяц ---------- */
+/* «из бюджета 1 500,00 ›»: строка с шевроном; зона нажатия 44 px — невидимой рамкой, высотой нельзя: наезжает на строку «в день» */
+.spent__base { position: relative; display: inline-flex; align-items: center; gap: 4px; font: inherit; color: inherit; }
+.spent__base svg { width: 12px; height: 12px; color: #AEAEB2; }
+.spent__base::after { content: ""; position: absolute; left: -8px; right: -8px; top: -12px; bottom: -12px; }
+.spent__base:active { opacity: .6; }
+/* перерасход: самый тёмный отрезок за риской конца бюджета */
+.spent__bar { position: relative; }
+.spent__over { position: absolute; top: 0; bottom: 0; border-radius: 0 5px 5px 0; background: #1D1D1F; }
+.spent__limit { position: absolute; z-index: 1; top: -4px; bottom: -4px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: var(--bg); }
+/* подсказка «Доход не записываете?» — та же карточка, что напоминание о кредите */
+.remind--tip { margin-top: 24px; padding-top: 14px; padding-bottom: 14px; }
+.remind--tip strong, .remind--tip small { white-space: normal; }
+.spent__bar--over { overflow: visible; }
+.spent__bar--over .spent__fill { height: 100%; border-radius: 5px; overflow: hidden; }
