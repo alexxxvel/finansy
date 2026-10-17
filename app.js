@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '41b3b953a6'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '0f90fda90b'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -89,6 +89,7 @@
     carry: 0, partial: false, // остаток на начало месяца: доходы минус траты всех прошлых месяцев
     all: {}, cfg: {}, prev: F.summarize([]), balance: 0, // все записи по месяцам, настройки, сводка прошлого месяца, накоплено за всё время
     budget: { a: 0, off: 0 }, // бюджет на месяц (ключ bud): a — сумма, off — подсказку убрали
+    limits: {}, // лимиты на категории (ключ lim): { id: копейки в месяц }
     tab: 'month', sect: 'goals', stats: { kind: 'month', at: '' }, more: false, shown: 0, loaded: false, error: '' // sect: раздел вкладки «Цели» — цели или кредиты
   };
   var store = null;
@@ -260,8 +261,12 @@
   function shareRow(kind, c, share, n) {
     var li = el('li'), b = btn('share');
     b.setAttribute('data-cat', c.id);
-    var name = el('span', '', c.name);
+    var name = el('span', '', c.name), lim = kind === 'e' ? st.limits[c.id] : 0;
     rowNote(name, c.note);
+    if (lim) { // лимит (вариант А, решение разработчика 17.10.2026): тихая строка под названием и кольцо; шкала строки остаётся долей трат
+      b.className = 'share share--lim' + (c.sum > lim ? ' is-over' : '');
+      name.appendChild(limitNote(c.sum, lim));
+    }
     add(b, icon(c.icon), name, el('data', '', F.fmt(c.sum)), icon('right', 'share__go'));
     if (share !== null) {
       var track = el('i'), f = el('b');
@@ -425,6 +430,83 @@
     } else { setSum(node, s.spent); }
   }
 
+  // ---------- лимиты на категории ----------
+  /** кружок 14 px: сектор показывает, сколько лимита потрачено; превышен — закрашен целиком (замкнутое кольцо читалось как буква «О») */
+  function limitRing(part) {
+    var s = svgEl('svg', { viewBox: '0 0 16 16', 'class': 'ring', 'aria-hidden': 'true' }), c = 2 * Math.PI * 3.5;
+    s.appendChild(svgEl('circle', { cx: 8, cy: 8, r: 7, 'class': 'ring__track' }));
+    s.appendChild(svgEl('circle', { cx: 8, cy: 8, r: 3.5, 'class': 'ring__fill', 'stroke-dasharray': (Math.min(1, part) * c).toFixed(2) + ' ' + c.toFixed(2), transform: 'rotate(-90 8 8)' }));
+    return s;
+  }
+  /** «до лимита 187,70» или «больше лимита на 18,40» — одна формула везде */
+  function limitText(sum, lim) { return sum > lim ? 'больше лимита на' + F.NB + F.fmt(sum - lim) : 'до лимита ' + F.fmt(lim - sum); }
+  function limitNote(sum, lim) {
+    var small = el('small', 'lim-note' + (sum > lim ? ' is-over' : ''));
+    add(small, limitRing(sum / lim), document.createTextNode(limitText(sum, lim)));
+    return small;
+  }
+  /** лист лимита: одна сумма на каждый месяц; подставить можно траты этой категории за прошлый месяц */
+  function openLimit(id, back) {
+    var had = st.limits[id] || 0, busy = false, field = el('input', 'field'), dict = F.dict('e', id);
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat pick--newgoal'), foot = el('footer', 'modal__dock'), go = btn('btn', 'Сохранить'), row = el('div', 'field-row'), cur = el('span', 'cur cur--fixed'), info = el('p', 'pick__info');
+      var lbl = el('label', 'lbl', 'Не больше в месяц'), pm = F.prevMonth(F.monthOf(F.today())), prevSum = 0, hint = null;
+      (st.all[pm] || []).forEach(function (op) { if (op.k === 'e' && op.c === id) { prevSum += F.bynOf(op); } });
+      lbl.setAttribute('for', 'limitSum');
+      field.id = 'limitSum';
+      field.type = 'text';
+      field.maxLength = 14;
+      field.placeholder = 'например, 100';
+      field.value = had ? F.fmt(had).replace(/,00$/, '') : '';
+      field.setAttribute('inputmode', 'decimal');
+      field.setAttribute('enterkeyhint', 'done');
+      field.setAttribute('autocomplete', 'off');
+      field.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { field.blur(); } });
+      cur.appendChild(el('span', '', 'BYN'));
+      add(row, field, cur);
+      if (prevSum > 0) {
+        hint = el('div', 'hintrow');
+        var fill = btn('capsule');
+        fill.id = 'limitFill';
+        fill.appendChild(el('span', '', 'Подставить'));
+        fill.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+        fill.addEventListener('click', function () { field.value = F.fmt(prevSum).replace(/,00$/, ''); haptic(); });
+        add(hint, el('p', '', nb(F.inMonth(pm).replace(/^в\u00a0/, 'В' + F.NB) + ' ушло ' + F.fmt(prevSum))), fill);
+      }
+      info.id = 'limitMsg';
+      function save(minor, after) {
+        busy = true;
+        store.setLimit(id, minor, function (err) {
+          busy = false;
+          if (err) { haptic('err'); toast(explain(err)); return; }
+          reload(false, function () { haptic('ok'); after(); });
+        });
+      }
+      go.id = 'limitSave';
+      go.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+      go.addEventListener('click', function () {
+        if (busy) { return; }
+        var a = F.parseAmount(field.value);
+        if (!a) { info.textContent = 'Введите сумму цифрами, например 100.'; haptic('err'); return; }
+        save(a, function () { if (back) { back(); } else { closeModal(0); } toast(had ? 'Лимит изменён' : 'Лимит задан'); });
+      });
+      var del = null;
+      if (had) {
+        del = btn('link', 'Убрать лимит');
+        del.id = 'limitDel';
+        del.addEventListener('click', function () {
+          if (busy) { return; }
+          save(0, function () { if (back) { back(); } else { closeModal(0); } toast('Лимит убран', 'Вернуть', function () { store.setLimit(id, had, function () { reload(false); }); }); });
+        });
+      }
+      add(box, el('h2', 'pick__title', 'Лимит на «' + dict.name + '»'), el('p', 'pick__info pick__info--lead', nb('Сколько готовы тратить на это в месяц. Если запись выйдет за лимит, приложение') + F.NB + 'предупредит.'), lbl, row, hint, info, del);
+      foot.appendChild(go);
+      add(m, box, foot);
+    }, back);
+    if (!had) { field.focus(); }
+  }
+
   // ---------- бюджет на месяц ----------
   function budgetOn() { return !!st.budget && st.budget.a > 0; }
   /** сколько останется на траты в этом месяце: от бюджета, если он задан, иначе от доходов и остатка прошлых месяцев */
@@ -558,8 +640,9 @@
     (kind === 'e' ? st.prev.cats : st.prev.srcs).forEach(function (c) { if (c.id === id) { was = c.sum; } });
     var text = ops.length + ' ' + F.plural(ops.length, 'запись', 'записи', 'записей');
     if (was) { text = F.inMonth(prev) + ' ' + F.fmt(was) + (sum === was ? ', столько же' : ', на' + F.NB + F.fmt(Math.abs(sum - was)) + (sum > was ? ' больше' : ' меньше')); }
+    var lim = kind === 'e' && !F.creditOf(id) ? (st.limits[id] || 0) : -1; // -1 — у доходов и кредитов лимита не бывает
     haptic();
-    openModal('list', false, function (m) {
+    swapModal('list', false, function (m) {
       var box = el('div', 'pick');
       var head = el('div', 'pick__big');
       var total = el('data', '', F.fmt(sum));
@@ -567,11 +650,22 @@
       add(head, el('h2', '', dict.name), total);
       var info = el('p', 'pick__info', text);
       info.id = 'catInfo';
+      var limRow = null;
+      if (lim >= 0) { // лимит этой категории: строка с кольцом и кнопка «Задать лимит» или «Изменить»
+        limRow = el('div', 'hintrow hintrow--state hintrow--lim' + (lim && sum > lim ? ' is-over' : ''));
+        limRow.id = 'catLimit';
+        var p = el('p'), set = btn('capsule');
+        set.id = 'catLimitBtn';
+        if (lim) { add(p, limitRing(sum / lim), document.createTextNode(nb(limitText(sum, lim) + ' из ' + F.fmt(lim)))); } else { p.textContent = 'Лимита нет'; }
+        set.appendChild(el('span', '', lim ? 'Изменить' : 'Задать лимит'));
+        set.addEventListener('click', function () { openLimit(id, function () { openCategory(kind, id); }); });
+        add(limRow, p, set);
+      }
       var ul = el('ul', 'ops');
       ops.forEach(function (op) { var li = el('li'); li.appendChild(opRow(op, true)); ul.appendChild(li); });
-      add(box, head, info, ul);
+      add(box, head, info, limRow, ul);
       m.appendChild(box);
-    });
+    }, null);
   }
 
   // ---------- цели: вкладка, лист цели, новая цель, список ----------
@@ -1709,6 +1803,7 @@
       F.useCfg(st.cfg); // свои категории, если заданы: до подсчёта сводок
       F.useCredits(v.credits); // кредиты — до сводок: по ним строки «Куда ушло» получают названия
       st.budget = v.budget || { a: 0, off: 0 };
+      st.limits = v.limits || {};
       st.prev = F.summarize(v.all[F.prevMonth(st.month)] || []);
       st.balance = F.balance(v.all);
       st.sum = F.summarize(v.ops);
@@ -2098,12 +2193,16 @@
 
     clear(e.hint);
     clear(e.hint2);
+    e.hint.className = 'entry__conv';
     e.hint2.hidden = true;
     e.over = '';
     if (e.kind === 's' || e.kind === 't') { goalHints(e, minor, byn); }
     else if (e.kind !== 'i' && F.creditOf(e.cat)) { creditHints(e, minor, byn); }
     else if (e.cur !== 'BYN') {
       e.hint.textContent = minor ? 'это ' + F.fmt(byn) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[e.cur]) : 'курс ' + F.fmtRate(F.RATES[e.cur]) + F.NB + 'BYN за' + F.NB + '1' + F.NB + e.cur;
+    } else if (e.kind === 'e' && minor && st.limits[e.cat] && F.monthOf(e.date) === st.month && limitOver(e, byn) > 0) { // запись выйдет за лимит категории — предупреждение вместо «Останется»
+      add(e.hint, document.createTextNode(nb('Будет больше лимита на') + F.NB), el('b', '', F.fmt(limitOver(e, byn)))); // категория уже выделена меткой ниже: длинное название не обрезает строку
+      e.hint.className = 'entry__conv entry__conv--warn';
     } else if (!e.edit && F.monthOf(e.date) === st.month) { // сколько останется после этой записи
       var s = st.sum, text, val, left = budgetOn() ? monthLeft() - (minor && e.kind === 'e' ? byn : 0) : s.left + st.carry + (minor ? (e.kind === 'e' ? -byn : byn) : 0);
       if (budgetOn() && e.kind === 'i') { text = 'Бюджет'; val = st.budget.a; } // доход бюджет не меняет
@@ -2129,6 +2228,12 @@
     if (e.del) { e.del.setAttribute('aria-disabled', String(!!e.busy)); }
   }
 
+  /** на сколько запись выведет категорию за лимит (0 — не выведет); при правке прежняя сумма записи не считается */
+  function limitOver(e, byn) {
+    var lim = st.limits[e.cat], spent = 0;
+    st.ops.forEach(function (op) { if (op.k === 'e' && op.c === e.cat && (!e.edit || op.id !== e.edit.id)) { spent += F.bynOf(op); } });
+    return Math.max(0, spent + byn - lim);
+  }
   /** две строки под суммой у записи цели: что станет с целью и что станет с остатком месяца (одна запись делает два дела) */
   function goalHints(e, minor, byn) {
     var g = F.goalOf(e.cat), take = e.kind === 't';

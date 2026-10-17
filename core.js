@@ -212,6 +212,19 @@
     if (typeof a !== 'number' || a !== Math.round(a) || a < 0 || a >= 1e11) { return null; }
     return { a: a, off: off };
   }
+  /** лимиты на категории: { id категории: копейки BYN в месяц }. Отдельный ключ хранилища (lim) — как бюджет и кредиты */
+  function validLimits(o) {
+    if (!o || typeof o !== 'object' || typeof o.length === 'number') { return null; }
+    var out = {}, n = 0;
+    for (var id in o) {
+      if (!Object.prototype.hasOwnProperty.call(o, id)) { continue; }
+      var v = o[id];
+      if (!/^[a-z0-9_]{1,12}$/.test(id) || typeof v !== 'number' || v !== Math.round(v) || v <= 0 || v >= 1e11) { return null; }
+      if (++n > 40) { return null; }
+      out[id] = v;
+    }
+    return out;
+  }
   function useCredits(list) {
     var ok = validCredits(list) || [];
     CREDITS.splice.apply(CREDITS, [0, CREDITS.length].concat(ok.map(function (k) { return { id: k[0], name: k[1], a: k[2], u: k[3], s: k[4], p: k[5], f: k[6] }; })));
@@ -455,8 +468,8 @@
       if (validGoals(data.cfg.goals)) { cfg.goals = validGoals(data.cfg.goals); }
       if (!Object.keys(cfg).length) { cfg = null; }
     }
-    var credits = validCredits(data.credits), budget = validBudget(data.budget); // кредиты и бюджет лежат в копии рядом с настройками: в хранилище у них свои ключи
-    return count ? { months: months, count: count, cfg: cfg, credits: credits && credits.length ? credits : null, budget: budget && budget.a ? budget : null } : null;
+    var credits = validCredits(data.credits), budget = validBudget(data.budget), limits = validLimits(data.limits); // кредиты, бюджет и лимиты лежат в копии рядом с настройками: в хранилище у них свои ключи
+    return count ? { months: months, count: count, cfg: cfg, credits: credits && credits.length ? credits : null, budget: budget && budget.a ? budget : null, limits: limits && Object.keys(limits).length ? limits : null } : null;
   }
 
   function plural(n, one, few, many) {
@@ -741,7 +754,7 @@
     parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX,
     WEEKDAYS_SHORT: WEEKDAYS_SHORT, MONTHS_GEN: MONTHS_GEN, dow: dow, daysBetween: daysBetween, lastDay: lastDay, statsPeriod: statsPeriod, periodShift: periodShift, inRange: inRange, rangeStats: rangeStats,
     catRows: catRows, catChanges: catChanges, topNotes: topNotes, weekdayAvg: weekdayAvg, cumulative: cumulative, firstDate: firstDate,
-    validBudget: validBudget,
+    validBudget: validBudget, validLimits: validLimits,
     CREDITS: CREDITS, CREDITS_MAX: CREDITS_MAX, REMIND: REMIND, CLOSED: CLOSED, validCredits: validCredits, useCredits: useCredits, packCredits: packCredits,
     isCreditOp: isCreditOp, creditOf: creditOf, creditState: creditState, creditDue: creditDue, creditPlan: creditPlan
   };

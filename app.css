@@ -628,3 +628,24 @@ h1.month { margin: 0; cursor: default; }
 .remind--tip strong, .remind--tip small { white-space: normal; }
 .spent__bar--over { overflow: visible; }
 .spent__bar--over .spent__fill { height: 100%; border-radius: 5px; overflow: hidden; }
+/* ---------- лимиты на категории (вариант А): тихая строка под названием и кольцо 14 px ---------- */
+.share--lim > span { display: grid; }
+.lim-note { display: inline-flex; align-items: center; gap: 6px; margin: 3px 0 0; font: 500 15px/1.2 var(--font); color: var(--muted); }
+.lim-note.is-over { color: var(--ink); font-weight: 600; }
+.ring { flex: none; width: 14px; height: 14px; }
+.ring circle { fill: none; }
+.ring__track { fill: #E5E5EA !important; }
+.ring__fill { stroke: #8E8E93; stroke-width: 7; }
+.is-over .ring__fill { stroke: var(--ink); }
+.is-over .ring__track { fill: var(--ink) !important; }
+.hintrow--lim p { display: inline-flex; align-items: center; gap: 8px; }
+.hintrow--lim.is-over p { color: var(--ink); font-weight: 600; }
+.hintrow--lim { margin: 4px 0 8px; }
+.entry__conv--warn { color: var(--ink); font-weight: 600; }
+/* на узком экране подпись лимита переносится, а не заходит под сумму строки (17.10.2026, 320 px) */
+.share--lim > span { white-space: normal; overflow: visible; }
+.lim-note { display: flex; align-items: flex-start; white-space: normal; }
+.lim-note .ring { margin-top: 1px; }
+/* общее правило значков скругляет концы линий: у сектора это закрывало весь кружок */
+.ring .ring__fill { stroke-linecap: butt; }
+.ring .ring__track { stroke: none; }
