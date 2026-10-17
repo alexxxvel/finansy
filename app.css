@@ -649,3 +649,11 @@ h1.month { margin: 0; cursor: default; }
 /* общее правило значков скругляет концы линий: у сектора это закрывало весь кружок */
 .ring .ring__fill { stroke-linecap: butt; }
 .ring .ring__track { stroke: none; }
+/* ---------- записи подряд (вариант В) ---------- */
+.modal__dock--series .btn { font-size: 15px; line-height: 1.15; padding: 0 10px; text-align: center; }
+.modal__dock--series .btn--quiet.btn--off { color: #8E8E93; }
+.modal__dock--series .btn[hidden] { display: none; }
+.entry__conv--done { display: flex; align-items: center; justify-content: center; gap: 8px; max-width: 100%; white-space: nowrap; }
+.entry__done { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.entry__undo { flex: none; min-height: 44px; }
+.entry__undo span { line-height: 28px; padding: 0 12px; }

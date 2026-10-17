@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '0f90fda90b'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'bf48377a24'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -1953,7 +1953,8 @@
       cat: op ? op.c : pre.cat || '',
       date: op ? op.d : pre.date || F.today(),
       note: op && op.n ? op.n : pre.note || '',
-      busy: false
+      busy: false,
+      series: 0, done: null, doneUntil: 0 // записи подряд: сколько записано в этом листе, последняя запись и до какого времени показывать «Записано»
     };
     haptic();
     openModal('entry', true, function (m) {
@@ -1972,6 +1973,7 @@
           entry.cat = '';
           entry.page = 0;
           haptic();
+          if (entry.more) { entry.more.hidden = k[0] === 's'; entry.more.parentNode.className = 'modal__dock' + (k[0] === 's' ? '' : ' modal__dock--duo modal__dock--series'); }
           paintChips();
           paintEntry();
         });
@@ -2047,7 +2049,7 @@
         b.addEventListener('click', function () {
           if (!entry || entry.busy) { return; }
           var next = F.press(entry.digits, k);
-          if (next !== entry.digits) { entry.digits = next; haptic(); paintEntry(); }
+          if (next !== entry.digits) { entry.digits = next; entry.done = null; haptic(); paintEntry(); }
         });
         keys.appendChild(b);
       });
@@ -2057,6 +2059,13 @@
       entry.go = btn('btn');
       entry.go.id = 'goBtn';
       entry.go.addEventListener('click', submitEntry);
+      if (!op && (entry.kind === 'e' || entry.kind === 'i')) { // записи подряд (решение разработчика 17.10.2026, вариант В): серая кнопка записывает и оставляет лист
+        foot.className = 'modal__dock modal__dock--duo modal__dock--series';
+        entry.more = btn('btn btn--quiet', 'Добавить и следующую');
+        entry.more.id = 'goMore';
+        entry.more.addEventListener('click', function () { submitEntry(true); });
+        foot.appendChild(entry.more);
+      }
       if (op) { // правка: удаление стоит рядом с «Сохранить», а не спрятано
         entry.del = btn('btn btn--del', 'Удалить');
         entry.del.id = 'delBtn';
@@ -2171,7 +2180,8 @@
     e.curBtn.setAttribute('aria-label', 'Валюта: ' + e.cur + '. Нажмите, чтобы сменить');
     e.dateText.textContent = F.dayLabel(e.date);
 
-    var often = (!e.edit && !e.digits && !e.busy && window.innerHeight >= 640) ? F.frequent(st.all, e.kind, 9) : []; // на низком экране кнопкам нет места
+    var showDone = !!e.done && !e.digits && Date.now() < e.doneUntil; // после записи в серии: строка «Записано» 6 секунд или до первого нажатия
+    var often = (!showDone && !e.edit && !e.digits && !e.busy && window.innerHeight >= 640) ? F.frequent(st.all, e.kind, 9) : []; // на низком экране кнопкам нет места
     var shownList = e.kind === 'e' ? F.CATS : F.SRCS;
     often = often.filter(function (it) { return !!F.find(shownList, it.c); }).slice(0, 3); // скрытую категорию частая запись не предлагает
     clear(e.quick);
@@ -2196,7 +2206,8 @@
     e.hint.className = 'entry__conv';
     e.hint2.hidden = true;
     e.over = '';
-    if (e.kind === 's' || e.kind === 't') { goalHints(e, minor, byn); }
+    if (showDone) { seriesDone(e); }
+    else if (e.kind === 's' || e.kind === 't') { goalHints(e, minor, byn); }
     else if (e.kind !== 'i' && F.creditOf(e.cat)) { creditHints(e, minor, byn); }
     else if (e.cur !== 'BYN') {
       e.hint.textContent = minor ? 'это ' + F.fmt(byn) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[e.cur]) : 'курс ' + F.fmtRate(F.RATES[e.cur]) + F.NB + 'BYN за' + F.NB + '1' + F.NB + e.cur;
@@ -2214,6 +2225,7 @@
 
     var label, off = true;
     if (e.busy) { label = 'Сохраняем'; }
+    else if (!minor && e.series) { label = 'Готово' + F.NB + '·' + F.NB + e.series + F.NB + F.plural(e.series, 'запись', 'записи', 'записей'); off = false; e.closeOnly = true; } // серия идёт, ничего не набрано: закрыть лист
     else if (!minor) { label = 'Введите сумму'; }
     else if (!e.cat) { label = e.kind === 'e' ? 'Выберите категорию' : e.kind === 'i' ? 'Выберите источник' : e.kind === 'p' ? 'Выберите кредит' : 'Выберите цель'; }
     else if (e.over) { label = e.over; } // снять больше, чем есть в цели, нельзя: кнопка называет, сколько там
@@ -2222,9 +2234,15 @@
       label = e.edit ? 'Сохранить' : e.kind === 'e' ? 'Добавить трату' : e.kind === 'i' ? 'Добавить доход' : (e.kind === 's' ? 'Отложить ' : e.kind === 'p' ? 'Внести ' : 'Снять ') + money;
       off = false;
     }
+    if (!(!minor && e.series && !e.busy)) { e.closeOnly = false; }
     e.go.textContent = label;
     e.go.className = 'btn' + (off ? ' btn--off' : '');
     e.go.setAttribute('aria-disabled', String(off));
+    if (e.more) {
+      var moreOff = !!e.busy || !minor || !e.cat || !!e.over;
+      e.more.className = 'btn btn--quiet' + (moreOff ? ' btn--off' : '');
+      e.more.setAttribute('aria-disabled', String(moreOff));
+    }
     if (e.del) { e.del.setAttribute('aria-disabled', String(!!e.busy)); }
   }
 
@@ -2281,9 +2299,10 @@
     reload(true, said);
   }
   function undone(err) { if (err) { toast(explain(err)); } else { haptic(); reload(true); } }
-  function submitEntry() {
+  function submitEntry(more) {
     var e = entry;
     if (!e || e.busy) { return; }
+    if (more !== true && e.closeOnly) { closeSeries(); return; }
     var minor = F.parseTyped(e.digits);
     if (!minor || !e.cat || e.over) { haptic('err'); return; }
     var op = F.makeOp(e.kind === 'i' || e.kind === 't' ? 'i' : 'e', e.cat, minor, e.cur, e.date, e.edit ? e.edit.id : null, e.note); // отложенное хранится как трата с категорией цели, снятое — как доход
@@ -2291,7 +2310,63 @@
     e.busy = true;
     paintEntry();
     if (e.edit) { store.update(op, F.monthOf(e.edit.d), function (err) { afterWrite(err, op.d); }); return; }
+    if (more === true || e.series) { seriesAdd(op, more === true); return; } // серия: и последняя трата серии с главной кнопкой записывается так же, потом лист закрывается
     addOp(op);
+  }
+  /** запись в серии: лист остаётся, сумма и категория очищаются, дата и вид — те же; под суммой «Записано… Отменить», счёт на главной кнопке */
+  function seriesAdd(op, stay) {
+    var e = entry;
+    store.add(op, function (err) {
+      if (!entry || entry !== e) { return; }
+      if (err) { e.busy = false; paintEntry(); haptic('err'); toast(explain(err)); return; }
+      haptic('ok');
+      e.series++;
+      e.done = op;
+      st.month = F.monthOf(op.d);
+      if (!stay) { closeModal(0); reload(true, function () { toast('Записано: ' + e.series + F.NB + F.plural(e.series, 'запись', 'записи', 'записей')); }); return; }
+      e.digits = '';
+      e.cat = '';
+      e.note = '';
+      e.noteInput.value = '';
+      e.doneUntil = Date.now() + 6000;
+      reload(false, function () {
+        if (entry !== e) { return; }
+        e.busy = false;
+        paintChips();
+        paintEntry();
+        bump(e.go);
+        clearTimeout(e.doneTimer);
+        e.doneTimer = setTimeout(function () { if (entry === e) { paintEntry(); } }, 6100);
+      });
+    });
+  }
+  /** «Записано: Связь 12,00» и серая «Отменить» под суммой */
+  function seriesDone(e) {
+    var op = e.done, d = F.dict(op.k, op.c), undo = btn('capsule entry__undo');
+    undo.id = 'seriesUndo';
+    undo.appendChild(el('span', '', 'Отменить'));
+    undo.addEventListener('click', function () {
+      if (!entry || entry !== e || e.busy) { return; }
+      e.busy = true;
+      store.remove(op.id, F.monthOf(op.d), function (err) {
+        if (err) { e.busy = false; paintEntry(); toast(explain(err)); return; }
+        e.series = Math.max(0, e.series - 1);
+        e.done = null;
+        reload(false, function () { if (entry === e) { e.busy = false; haptic(); paintEntry(); } });
+      });
+    });
+    var txt = el('span', 'entry__done', nb('Записано: ' + d.name + ' ' + (op.u === 'BYN' ? F.fmt(op.a) : F.fmtShort(op.a) + F.NB + op.u)));
+    e.hint.className = 'entry__conv entry__conv--done';
+    add(e.hint, txt, undo);
+  }
+  function closeSeries() {
+    var n = entry ? entry.series : 0;
+    closeModal(0, function () { if (n) { toast('Записано: ' + n + F.NB + F.plural(n, 'запись', 'записи', 'записей')); } });
+  }
+  /** цифра счёта на кнопке перещёлкивается пружиной */
+  function bump(node) {
+    if (reduce || !node.animate) { return; }
+    node.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.04)' }, { transform: 'scale(1)' }], { duration: 250, easing: 'cubic-bezier(.2,.8,.2,1.2)' });
   }
   function addOp(op) {
     store.add(op, function (err) {
@@ -2305,7 +2380,9 @@
     if (!e || e.busy) { return; }
     e.busy = true;
     paintEntry();
-    addOp(F.makeOp(it.k, it.c, it.a, it.u, e.date, null, it.n));
+    var op = F.makeOp(it.k, it.c, it.a, it.u, e.date, null, it.n);
+    if (e.series) { seriesAdd(op, true); return; } // серия уже идёт: частая запись тоже оставляет лист
+    addOp(op);
   }
   function removeEntry() {
     var e = entry;
