@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'ee7d0d999a'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'f3b1200708'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -2846,7 +2846,14 @@
       back.appendChild(icon('left'));
       back.addEventListener('click', closePicker);
     }
-    add(box, back, el('h1', 'first__title', 'На что вы тратите'), el('p', 'first__lead', nb('Тёмные уже выбраны. Нажмите, чтобы добавить или убрать.')), ul, foot);
+    var lead = el('p', 'first__lead', nb('Тёмные уже выбраны. Нажмите, чтобы добавить или убрать.'));
+    if (!f.manual) { // настройку прислал близкий: вставить её вместо выбора. Внутри подзаголовка, а не строкой: на iPhone SE строка выталкивала метки за экран (18.10.2026)
+      var code = btn('first__code', 'Есть код настройки');
+      code.id = 'firstCode';
+      code.addEventListener('click', function () { openImport(null, null); });
+      add(lead, document.createTextNode(' '), code);
+    }
+    add(box, back, el('h1', 'first__title', 'На что вы тратите'), lead, ul, foot);
     view.appendChild(box);
     label();
   }
@@ -2949,29 +2956,227 @@
     }, back);
   }
 
+  // ---------- «Поделиться настройкой» (пункт 13, решение разработчика 18.10.2026: переключатели; кнопка-ссылка в сообщении) ----------
+  var SHARE_BOT = 'umna_finance_bot';
+  function shareNames(list, n) { var names = list.map(function (c) { return c.name || c[1]; }); return names.slice(0, n).join(', ') + (names.length > n ? ' и ещё ' + (names.length - n) : ''); }
+  function openShare(back) {
+    var parts = { c: true, s: true, b: false, l: false, p: false };
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick'), ul = el('ul', 'menu'), foot = el('footer', 'modal__dock modal__dock--duo'), copy = btn('btn btn--quiet', 'Скопировать'), send = btn('btn', 'Отправить'), area = el('textarea', 'share__area');
+      ul.id = 'shareList';
+      function sw(key, name, sub) {
+        var li = el('li'), b = btn('switch-row'), text = el('span', '', name);
+        b.setAttribute('role', 'switch');
+        b.setAttribute('data-share', key);
+        b.setAttribute('aria-checked', String(parts[key]));
+        text.appendChild(el('small', '', sub));
+        add(b, text, el('i', 'switch'));
+        b.addEventListener('click', function () { parts[key] = !parts[key]; b.setAttribute('aria-checked', String(parts[key])); haptic(); state(); });
+        li.appendChild(b);
+        ul.appendChild(li);
+      }
+      sw('c', WORDS.e.list, shareNames(F.CATS, 3));
+      sw('s', WORDS.i.list, shareNames(F.SRCS, 4));
+      if (budgetOn()) { sw('b', 'Бюджет на месяц', 'уйдёт сумма ' + F.fmt(st.budget.a)); }
+      var lim = Object.keys(st.limits || {});
+      if (lim.length) { sw('l', 'Лимиты на категории', lim.slice(0, 2).map(function (id) { return F.dict('e', id).name + ' ' + F.fmt(st.limits[id]); }).join(', ') + (lim.length > 2 ? ' и ещё ' + (lim.length - 2) : '')); }
+      if ((st.pays.list || []).length) { sw('p', 'Платежи месяца', 'названия и суммы, без отметок'); }
+      function message() {
+        var code = F.encodeShare({ cats: parts.c ? F.packList(F.CATS) : null, srcs: parts.s ? F.packList(F.SRCS) : null, budget: parts.b ? st.budget.a : 0, limits: parts.l ? st.limits : null, pays: parts.p ? st.pays.list : null });
+        var fits = code.length <= 512, link = 'https://t.me/' + SHARE_BOT + '?startapp=' + code;
+        return { link: fits ? link : 'https://t.me/' + SHARE_BOT, text: fits ? 'Мои настройки для «Финансов». Нажми ссылку — они добавятся сами.' : 'Мои настройки для «Финансов». Открой приложение → «Настройки» → «Вставить настройку» и вставь это сообщение.\nfinansy:' + code, fits: fits };
+      }
+      function any() { return parts.c || parts.s || parts.b || parts.l || parts.p; }
+      function state() { [copy, send].forEach(function (b) { b.className = (b === copy ? 'btn btn--quiet' : 'btn') + (any() ? '' : ' btn--off'); b.setAttribute('aria-disabled', String(!any())); }); }
+      copy.id = 'shareCopy';
+      send.id = 'shareSend';
+      area.setAttribute('aria-hidden', 'true');
+      area.tabIndex = -1;
+      copy.addEventListener('click', function () {
+        if (!any()) { haptic('err'); return; }
+        var msg = message();
+        area.value = msg.text + '\n' + msg.link;
+        if (copyText(area, area.value)) { haptic('ok'); toast('Скопировано\nОтправьте близкому в Telegram'); } else { toast('Не скопировалось. Нажмите «Отправить».'); }
+      });
+      send.addEventListener('click', function () {
+        if (!any()) { haptic('err'); return; }
+        var msg = message(), url = 'https://t.me/share/url?url=' + encodeURIComponent(msg.link) + '&text=' + encodeURIComponent(msg.text);
+        haptic('ok');
+        if (inTg && tg.openTelegramLink) { tgTry(function () { tg.openTelegramLink(url); }); return; } // выбор чата Telegram
+        if (navigator.share) { navigator.share({ text: msg.text + '\n' + msg.link }).then(function () {}, function () {}); return; }
+        area.value = msg.text + '\n' + msg.link;
+        copyText(area, area.value);
+        toast('Скопировано\nОтправьте близкому в Telegram');
+      });
+      add(foot, copy, send);
+      add(box, el('h2', 'pick__title', 'Поделиться настройкой'), el('p', 'pick__info', nb('Включите, что отправить. Записи трат не отправляются никогда.')), ul, area);
+      add(m, box, foot);
+      state();
+    }, back);
+  }
+  /** метки как на первом экране: новые — графитом, уже свои — светлые */
+  function shareTags(list, fresh) {
+    var even = list.some(function (c) { return c[1].length > 9; }), ul = el('ul', 'picks picks--show' + (even ? ' picks--even' : '')); // раскладка та же, что на первом экране: метки без обрезки
+    list.forEach(function (c) {
+      var li = el('li', c[1].length > 11 ? 'picks__wide' : ''), b = el('span', 'picks__tag');
+      b.setAttribute('aria-pressed', String(!!fresh[c[0]]));
+      add(b, icon(c[2]), el('span', '', c[1]));
+      li.appendChild(b);
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+  /** слить присланный список со своим: совпадающие по названию не повторяются (скрытая — возвращается), новые встают в конец */
+  function mergeShare(kind, incoming) {
+    var l = listsOf(kind), all = l.on.concat(l.off), map = {}, fresh = {};
+    incoming.forEach(function (c) {
+      var key = c[1].toLowerCase(), hit = null;
+      all.forEach(function (x) { if (!hit && x[1].toLowerCase() === key) { hit = x; } });
+      if (hit) {
+        map[c[0]] = hit[0];
+        var at = l.off.indexOf(hit);
+        if (at >= 0) { l.off.splice(at, 1); l.on.push(hit); }
+        return;
+      }
+      if (all.length >= F.LIST_MAX) { return; }
+      var ids = idsOf(all), id = ids[c[0]] ? F.catId(ids) : c[0], row = [id, c[1], c[2]];
+      l.on.push(row);
+      all.push(row);
+      map[c[0]] = id;
+      fresh[c[0]] = 1;
+    });
+    return { on: l.on, off: l.off, map: map, fresh: fresh };
+  }
+  function applyShare(d, done) {
+    var patch = { seen: 1 }, ce = d.cats ? mergeShare('e', d.cats) : null, ci = d.srcs ? mergeShare('i', d.srcs) : null, map = ce ? ce.map : {}, steps = [];
+    if (ce) { patch.cats = ce.on; patch.catsOff = ce.off.length ? ce.off : null; }
+    if (ci) { patch.srcs = ci.on; patch.srcsOff = ci.off.length ? ci.off : null; }
+    steps.push(function (next) { store.patchCfg(patch, next); });
+    if (d.budget) { steps.push(function (next) { store.setBudget({ a: d.budget, off: st.budget.off ? 1 : 0 }, next); }); }
+    if (d.limits) {
+      Object.keys(d.limits).forEach(function (id) { steps.push(function (next) { store.setLimit(map[id] || id, d.limits[id], next); }); });
+    }
+    if (d.pays) {
+      steps.push(function (next) {
+        store.patchPays(function (o) {
+          var names = {};
+          o.list.forEach(function (x) { names[x[1].toLowerCase()] = 1; });
+          d.pays.forEach(function (p) {
+            if (names[p[1].toLowerCase()] || o.list.length >= 20) { return; }
+            o.list.push([F.catId(idsOf(o.list.map(function (x) { return [x[0]]; }))), p[1], p[2], map[p[3]] || p[3], p[4]]);
+          });
+          return o;
+        }, function (err) { next(err); });
+      });
+    }
+    (function run(i) {
+      if (i >= steps.length) { st.first = null; tgTry(function () { tg.BackButton.hide(); }); reload(false, function (e) { done(!e); }); return; }
+      steps[i](function (err) { if (err) { haptic('err'); toast(err === 'too long' ? 'Список не помещается: сократите названия.' : explain(err)); done(false); return; } run(i + 1); });
+    })(0);
+  }
+  /** «Вставить настройку»: d — уже найденная настройка (открыли по ссылке) или null — поле для вставки */
+  function openImport(back, d) {
+    var busy = false;
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick');
+      box.id = 'importBox';
+      box.appendChild(el('h2', 'pick__title', 'Вставить настройку'));
+      if (!d) {
+        var go = btn('btn btn--quiet btn--paste', 'Вставить'), area = el('textarea', 'field import__area'), err = el('p', 'import__err');
+        go.id = 'importPaste';
+        area.id = 'importText';
+        area.rows = 3;
+        area.placeholder = 'или вставьте сообщение сюда';
+        err.id = 'importErr';
+        var moved = false;
+        function tryText(t, quiet) {
+          if (moved) { return; } // лист уже перестроен: поле теряет фокус при удалении, второй раз не открывать
+          var found = F.findShare(t);
+          if (found) { moved = true; openImport(back, found); return; }
+          if (quiet) { return; }
+          haptic('err');
+          err.textContent = String(t || '').trim() ? 'Это не код настройки. Скопируйте сообщение целиком.' : 'Скопированного текста нет. Скопируйте сообщение с настройкой.';
+        }
+        go.addEventListener('click', function () {
+          var p = null;
+          try { p = navigator.clipboard && navigator.clipboard.readText ? navigator.clipboard.readText() : null; } catch (e) { p = null; }
+          if (!p || !p.then) { err.textContent = 'Телефон не дал прочитать скопированное. Вставьте сообщение в поле ниже.'; area.focus(); return; }
+          p.then(function (t) { tryText(t, false); }, function () { err.textContent = 'Телефон не дал прочитать скопированное. Вставьте сообщение в поле ниже.'; area.focus(); });
+        });
+        area.addEventListener('input', function () { err.textContent = ''; tryText(area.value, true); });
+        area.addEventListener('blur', function () { if (area.value.trim()) { tryText(area.value, false); } });
+        add(box, el('p', 'pick__info', nb('Вставьте сообщение с настройкой, которое вам прислали. Ваши записи не изменятся.')), go, area, err);
+        m.appendChild(box);
+        return;
+      }
+      var foot = el('footer', 'modal__dock'), apply = btn('btn', 'Применить'), parts = [];
+      box.appendChild(el('p', 'pick__info', nb('Новые — тёмные. Ваши категории и записи останутся, совпадающие не повторятся.'))); // наверху: внизу пояснение уходило под кнопку
+      if (d.cats) { var ce = mergeShare('e', d.cats); add(box, el('p', 'lbl', WORDS.e.list), shareTags(d.cats, ce.fresh)); }
+      if (d.srcs) { var ci = mergeShare('i', d.srcs); add(box, el('p', 'lbl', WORDS.i.list), shareTags(d.srcs, ci.fresh)); }
+      if (d.budget) { parts.push(['Бюджет на месяц', F.fmt(d.budget)]); }
+      if (d.limits) { parts.push(['Лимиты на категории', String(Object.keys(d.limits).length)]); }
+      if (d.pays) { parts.push(['Платежи месяца', String(d.pays.length)]); }
+      if (parts.length) {
+        var ul = el('ul', 'menu');
+        parts.forEach(function (r) { var li = el('li'), row = el('div', 'menu__row menu__row--plain'); add(row, el('span', '', r[0]), el('small', '', r[1])); li.appendChild(row); ul.appendChild(li); });
+        box.appendChild(ul);
+      }
+      apply.id = 'importApply';
+      apply.addEventListener('click', function () {
+        if (busy) { return; }
+        busy = true;
+        apply.textContent = 'Применяем';
+        applyShare(d, function (ok) {
+          busy = false;
+          apply.textContent = 'Применить';
+          if (!ok) { return; }
+          haptic('ok');
+          closeModal(0);
+          toast('Настройка добавлена');
+        });
+      });
+      foot.appendChild(apply);
+      add(m, box, foot);
+    }, back);
+  }
+  /** открыли по ссылке из сообщения (startapp=c…): сразу лист «Вставить настройку» с тем, что добавится */
+  function startShare() {
+    if (startShare.done) { return; }
+    startShare.done = true;
+    var sp = inTg && tg.initDataUnsafe ? tg.initDataUnsafe.start_param : '';
+    var d = sp ? F.decodeShare(sp) : null;
+    if (d) { openImport(null, d); }
+  }
+
   // ---------- настройки ----------
   function openSettings() {
     if (!st.loaded || st.error || firstRun()) { return; }
     haptic();
     swapModal('list', false, function (m) {
-      var box = el('div', 'pick'), ul = el('ul', 'menu');
+      var box = el('div', 'pick'), ul = el('ul', 'menu'), ul2 = el('ul', 'menu menu--group'), ul3 = el('ul', 'menu menu--group'), cur = ul; // группы: учёт, вид, перенос (замечание арт-директора 18.10.2026)
       function row(id, name, small, fn) {
         var li = el('li'), b = btn('menu__row');
         b.id = id;
         add(b, el('span', '', name), small ? el('small', '', small) : null, icon('right'));
         b.addEventListener('click', fn);
         li.appendChild(b);
-        ul.appendChild(li);
+        cur.appendChild(li);
       }
       row('setCats', WORDS.e.list, String(F.CATS.length), function () { openCats('e'); });
       row('setSrcs', WORDS.i.list, String(F.SRCS.length), function () { openCats('i'); });
       row('budgetBtn', 'Бюджет на месяц', budgetOn() ? F.fmt(st.budget.a) : 'не задан', function () { openBudget(openSettings); }); // отдельно от подсказки: задать можно, даже если её убрали
       row('paysBtn', 'Платежи месяца', (st.pays.list || []).length ? String(st.pays.list.length) : 'нет', function () { openPays(openSettings); });
+      cur = ul2;
       row('themeBtn', 'Оформление', themeWord(themePref()), function () { openTheme(openSettings); });
       row('sizeBtn', 'Размер текста', sizePref() === 'big' ? 'крупный' : 'обычный', function () { openSize(openSettings); });
+      cur = ul3;
+      row('shareBtn', 'Поделиться настройкой', 'близкому', function () { openShare(openSettings); });
+      row('pasteBtn', 'Вставить настройку', 'по коду', function () { openImport(openSettings, null); });
       row('notesBtn', 'Перенос из заметок', '', function () { openNotes(openSettings); });
       row('backupBtn', 'Копия данных', '', function () { openBackup(openSettings); });
-      add(box, el('h2', '', 'Настройки'), ul);
+      add(box, el('h2', '', 'Настройки'), ul, ul2, ul3);
       if (homeCan() || st.home === 'added') { // строки нет, где значок не ставится (Telegram на компьютере, старая версия)
         var solo = el('ul', 'menu menu--solo'), li = el('li'), hb = btn('menu__row menu__row--icon');
         hb.id = 'homeBtn';
@@ -3897,7 +4102,7 @@
     fit();
     paintDock();
     view.appendChild(el('p', 'boot', 'Открываем записи'));
-    reload(true);
+    reload(true, startShare); // открыли по ссылке с настройкой — после загрузки сразу лист «Вставить настройку»
   }
 
   window.addEventListener('error', function (e) { // белого экрана без объяснения быть не должно

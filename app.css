@@ -758,3 +758,20 @@ html { overflow: hidden; }
 .pick { overflow-x: hidden; }
 /* узкая раскладка (320 px или крупный текст): заголовок карточки платежей переносится, а не режется многоточием («Не внесено 3 п…») */
 @container app (max-width: 379px) { .remind--pay .remind__text strong { white-space: normal; } }
+
+/* ---------- поделиться настройкой (пункт 13) ---------- */
+.menu--group { margin-top: 24px; }
+.switch-row > span { display: grid; gap: 2px; text-align: left; min-width: 0; }
+.switch-row > span small { font: 400 15px/1.25 var(--font); color: var(--muted); }
+.share__area { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.picks--show { margin-top: 6px; padding-bottom: 12px; }
+.picks__tag { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: var(--chip-h); padding: 0 7px; border-radius: 999px; background: var(--surface); font: 500 15px/1.3 var(--font); white-space: nowrap; }
+.picks.picks--even .picks__tag { padding: 0 2px; }
+@container app (max-width: 374px) { .picks__tag { gap: 3px; } .picks__tag svg { width: 14px; height: 14px; } }
+.picks__tag span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picks__tag svg { flex: none; width: 16px; height: 16px; }
+.picks__tag[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
+.btn--paste { min-height: 56px; margin-top: 8px; }
+.import__area { height: auto; min-height: 84px; margin-top: 12px; padding: 14px 16px; resize: none; font: 400 17px/1.35 var(--font); }
+.import__err { min-height: 20px; margin-top: 8px; font: 500 15px/1.35 var(--font); color: var(--ink); }
+.first__code { display: inline-block; margin: -12px 0; padding: 12px 0; font: 600 17px/1.4 var(--font); color: var(--ink); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--tert); } /* касание 44 px, строка подзаголовка не растёт */

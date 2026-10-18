@@ -246,6 +246,43 @@
     (ops || []).forEach(function (op) { if (!hit && op.k === 'e' && op.c === p[3] && ((op.n || '').toLowerCase() === key || bynOf(op) === p[2])) { hit = op; } });
     return hit;
   }
+  // ---------- «Поделиться настройкой» (пункт 13): категории, источники, по желанию бюджет, лимиты, платежи — без записей ----------
+  /** известные категории (стартовые и встроенные) уходят одним id: код короче и помещается в ссылку Telegram (startapp — до 512 знаков) */
+  var KNOWN = {};
+  STARTER.concat(packList(BASE_CATS), packList(BASE_SRCS)).forEach(function (c) { if (!KNOWN[c[0]]) { KNOWN[c[0]] = c; } });
+  function shrinkList(list) { return list.map(function (c) { var k = KNOWN[c[0]]; return k && k[1] === c[1] && k[2] === c[2] ? c[0] : c; }); }
+  function growList(list) {
+    if (!list || typeof list.length !== 'number') { return null; }
+    return validList(list.map(function (c) { return typeof c === 'string' ? (KNOWN[c] || null) : c; }).filter(Boolean));
+  }
+  function b64url(s) { return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+  function unb64url(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) { s += '='; } return decodeURIComponent(escape(atob(s))); }
+  /** parts: { cats, srcs — списки [[id, название, значок]]; budget — копейки; limits — {id: копейки}; pays — список платежей } → код 'c…' */
+  function encodeShare(parts) {
+    var o = { v: 1 };
+    if (parts.cats && parts.cats.length) { o.c = shrinkList(parts.cats); }
+    if (parts.srcs && parts.srcs.length) { o.s = shrinkList(parts.srcs); }
+    if (parts.budget) { o.b = parts.budget; }
+    if (parts.limits && Object.keys(parts.limits).length) { o.l = parts.limits; }
+    if (parts.pays && parts.pays.length) { o.p = parts.pays.map(function (p) { return [p[0], p[1], p[2], p[3], p[4]]; }); }
+    return 'c' + b64url(JSON.stringify(o));
+  }
+  /** код → { cats, srcs, budget, limits, pays } или null; всё проверяется, как при чтении своих настроек */
+  function decodeShare(code) {
+    if (typeof code !== 'string' || !/^c[A-Za-z0-9_-]{4,6000}$/.test(code)) { return null; }
+    var o = null;
+    try { o = JSON.parse(unb64url(code.slice(1))); } catch (e) { return null; }
+    if (!o || o.v !== 1) { return null; }
+    var out = { cats: o.c ? growList(o.c) : null, srcs: o.s ? growList(o.s) : null, budget: whole(o.b, 1) ? o.b : 0, limits: o.l ? validLimits(o.l) : null, pays: o.p ? (validPays({ list: o.p }) || { list: [] }).list : null };
+    if (out.limits && !Object.keys(out.limits).length) { out.limits = null; }
+    if (out.pays && !out.pays.length) { out.pays = null; }
+    return out.cats || out.srcs || out.budget || out.limits || out.pays ? out : null;
+  }
+  /** найти код в присланном сообщении: ссылка …?startapp=c… или строка finansy:c… */
+  function findShare(text) {
+    var s = String(text || ''), m = /startapp=(c[A-Za-z0-9_-]{4,})/.exec(s) || /finansy:(c[A-Za-z0-9_-]{4,})/.exec(s) || /^\s*(c[A-Za-z0-9_-]{8,})\s*$/.exec(s);
+    return m ? decodeShare(m[1]) : null;
+  }
   function useCredits(list) {
     var ok = validCredits(list) || [];
     CREDITS.splice.apply(CREDITS, [0, CREDITS.length].concat(ok.map(function (k) { return { id: k[0], name: k[1], a: k[2], u: k[3], s: k[4], p: k[5], f: k[6] }; })));
@@ -776,7 +813,7 @@
     parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX,
     WEEKDAYS_SHORT: WEEKDAYS_SHORT, MONTHS_GEN: MONTHS_GEN, dow: dow, daysBetween: daysBetween, lastDay: lastDay, statsPeriod: statsPeriod, periodShift: periodShift, inRange: inRange, rangeStats: rangeStats,
     catRows: catRows, catChanges: catChanges, topNotes: topNotes, weekdayAvg: weekdayAvg, cumulative: cumulative, firstDate: firstDate,
-    validBudget: validBudget, validLimits: validLimits, validPays: validPays, payPaid: payPaid,
+    validBudget: validBudget, validLimits: validLimits, validPays: validPays, payPaid: payPaid, encodeShare: encodeShare, decodeShare: decodeShare, findShare: findShare,
     CREDITS: CREDITS, CREDITS_MAX: CREDITS_MAX, REMIND: REMIND, CLOSED: CLOSED, validCredits: validCredits, useCredits: useCredits, packCredits: packCredits,
     isCreditOp: isCreditOp, creditOf: creditOf, creditState: creditState, creditDue: creditDue, creditPlan: creditPlan
   };
