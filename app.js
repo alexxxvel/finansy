@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'b97b97e9d0'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '24c5314f54'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -1690,7 +1690,8 @@
 
   // ---------- аналитика ----------
   // цвета категорий в кольце (палитра правил по графикам, проверена validate_palette.js; без синего — он у «Добавить»). Остальные диаграммы графитовые
-  var VIZ = ['#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#4a3aa7'], VIZ_REST = '#C7C7CC';
+  var VIZ_LIGHT = ['#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#4a3aa7'], VIZ_DARK = ['#FF9F0A', '#30D158', '#FFD60A', '#FF375F', '#7D7AFF']; // на чёрном — тёмные системные цвета Apple (индиго светлой палитры на #000 не виден)
+  function vizColors() { var d = document.documentElement.getAttribute('data-theme') === 'dark'; return { list: d ? VIZ_DARK : VIZ_LIGHT, rest: d ? '#636366' : '#C7C7CC' }; }
   var SVGNS = 'http://www.w3.org/2000/svg';
   function svgEl(tag, attrs) { var n = document.createElementNS(SVGNS, tag); Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); }); return n; }
   function whole(minor) { return F.fmtDay(minor); }
@@ -1785,8 +1786,9 @@
     var rows = F.catRows(cur.cats), top = rows.slice(0, 5), restSum = 0, total = cur.spent || 1;
     rows.slice(5).forEach(function (r) { restSum += r.sum; });
     var order = top.slice().sort(function (a, b) { var x = F.CATS.indexOf(F.find(F.CATS, a.id)), y = F.CATS.indexOf(F.find(F.CATS, b.id)); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y); });
-    order.forEach(function (r, i) { r.color = VIZ[i]; });
-    var parts = top.concat(restSum ? [{ id: '', name: 'Остальное', sum: restSum, color: VIZ_REST, rest: rows.slice(5) }] : []);
+    var vc = vizColors();
+    order.forEach(function (r, i) { r.color = vc.list[i]; });
+    var parts = top.concat(restSum ? [{ id: '', name: 'Остальное', sum: restSum, color: vc.rest, rest: rows.slice(5) }] : []);
     var box = el('div', 'donut'), svg = svgEl('svg', { viewBox: '0 0 180 180', role: 'img', 'aria-label': 'Доли категорий' }), r = 70, c = 2 * Math.PI * r, off = 0;
     parts.forEach(function (p) {
       var len = p.sum / total * c, arc = svgEl('circle', { r: r, cx: 90, cy: 90, fill: 'none', stroke: p.color, 'stroke-width': 24, 'stroke-dasharray': Math.max(0.1, len - (parts.length > 1 ? 2.5 : 0)).toFixed(2) + ' ' + c.toFixed(2), 'stroke-dashoffset': (-off).toFixed(2), transform: 'rotate(-90 90 90)' });
@@ -1958,7 +1960,7 @@
       if (ch.length) { sheet.appendChild(vizBlock('Что изменилось', 'сравнение: ' + prevText(P), changesList(ch), 'vizChanges')); }
     }
     sheet.appendChild(vizBlock('Куда ушло', rangeText(P.from, P.end), donutBlock(cur, P), 'vizWhere'));
-    if (P.kind === 'month') { sheet.appendChild(vizBlock('По дням', 'чем темнее, тем больше', calendarBlock(P, cur), 'vizDays')); }
+    if (P.kind === 'month') { sheet.appendChild(vizBlock('По дням', rangeText(P.from, P.end), calendarBlock(P, cur), 'vizDays')); }
     if (P.kind === 'week') {
       var wv = [];
       for (var i = 0; i < 7; i++) { wv.push(cur.days[F.shiftDay(P.from, i)] || 0); }
@@ -2861,6 +2863,52 @@
     setTimeout(function () { document.addEventListener('pointerdown', off, true); }, 400);
   }
 
+  // ---------- оформление: светлое и тёмное (пункт 11, решение разработчика 18.10.2026: палитра «Чёрный», как в Telegram + своя строка) ----------
+  var THEME_BG = { light: '#F5F5F7', dark: '#000000' }, THEME_BAR = { light: '#FFFFFF', dark: '#1C1C1E' };
+  /** выбор на этом телефоне: auto (как в Telegram или в телефоне), light, dark */
+  function themePref() { try { var v = localStorage.getItem('fin_theme'); return v === 'light' || v === 'dark' ? v : 'auto'; } catch (e) { return 'auto'; } }
+  function systemDark() {
+    if (inTg && tg.colorScheme) { return tg.colorScheme === 'dark'; }
+    return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+  function themeNow() { var p = themePref(); return p === 'auto' ? (systemDark() ? 'dark' : 'light') : p; }
+  /** ставит тему на <html> и красит шапку и низ Telegram в цвет фона — без шва с любой темой Telegram */
+  function applyTheme(repaint) {
+    var t = themeNow(), root = document.documentElement;
+    if (root.getAttribute('data-theme') === t && !repaint) { return; }
+    root.setAttribute('data-theme', t);
+    tgTry(function () { tg.setHeaderColor(THEME_BG[t]); });
+    tgTry(function () { tg.setBackgroundColor(THEME_BG[t]); });
+    tgTry(function () { if (tg.setBottomBarColor) { tg.setBottomBarColor(THEME_BAR[t]); } });
+    if (repaint && st.loaded && !ui.open) { paint(false); }
+  }
+  function themeWord(p) { return p === 'light' ? 'светлое' : p === 'dark' ? 'тёмное' : inTg ? 'как в Telegram' : 'как в телефоне'; }
+  /** лист «Оформление»: три строки, выбранная с галочкой; меняется сразу */
+  function openTheme(back) {
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick'), ul = el('ul', 'menu');
+      ul.id = 'themeList';
+      [['auto', inTg ? 'Как в Telegram' : 'Как в телефоне'], ['light', 'Светлое'], ['dark', 'Тёмное']].forEach(function (o) {
+        var li = el('li'), b = btn('menu__row menu__row--pick'), name = el('span', '', o[1]), on = themePref() === o[0];
+        b.setAttribute('data-theme-pick', o[0]);
+        b.setAttribute('aria-pressed', String(on));
+        if (o[0] === 'auto') { name.appendChild(el('small', '', 'сейчас ' + (systemDark() ? 'тёмное' : 'светлое'))); }
+        add(b, name, on ? icon('check') : null);
+        b.addEventListener('click', function () {
+          try { if (o[0] === 'auto') { localStorage.removeItem('fin_theme'); } else { localStorage.setItem('fin_theme', o[0]); } } catch (e) { /* без памяти выбор живёт до закрытия */ }
+          haptic('ok');
+          applyTheme(false);
+          openTheme(back);
+        });
+        li.appendChild(b);
+        ul.appendChild(li);
+      });
+      add(box, el('h2', 'pick__title', 'Оформление'), el('p', 'pick__info', 'Выбор хранится на этом телефоне.'), ul);
+      m.appendChild(box);
+    }, back);
+  }
+
   // ---------- настройки ----------
   function openSettings() {
     if (!st.loaded || st.error || firstRun()) { return; }
@@ -2879,6 +2927,7 @@
       row('setSrcs', WORDS.i.list, String(F.SRCS.length), function () { openCats('i'); });
       row('budgetBtn', 'Бюджет на месяц', budgetOn() ? F.fmt(st.budget.a) : 'не задан', function () { openBudget(openSettings); }); // отдельно от подсказки: задать можно, даже если её убрали
       row('paysBtn', 'Платежи месяца', (st.pays.list || []).length ? String(st.pays.list.length) : 'нет', function () { openPays(openSettings); });
+      row('themeBtn', 'Оформление', themeWord(themePref()), function () { openTheme(openSettings); });
       row('notesBtn', 'Перенос из заметок', '', function () { openNotes(openSettings); });
       row('backupBtn', 'Копия данных', '', function () { openBackup(openSettings); });
       add(box, el('h2', '', 'Настройки'), ul);
@@ -3767,9 +3816,9 @@
     tgTry(function () { tg.expand(); });
     if (bridgeOnly) { fail('Не загрузился Telegram', 'Закройте окно и откройте его ещё раз. Записи в безопасности: без связи с Telegram приложение ничего не меняет.'); return; }
     if (inTg && !(tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage)) { fail('Нужно обновить Telegram', 'Эта версия Telegram не умеет хранить записи приложения. Обновите Telegram и откройте учёт снова.'); return; }
-    tgTry(function () { tg.setHeaderColor('#F5F5F7'); });
-    tgTry(function () { tg.setBackgroundColor('#F5F5F7'); });
-    tgTry(function () { if (tg.setBottomBarColor) { tg.setBottomBarColor('#FFFFFF'); } });
+    applyTheme(false); // до первой отрисовки: без вспышки светлого
+    tgTry(function () { tg.onEvent('themeChanged', function () { if (themePref() === 'auto') { applyTheme(true); } }); });
+    if (window.matchMedia) { try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { if (!inTg && themePref() === 'auto') { applyTheme(true); } }); } catch (e) { /* старый браузер */ } }
     tgTry(function () { if (tg.disableVerticalSwipes) { tg.disableVerticalSwipes(); } }); // иначе жест «вниз» сворачивает всё приложение вместо листа
     tgTry(function () { tg.BackButton.onClick(goBack); });
     tgTry(function () { // пункт «Настройки» в меню Telegram открывает тот же лист, что и шестерёнка
