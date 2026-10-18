@@ -749,3 +749,9 @@ html[data-size="big"] .entry__sum.is-m { font-size: calc(var(--sum-m) / var(--k)
 html[data-size="big"] .entry__sum.is-s { font-size: calc(var(--sum-s) / var(--k)); }
 /* крупный текст на низкой раскладке: клавиши не мельче обычных (44 px раскладки = ~54 на экране); место дают сумма, которая не растёт, и ужатые промежутки */
 @container app (max-height: 620px) { html[data-size="big"] #root > * { --key-h: 44px; --chip-gap: 6px; --chip-top: 0px; } }
+
+/* экран и листы двигаются только вверх-вниз (18.10.2026, видео с iPhone 16 при крупном тексте: экран уезжал вбок и обрезал цифры справа).
+   Боковая прокрутка остаётся только у таблицы для Excel (.pick__area--table) */
+html { overflow: hidden; }
+.view { overflow-x: hidden; touch-action: pan-y; }
+.pick { overflow-x: hidden; }
