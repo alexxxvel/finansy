@@ -29,7 +29,7 @@ data, .keys { font-variant-numeric: tabular-nums; }
 data { word-spacing: .06em; }
 svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-#root { position: relative; height: 100vh; height: var(--vh, 100vh); max-width: 520px; margin: 0 auto; overflow: hidden; }
+#root { position: relative; height: 100vh; height: var(--vh, 100vh); max-width: 520px; margin: 0 auto; overflow: hidden; container: app / size; } /* правила узкого и низкого экрана — @container app: по размеру приложения (крупный текст делает его уже экрана) */
 .boot { padding: 28px 20px; color: var(--muted); }
 .stage { position: relative; display: flex; flex-direction: column; height: 100%; background: var(--bg); transform-origin: 50% 0; }
 .view { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px 20px 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
@@ -326,9 +326,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .is-typing .modal--list .modal__dock { padding-bottom: 12px; }
 /* узкие телефоны: самая длинная метка («Документы») должна помещаться целиком вместе со значком и полями не меньше 6 px
    (13.10.2026 при запасе 0 px метка обрезалась на экране с двойной плотностью точек, при полях 2 px текст упирался в край капсулы) */
-@media (max-width: 389px) { .first { margin: 0 -6px; } .picks button { padding: 0 6px; } }
-@media (max-width: 374px) { .picks { gap: 4px; } .picks button { gap: 3px; } .picks svg { width: 14px; height: 14px; } }
-@media (max-width: 350px) {
+@container app (max-width: 389px) { .first { margin: 0 -6px; } .picks button { padding: 0 6px; } }
+@container app (max-width: 374px) { .picks { gap: 4px; } .picks button { gap: 3px; } .picks svg { width: 14px; height: 14px; } }
+@container app (max-width: 350px) {
   .picks svg { display: none; }
   .picks .picks__add svg { display: block; }
   .icons { grid-template-columns: repeat(7, 40px); }
@@ -600,11 +600,11 @@ h1.month { margin: 0; cursor: default; }
   .keys button:hover, .pick__row:hover { background-color: var(--fill); }
 }
 /* низкие экраны: лист обязан поместиться целиком, без прокрутки */
-@media (max-height: 720px) { :root { --key-h: 48px; --chip-gap: 12px; --chip-top: 4px; } .entry { gap: 4px; } }
-@media (max-height: 680px) { :root { --key-h: 44px; --chip-gap: 10px; --chip-top: 4px; --sum: 52px; --sum-m: 44px; --sum-s: 34px; } .modal__dock .btn { min-height: 52px; } }
-@media (max-height: 620px) { :root { --key-h: 40px; --chip-h: 40px; --chip-gap: 8px; --chip-top: 2px; --sum: 44px; --sum-m: 44px; } .strip { margin-top: 2px; min-height: 40px; } .note-in { height: 40px; } .grab { height: 18px; } .entry { gap: 2px; } .entry__conv { min-height: 18px; } .cur, .seg button { min-height: 40px; } .modal__dock { padding-top: 8px; } .modal__dock .btn { min-height: 48px; } }
+@container app (max-height: 720px) { #root > * { --key-h: 48px; --chip-gap: 12px; --chip-top: 4px; } .entry { gap: 4px; } }
+@container app (max-height: 680px) { #root > * { --key-h: 44px; --chip-gap: 10px; --chip-top: 4px; --sum: 52px; --sum-m: 44px; --sum-s: 34px; } .modal__dock .btn { min-height: 52px; } }
+@container app (max-height: 620px) { #root > * { --key-h: 40px; --chip-h: 40px; --chip-gap: 8px; --chip-top: 2px; --sum: 44px; --sum-m: 44px; } .strip { margin-top: 2px; min-height: 40px; } .note-in { height: 40px; } .grab { height: 18px; } .entry { gap: 2px; } .entry__conv { min-height: 18px; } .cur, .seg button { min-height: 40px; } .modal__dock { padding-top: 8px; } .modal__dock .btn { min-height: 48px; } }
 /* самый низкий экран (568 px): ужимаются промежутки, клавиши и метки остаются 40 px */
-@media (max-height: 580px) { :root { --chip-gap: 4px; --chip-top: 0px; } .grab { height: 14px; } .modal__dock { padding-top: 6px; } .strip { margin-top: 0; } .entry { gap: 0; } }
+@container app (max-height: 580px) { #root > * { --chip-gap: 4px; --chip-top: 0px; } .grab { height: 14px; } .modal__dock { padding-top: 6px; } .strip { margin-top: 0; } .entry { gap: 0; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
 /* календарь на узком экране: круги сжимаются вместе с сеткой (на 320 px — около 36 px), а не раздвигают экран */
 .cal__grid .cal__d { width: 100%; max-width: 44px; height: auto; aspect-ratio: 1; }
@@ -614,7 +614,7 @@ h1.month { margin: 0; cursor: default; }
 /* подпись справа в шапке блока аналитики переносится: на 320 px длинная подпись раздвигала экран и он уезжал вбок (15.10.2026) */
 .viz .cats__head > span { white-space: normal; text-align: right; }
 /* четыре вкладки на узком телефоне: поля уже, иначе капсула шире себя и экран уезжает вбок за нажатой «Аналитикой» (15.10.2026, 320 px) */
-@media (max-width: 379px) { .tabs--4 button { padding: 0 6px; letter-spacing: -.02em; } }
+@container app (max-width: 379px) { .tabs--4 button { padding: 0 6px; letter-spacing: -.02em; } }
 .pick__head { display: flex; align-items: center; gap: 10px; }
 .key--title { width: 12px; height: 12px; }
 #vizNotes .pick__info--after { margin-top: 12px; }
@@ -684,7 +684,7 @@ h1.month { margin: 0; cursor: default; }
 .chips--form li { flex: none; }
 .chips--form button { padding: 0 16px; }
 .remind--pay .remind__text small { white-space: normal; overflow: visible; }
-@media (max-width: 379px) { /* узкий экран: сумма под названием, иначе название сжимается до пары букв */
+@container app (max-width: 379px) { /* узкий экран: сумма под названием, иначе название сжимается до пары букв */
   .pay { grid-template-columns: 1fr auto; grid-template-areas: "name act" "sum act"; padding: 8px 0; }
   .pay__name { grid-area: name; min-height: 0; }
   .pay data { grid-area: sum; font-size: 15px; }
@@ -707,7 +707,7 @@ h1.month { margin: 0; cursor: default; }
 .menu__row--icon.is-done:active { background: none; }
 .menu__row--icon small svg { width: 16px; height: 16px; color: var(--ink); }
 .menu__row .appicon img { width: 30px; height: 30px; } /* картинка значка в строке настроек — 30 px */
-@media (max-width: 379px) { /* узкий экран: без картинки, название переносится */
+@container app (max-width: 379px) { /* узкий экран: без картинки, название переносится */
   .remind--home { grid-template-columns: 1fr auto auto; padding-left: 16px; }
   .remind--home .appicon { display: none; }
   .remind--home strong { white-space: normal; } /* на 320 px название в две строки, без многоточия */
@@ -738,3 +738,14 @@ h1.month { margin: 0; cursor: default; }
 .menu__row--pick > span { display: grid; gap: 2px; }
 .menu__row--pick > span small { font: 400 15px/1.25 var(--font); color: var(--muted); }
 .menu__row--pick svg { grid-column: 2; width: 20px; height: 20px; color: var(--accent); stroke-width: 2.4; }
+
+/* ---------- крупный текст (пункт 12): всё приложение крупнее — раскладка на ширину экрана/--k и scale(--k) на корне.
+   Правила узкого и низкого экрана — @container app (по раскладке #root), поэтому срабатывают как на телефоне поуже ---------- */
+html[data-size="big"] #root { width: calc(100vw / var(--k)); max-width: 520px; height: calc(var(--vh, 100vh) / var(--k)); margin: 0 0 0 max(0px, calc((100vw - 520px * var(--k)) / 2));
+  transform: scale(var(--k)); transform-origin: 0 0; }
+/* сумма в листе добавления не растёт: она и так самая крупная, место нужнее клавишам */
+html[data-size="big"] .entry__sum { font-size: calc(var(--sum) / var(--k)); }
+html[data-size="big"] .entry__sum.is-m { font-size: calc(var(--sum-m) / var(--k)); }
+html[data-size="big"] .entry__sum.is-s { font-size: calc(var(--sum-s) / var(--k)); }
+/* крупный текст на низкой раскладке: клавиши не мельче обычных (44 px раскладки = ~54 на экране); место дают сумма, которая не растёт, и ужатые промежутки */
+@container app (max-height: 620px) { html[data-size="big"] #root > * { --key-h: 44px; --chip-gap: 6px; --chip-top: 0px; } }

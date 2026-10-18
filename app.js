@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '24c5314f54'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'ae40e06ebc'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -111,6 +111,7 @@
   toastEl.setAttribute('role', 'status');
 
   var sim = null; // только для теста: изображает клавиатуру телефона
+  var K = 1; // крупный текст: во сколько раз приложение крупнее экрана; касания и замеры экрана делятся на K (они в пикселях экрана, раскладка — в своих)
   /** Высота окна и клавиатура телефона — одним расчётом. Клавиатура ведёт себя по-разному:
       iPhone в Telegram сообщает приложению уменьшенную высоту окна (страница сама становится ниже), обычный браузер кладёт клавиатуру поверх страницы,
       Android сжимает само окно. Поэтому лист поднимается ровно на ту часть страницы, которая осталась под клавиатурой: нижний край страницы минус нижний край видимой области.
@@ -126,8 +127,8 @@
     var h = Math.min(inner, stable);
     document.documentElement.style.setProperty('--vh', h + 'px');
     // большой лист (добавление) держит высоту, которая была до клавиатуры: иначе, пока печатают заметку, страница становится ниже и сумма наезжает на категории
-    if (!typing()) { root.style.setProperty('--full', (h - 10) + 'px'); }
-    var kb = Math.max(0, Math.round(root.getBoundingClientRect().top + h - visible));
+    if (!typing()) { root.style.setProperty('--full', (h / K - 10) + 'px'); }
+    var kb = Math.max(0, Math.round((root.getBoundingClientRect().top + h - visible) / K));
     root.style.setProperty('--kb', (kb > 40 ? kb : 0) + 'px');
     if (ui.open) { ui.h = modal.offsetHeight; reveal(visible); }
   }
@@ -138,7 +139,7 @@
     var pick = a.closest('.pick');
     if (!pick) { return; }
     var pr = pick.getBoundingClientRect(), ar = a.getBoundingClientRect(), bottom = Math.min(pr.bottom, visible);
-    if (ar.bottom > bottom - 12 || ar.top < pr.top + 4) { pick.scrollTop += ar.top - pr.top - Math.max(8, (bottom - pr.top - ar.height) / 3); }
+    if (ar.bottom > bottom - 12 || ar.top < pr.top + 4) { pick.scrollTop += (ar.top - pr.top - Math.max(8, (bottom - pr.top - ar.height) / 3)) / K; }
   }
   function typing() { var a = document.activeElement; return !!a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.type !== 'date'; }
 
@@ -2195,16 +2196,16 @@
       id = e.pointerId;
       try { grab.setPointerCapture(id); } catch (x) { /* без захвата тоже работает */ }
       cancelAnimationFrame(ui.raf);
-      startY = e.clientY;
+      startY = e.clientY / K;
       startAt = ui.y;
-      track = [{ y: e.clientY, t: e.timeStamp }];
+      track = [{ y: e.clientY / K, t: e.timeStamp }];
     });
     grab.addEventListener('pointermove', function (e) {
       if (e.pointerId !== id) { return; }
-      var y = startAt + (e.clientY - startY);
+      var y = startAt + (e.clientY / K - startY); // палец 1:1 и при крупном тексте
       if (y < 0) { y = y * 0.15; } // вверх лист упирается мягко, а не встаёт стеной
       setY(y);
-      track.push({ y: e.clientY, t: e.timeStamp });
+      track.push({ y: e.clientY / K, t: e.timeStamp });
       if (track.length > 6) { track.shift(); }
     });
     function end(e) {
@@ -2460,7 +2461,7 @@
     e.dateText.textContent = F.dayLabel(e.date);
 
     var showDone = !!e.done && !e.digits && Date.now() < e.doneUntil; // после записи в серии: строка «Записано» 6 секунд или до первого нажатия
-    var often = (!showDone && !e.edit && !e.digits && !e.busy && window.innerHeight >= 640) ? F.frequent(st.all, e.kind, 9) : []; // на низком экране кнопкам нет места
+    var often = (!showDone && !e.edit && !e.digits && !e.busy && window.innerHeight / K >= 640) ? F.frequent(st.all, e.kind, 9) : []; // на низком экране кнопкам нет места
     var shownList = e.kind === 'e' ? F.CATS : F.SRCS;
     often = often.filter(function (it) { return !!F.find(shownList, it.c); }).slice(0, 3); // скрытую категорию частая запись не предлагает
     clear(e.quick);
@@ -2546,7 +2547,7 @@
       var one = e.cur === 'BYN' ? cur : cur === 'BYN' ? e.cur : '';
       add(e.hint, el('b', '', gm(delta, g) + F.NB + cur), document.createTextNode(nb(one ? ' по курсу ' + F.fmtRate(F.RATES[one]) : ' по курсам приложения') + ', станет ' + gm(will, g)));
     }
-    if (minor && !e.edit && F.monthOf(e.date) === st.month && window.innerHeight >= 640 && !budgetOn()) { // на низком экране второй строке нет места; при бюджете отложенное трат не меняет
+    if (minor && !e.edit && F.monthOf(e.date) === st.month && window.innerHeight / K >= 640 && !budgetOn()) { // на низком экране второй строке нет места; при бюджете отложенное трат не меняет
       var s = st.sum, left = s.left + st.carry + (take ? byn : -byn);
       add(e.hint2, document.createTextNode(nb(left < 0 ? 'Перерасход месяца ' : 'На траты ' + F.inMonth(st.month) + (take ? ' станет ' : ' останется '))), el('b', '', F.fmt(Math.abs(left))));
       e.hint2.hidden = false;
@@ -2563,7 +2564,7 @@
       var one = e.cur === 'BYN' ? cur : cur === 'BYN' ? e.cur : '';
       add(e.hint, el('b', '', gm(delta, k) + F.NB + cur), document.createTextNode(nb(one ? ' по курсу ' + F.fmtRate(F.RATES[one]) : ' по курсам приложения') + ', долг станет ' + gm(Math.max(0, will), k)));
     }
-    if (minor && !e.edit && F.monthOf(e.date) === st.month && window.innerHeight >= 640) { // на низком экране остаётся главное: что станет с долгом
+    if (minor && !e.edit && F.monthOf(e.date) === st.month && window.innerHeight / K >= 640) { // на низком экране остаётся главное: что станет с долгом
       var left = monthLeft() - byn;
       add(e.hint2, document.createTextNode(nb(left < 0 ? 'Перерасход месяца ' : 'На траты ' + F.inMonth(st.month) + ' останется ')), el('b', '', F.fmt(Math.abs(left))));
       e.hint2.hidden = false;
@@ -2909,6 +2910,45 @@
     }, back);
   }
 
+  // ---------- размер текста (пункт 12, решение разработчика 18.10.2026: обычный и крупный) ----------
+  /** выбор на этом телефоне: big — крупный; иначе обычный */
+  function sizePref() { try { return localStorage.getItem('fin_size') === 'big' ? 'big' : 'normal'; } catch (e) { return 'normal'; } }
+  /** крупный = всё приложение крупнее: раскладка на ширину экрана/K и scale(K) на корне. K не больше 1,22 и такой,
+      чтобы раскладка была не уже 320 и не ниже 580 px (проверенные пределы): на 390×780 — 22 %, на 360 px — 12,5 % */
+  function applySize() {
+    var hh = inTg && tg.viewportStableHeight ? tg.viewportStableHeight : window.innerHeight;
+    var k = sizePref() === 'big' ? Math.min(1.22, window.innerWidth / 320, hh / 580) : 1, html = document.documentElement; // и не ниже 580 px: на 533 сумма наезжала на «Заметку» (18.10.2026)
+    if (k < 1.02) { k = 1; }
+    K = Math.round(k * 1000) / 1000;
+    if (K === 1) { html.removeAttribute('data-size'); html.style.removeProperty('--k'); }
+    else { html.setAttribute('data-size', 'big'); html.style.setProperty('--k', String(K)); }
+  }
+  function openSize(back) {
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick'), ul = el('ul', 'menu');
+      ul.id = 'sizeList';
+      [['normal', 'Обычный', 17], ['big', 'Крупный', 20]].forEach(function (o) {
+        var li = el('li'), b = btn('menu__row menu__row--pick'), name = el('span', '', o[1]), on = sizePref() === o[0];
+        name.style.fontSize = o[2] + 'px'; // подпись своим размером: видно, что выбираешь
+        b.setAttribute('data-size-pick', o[0]);
+        b.setAttribute('aria-pressed', String(on));
+        add(b, name, on ? icon('check') : null);
+        b.addEventListener('click', function () {
+          try { if (o[0] === 'big') { localStorage.setItem('fin_size', 'big'); } else { localStorage.removeItem('fin_size'); } } catch (e) { /* без памяти выбор живёт до закрытия */ }
+          haptic('ok');
+          applySize();
+          fit();
+          openSize(back);
+        });
+        li.appendChild(b);
+        ul.appendChild(li);
+      });
+      add(box, el('h2', 'pick__title', 'Размер текста'), el('p', 'pick__info', nb('Крупнее станет всё: текст, кнопки, клавиши. Выбор хранится на этом телефоне.')), ul);
+      m.appendChild(box);
+    }, back);
+  }
+
   // ---------- настройки ----------
   function openSettings() {
     if (!st.loaded || st.error || firstRun()) { return; }
@@ -2928,6 +2968,7 @@
       row('budgetBtn', 'Бюджет на месяц', budgetOn() ? F.fmt(st.budget.a) : 'не задан', function () { openBudget(openSettings); }); // отдельно от подсказки: задать можно, даже если её убрали
       row('paysBtn', 'Платежи месяца', (st.pays.list || []).length ? String(st.pays.list.length) : 'нет', function () { openPays(openSettings); });
       row('themeBtn', 'Оформление', themeWord(themePref()), function () { openTheme(openSettings); });
+      row('sizeBtn', 'Размер текста', sizePref() === 'big' ? 'крупный' : 'обычный', function () { openSize(openSettings); });
       row('notesBtn', 'Перенос из заметок', '', function () { openNotes(openSettings); });
       row('backupBtn', 'Копия данных', '', function () { openBackup(openSettings); });
       add(box, el('h2', '', 'Настройки'), ul);
@@ -3031,7 +3072,7 @@
     }
     function tick() {
       var r = box.getBoundingClientRect();
-      if (lastY < r.top + 56) { box.scrollTop -= 8; } else if (lastY > r.bottom - 56) { box.scrollTop += 8; }
+      if (lastY < r.top / K + 56) { box.scrollTop -= 8; } else if (lastY > r.bottom / K - 56) { box.scrollTop += 8; }
       place();
       raf = requestAnimationFrame(tick);
     }
@@ -3040,9 +3081,9 @@
       id = e.pointerId;
       try { grip.setPointerCapture(id); } catch (x) { /* без захвата тоже работает */ }
       rows = [].slice.call(box.querySelectorAll('.rows__li'));
-      tops = rows.map(function (r) { return r.getBoundingClientRect().top + box.scrollTop; });
+      tops = rows.map(function (r) { return r.getBoundingClientRect().top / K + box.scrollTop; });
       h = li.offsetHeight;
-      startY = lastY = e.clientY;
+      startY = lastY = e.clientY / K;
       scroll0 = box.scrollTop;
       to = from;
       li.className = 'rows__li is-drag';
@@ -3051,7 +3092,7 @@
       raf = requestAnimationFrame(tick);
       e.preventDefault();
     });
-    grip.addEventListener('pointermove', function (e) { if (e.pointerId === id) { lastY = e.clientY; } });
+    grip.addEventListener('pointermove', function (e) { if (e.pointerId === id) { lastY = e.clientY / K; } });
     function end(e) {
       if (e.pointerId !== id) { return; }
       id = null;
@@ -3817,6 +3858,7 @@
     if (bridgeOnly) { fail('Не загрузился Telegram', 'Закройте окно и откройте его ещё раз. Записи в безопасности: без связи с Telegram приложение ничего не меняет.'); return; }
     if (inTg && !(tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage)) { fail('Нужно обновить Telegram', 'Эта версия Telegram не умеет хранить записи приложения. Обновите Telegram и откройте учёт снова.'); return; }
     applyTheme(false); // до первой отрисовки: без вспышки светлого
+    applySize();
     tgTry(function () { tg.onEvent('themeChanged', function () { if (themePref() === 'auto') { applyTheme(true); } }); });
     if (window.matchMedia) { try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { if (!inTg && themePref() === 'auto') { applyTheme(true); } }); } catch (e) { /* старый браузер */ } }
     tgTry(function () { if (tg.disableVerticalSwipes) { tg.disableVerticalSwipes(); } }); // иначе жест «вниз» сворачивает всё приложение вместо листа
@@ -3847,7 +3889,7 @@
       window.visualViewport.addEventListener('resize', fit);
       window.visualViewport.addEventListener('scroll', fit);
     }
-    window.addEventListener('resize', fit);
+    window.addEventListener('resize', function () { applySize(); fit(); }); // поворот телефона: шаг крупного текста считается заново
     // пока печатают, пояснение в листе цели прячется: место нужно полям и кнопке
     document.addEventListener('focusin', function () { root.className = typing() ? 'is-typing' : ''; setTimeout(fit, 60); });
     document.addEventListener('focusout', function () { setTimeout(function () { root.className = typing() ? 'is-typing' : ''; fit(); }, 60); });
