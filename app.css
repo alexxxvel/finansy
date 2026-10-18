@@ -686,3 +686,24 @@ h1.month { margin: 0; cursor: default; }
   .pay .capsule, .pay__done { grid-area: act; }
   .pay__done { width: 72px; }
 }
+/* ---------- значок на экране телефона (вариант В) ---------- */
+.appicon { display: block; flex: none; line-height: 0; }
+.appicon svg { display: block; border-radius: 22.5%; }
+.remind--home { grid-template-columns: 36px 1fr auto auto; column-gap: 8px; padding-left: 10px; padding-right: 0; }
+.remind--home strong { font-size: 15px; }
+.remind--home .capsule span { padding: 0 12px; }
+.menu--solo { margin-top: 16px; }
+.menu__row--icon { grid-template-columns: 30px 1fr auto 14px; padding-left: 12px; }
+.menu__row--icon > .appicon { grid-column: 1; }
+.menu__row--icon > span { grid-column: 2; }
+.menu__row--icon > small { grid-column: 3; display: flex; align-items: center; gap: 6px; }
+.menu__row--icon > svg { grid-column: 4; }
+.menu__row--icon.is-done { grid-template-columns: 30px 1fr auto; }
+.menu__row--icon.is-done:active { background: none; }
+.menu__row--icon small svg { width: 16px; height: 16px; color: var(--ink); }
+.menu__row .appicon svg { width: 30px; height: 30px; } /* общее правило .menu__row svg (стрелка 14 px) ужимало картинку значка */
+@media (max-width: 379px) { /* узкий экран: без картинки, название переносится */
+  .remind--home { grid-template-columns: 1fr auto auto; padding-left: 16px; }
+  .remind--home .appicon { display: none; }
+  .remind--home strong { white-space: normal; } /* на 320 px название в две строки, без многоточия */
+}

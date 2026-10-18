@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '3ffc979457'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '9da5a8665f'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -92,6 +92,7 @@
     budget: { a: 0, off: 0 }, // бюджет на месяц (ключ bud): a — сумма, off — подсказку убрали
     limits: {}, // лимиты на категории (ключ lim): { id: копейки в месяц }
     pays: { list: [], hide: '' }, // платежи месяца (ключ pay)
+    home: '', // значок на экране телефона: ответ Telegram (unsupported / unknown / added / missed)
     tab: 'month', sect: 'goals', stats: { kind: 'month', at: '' }, more: false, shown: 0, loaded: false, error: '' // sect: раздел вкладки «Цели» — цели или кредиты
   };
   var store = null;
@@ -362,6 +363,7 @@
       if (payNode) { spent.appendChild(payNode); }
       // напоминание о кредите включает сам человек; когда заведены платежи месяца, кредит — в их списке, и отдельной строки нет (о кредите одна строка, не две)
       if (!(st.pays.list || []).length) { F.CREDITS.forEach(function (k) { if (remindDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } }); }
+      if (!spent.querySelector('.remind')) { var homeNode = homeCard(); if (homeNode) { spent.appendChild(homeNode); } } // больше одной карточки сразу не бывает
     }
 
     var sheet = el('div', 'sheet');
@@ -755,6 +757,66 @@
       });
     });
     add(row, text, set, x);
+    return row;
+  }
+  // ---------- значок на экране телефона (вариант В, решение разработчика 18.10.2026) ----------
+  /** картинка значка «Шкала» (тот же рисунок, что в BotFather): графит и три бруска; строка постоянная, innerHTML безопасен */
+  function appIcon(size) {
+    var s = document.createElement('span');
+    s.className = 'appicon';
+    s.innerHTML = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 1024 1024" aria-hidden="true" style="stroke:none"><defs><linearGradient id="aiG' + size + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2C2C2E"/><stop offset="1" stop-color="#161618"/></linearGradient></defs>' +
+      '<rect width="1024" height="1024" rx="230" fill="url(#aiG' + size + ')"/><rect x="215" y="230" width="594" height="154" rx="38" fill="#FFFFFF"/><rect x="215" y="435" width="430" height="154" rx="38" fill="#A1A1A6"/><rect x="215" y="640" width="266" height="154" rx="38" fill="#636366"/></svg>';
+    return s;
+  }
+  /** Telegram отвечает: 'unsupported' (компьютер, старая версия), 'unknown', 'added', 'missed' (значка нет) */
+  function homeCan() { return st.home === 'missed' || st.home === 'unknown'; }
+  /** карточку убрали крестиком: помнится на этом телефоне (значок тоже ставится на конкретный телефон) */
+  function homeOff() { try { return localStorage.getItem('fin_hsoff') === '1'; } catch (e) { return false; } }
+  function setHomeOff() { try { localStorage.setItem('fin_hsoff', '1'); } catch (e) { /* без памяти карточка просто покажется ещё раз */ } }
+  /** сколько разных дней есть записи: карточка появляется, когда приложением пользуются третий день */
+  function usedDays() {
+    var seen = {}, n = 0;
+    Object.keys(st.all).forEach(function (m) { st.all[m].forEach(function (op) { if (!seen[op.d]) { seen[op.d] = 1; n++; } }); });
+    return n;
+  }
+  function homeAdd() {
+    haptic();
+    tgTry(function () { tg.addToHomeScreen(); });
+  }
+  function homeCheck() {
+    tgTry(function () {
+      if (!(tg.isVersionAtLeast && tg.isVersionAtLeast('8.0') && tg.checkHomeScreenStatus)) { return; }
+      tg.onEvent('homeScreenAdded', function () {
+        st.home = 'added';
+        haptic('ok');
+        toast('Значок добавлен на экран телефона');
+        if (!ui.open && st.loaded) { paint(false); }
+      });
+      tg.checkHomeScreenStatus(function (s) {
+        st.home = String(s || '');
+        if (!ui.open && st.loaded && st.tab === 'month') { paint(false); }
+      });
+    });
+  }
+  /** один раз на главной: только когда других карточек нет */
+  function homeCard() {
+    if (!homeCan() || homeOff() || usedDays() < 3) { return null; }
+    var row = el('div', 'remind remind--home'), text = el('span'), go = btn('capsule remind__pay'), x = btn('remind__x');
+    row.id = 'homeCard';
+    text.appendChild(el('strong', '', 'Значок «Финансы»'));
+    go.id = 'homeCardGo';
+    go.appendChild(el('span', '', 'На экран'));
+    go.addEventListener('click', homeAdd);
+    x.id = 'homeCardHide';
+    x.setAttribute('aria-label', 'Не предлагать');
+    x.appendChild(icon('close'));
+    x.addEventListener('click', function () {
+      setHomeOff();
+      haptic('ok');
+      if (row.parentNode) { row.parentNode.removeChild(row); }
+      toast('Больше не предложу\nЗначок можно добавить в настройках');
+    });
+    add(row, appIcon(36), text, go, x);
     return row;
   }
   /** лист бюджета: одна сумма на каждый месяц; подставить можно траты прошлого месяца */
@@ -2818,6 +2880,23 @@
       row('notesBtn', 'Перенос из заметок', '', function () { openNotes(openSettings); });
       row('backupBtn', 'Копия данных', '', function () { openBackup(openSettings); });
       add(box, el('h2', '', 'Настройки'), ul);
+      if (homeCan() || st.home === 'added') { // строки нет, где значок не ставится (Telegram на компьютере, старая версия)
+        var solo = el('ul', 'menu menu--solo'), li = el('li'), hb = btn('menu__row menu__row--icon');
+        hb.id = 'homeBtn';
+        if (st.home === 'added') {
+          var ok = el('small', '', 'добавлен');
+          ok.appendChild(icon('check'));
+          add(hb, appIcon(30), el('span', '', 'Значок на экране'), ok);
+          hb.setAttribute('aria-disabled', 'true');
+          hb.classList.add('is-done');
+        } else {
+          add(hb, appIcon(30), el('span', '', 'Значок на экране'), el('small', '', 'добавить'), icon('right'));
+          hb.addEventListener('click', homeAdd);
+        }
+        li.appendChild(hb);
+        solo.appendChild(li);
+        box.appendChild(solo);
+      }
       m.appendChild(box);
     });
   }
@@ -3697,6 +3776,7 @@
       tg.SettingsButton.show();
     });
     tgTry(function () { tg.onEvent('viewportChanged', fit); });
+    homeCheck();
 
     store = S.create(inTg ? S.cloudAdapter(tg.CloudStorage) : S.localAdapter('fin_'));
 
