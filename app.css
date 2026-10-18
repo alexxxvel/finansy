@@ -72,7 +72,8 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .spent__fill i:nth-child(2) { opacity: .76; }
 .spent__fill i:nth-child(3) { opacity: .45; }
 .spent__fill i:last-child { border-radius: 0 5px 5px 0; }
-.spent__legend { display: flex; justify-content: space-between; gap: 12px; margin-top: 10px; font: 500 15px/1.3 var(--font); color: var(--muted); white-space: nowrap; }
+.spent__legend { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; margin-top: 10px; font: 500 15px/1.3 var(--font); color: var(--muted); white-space: nowrap; } /* не помещается — правая часть встаёт второй строкой к правому краю (18.10.2026: «перерасход 186,29» обрезался на iPhone 16 при крупном тексте) */
+.spent__legend > :last-child:not(:first-child) { margin-left: auto; }
 .spent__legend .is-over, .spent__legend .is-left { color: var(--ink); font-weight: 600; }
 /* отложенное на цели: траты растут на шкале слева, отложенное отнимает доступное справа контурным отрезком (другого рода, а не ещё один оттенок серого) */
 .spent__bar--saved { position: relative; }
@@ -755,3 +756,5 @@ html[data-size="big"] .entry__sum.is-s { font-size: calc(var(--sum-s) / var(--k)
 html { overflow: hidden; }
 .view { overflow-x: hidden; touch-action: pan-y; }
 .pick { overflow-x: hidden; }
+/* узкая раскладка (320 px или крупный текст): заголовок карточки платежей переносится, а не режется многоточием («Не внесено 3 п…») */
+@container app (max-width: 379px) { .remind--pay .remind__text strong { white-space: normal; } }
