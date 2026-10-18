@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '9da5a8665f'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'b97b97e9d0'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -760,12 +760,14 @@
     return row;
   }
   // ---------- значок на экране телефона (вариант В, решение разработчика 18.10.2026) ----------
-  /** картинка значка «Шкала» (тот же рисунок, что в BotFather): графит и три бруска; строка постоянная, innerHTML безопасен */
+  /** картинка значка — кошелёк (выбор разработчика 18.10.2026): тот же рендер, что в BotFather (значки\кошелёк-botfather-512.png), 144 px */
   function appIcon(size) {
-    var s = document.createElement('span');
+    var s = document.createElement('span'), img = document.createElement('img');
     s.className = 'appicon';
-    s.innerHTML = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 1024 1024" aria-hidden="true" style="stroke:none"><defs><linearGradient id="aiG' + size + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2C2C2E"/><stop offset="1" stop-color="#161618"/></linearGradient></defs>' +
-      '<rect width="1024" height="1024" rx="230" fill="url(#aiG' + size + ')"/><rect x="215" y="230" width="594" height="154" rx="38" fill="#FFFFFF"/><rect x="215" y="435" width="430" height="154" rx="38" fill="#A1A1A6"/><rect x="215" y="640" width="266" height="154" rx="38" fill="#636366"/></svg>';
+    img.src = 'appicon.png';
+    img.width = size; img.height = size;
+    img.alt = '';
+    s.appendChild(img);
     return s;
   }
   /** Telegram отвечает: 'unsupported' (компьютер, старая версия), 'unknown', 'added', 'missed' (значка нет) */
