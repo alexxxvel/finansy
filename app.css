@@ -800,6 +800,7 @@ html { overflow: hidden; }
 .find__in::placeholder { color: var(--muted); opacity: 1; }
 .find:focus-within { outline: 2px solid var(--line); outline-offset: 0; }
 .find__x { flex: none; display: grid; place-items: center; width: 44px; height: 44px; color: var(--muted); }
+.find__x[hidden] { display: none; } /* замечание разработчика 19.10.2026: крестик был виден до ввода — display: grid перебивал hidden */
 .find__x svg { width: 14px; height: 14px; padding: 9px; box-sizing: content-box; border-radius: 999px; background: var(--fill); }
 .findbar__cancel { display: none; flex: none; min-height: 44px; padding: 0 2px 0 10px; font: 500 17px/1 var(--font); color: var(--ink); }
 .view.is-find .bar--hist { display: none; }
@@ -830,3 +831,4 @@ html { overflow: hidden; }
 .nofind__text { max-width: 30ch; font: 400 15px/1.4 var(--font); color: var(--muted); }
 .nofind__try { margin-top: 6px; }
 .findbody { flex: 1 0 auto; display: flex; flex-direction: column; } /* лист под полем тянется до низа, как в обычной истории */
+[hidden] { display: none !important; } /* 19.10.2026: седьмой раз display у элемента перебивал hidden (крестик поиска) — одно правило на всё приложение, держит проверка в обходе экранов e2e */
