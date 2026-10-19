@@ -114,6 +114,12 @@
     try { o = JSON.parse(text || '[]'); } catch (e) { o = null; }
     return F.validCredits(o) || [];
   }
+  /** люди для долгов: отдельный ключ dbt. Не читается — пусто (записи долга сохраняются, имя показывается как «Удалённый человек») */
+  function readDebts(text) {
+    var o = null;
+    try { o = JSON.parse(text || '[]'); } catch (e) { o = null; }
+    return F.validDebts(o) || [];
+  }
   /** списки из копии добавляются к своим и ничего не затирают: недостающие категории дописываются, свои названия и порядок остаются.
       Своего списка ещё нет (действует встроенный) — берётся список из копии, а встроенные категории, которых в нём нет, уходят в скрытые:
       записи в них сохраняют название, вернуть их можно в настройках */
@@ -221,7 +227,7 @@
           if (err) { cb(err); return; }
           var mine = keys.map(function (k) { var p = parseKey(k); return p ? { key: k, month: p.month, i: p.i } : null; }).filter(Boolean)
             .sort(function (a, b) { return a.month === b.month ? a.i - b.i : (a.month < b.month ? -1 : 1); });
-          ad.get(mine.map(function (c) { return c.key; }).concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : [], keys.indexOf('bud') >= 0 ? ['bud'] : [], keys.indexOf('lim') >= 0 ? ['lim'] : [], keys.indexOf('pay') >= 0 ? ['pay'] : []), function (err2, values) {
+          ad.get(mine.map(function (c) { return c.key; }).concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : [], keys.indexOf('bud') >= 0 ? ['bud'] : [], keys.indexOf('lim') >= 0 ? ['lim'] : [], keys.indexOf('pay') >= 0 ? ['pay'] : [], keys.indexOf('dbt') >= 0 ? ['dbt'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
             var months = {}, ops = [], carry = 0, partial = false, seen = {}, all = {}, net = {}, first = '';
             for (var n = 0; n < mine.length; n++) {
@@ -239,7 +245,7 @@
               }
             }
             Object.keys(net).forEach(function (m) { if (first && m >= first && m < month) { carry += net[m]; } });
-            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial, all: all, cfg: readCfg(values.cfg), credits: readCredits(values.crd), budget: readBudget(values.bud), limits: readLimits(values.lim), pays: readPays(values.pay) });
+            cb(null, { months: Object.keys(months).sort().reverse(), ops: ops, carry: carry, partial: partial, all: all, cfg: readCfg(values.cfg), credits: readCredits(values.crd), budget: readBudget(values.bud), limits: readLimits(values.lim), pays: readPays(values.pay), debts: readDebts(values.dbt) });
           });
         });
       },
@@ -381,12 +387,24 @@
           ad.set('crd', text, function (err2) { cb(err2, next); });
         });
       },
+      /** правка списка людей: ключ перечитывается, fn получает список для хранения и возвращает новый; пустой список убирает ключ */
+      patchDebts: function (fn, cb) {
+        ad.get(['dbt'], function (err, values) {
+          if (err) { cb(err); return; }
+          var next = F.validDebts(fn(readDebts(values.dbt)));
+          if (!next) { cb('invalid'); return; }
+          if (!next.length) { ad.del(['dbt'], function (err2) { cb(err2 || null, next); }); return; }
+          var text = JSON.stringify(next);
+          if (F.utf8len(text) > LIMIT) { cb('too long'); return; }
+          ad.set('dbt', text, function (err2) { cb(err2, next); });
+        });
+      },
       /** копия всех записей текстом */
       exportAll: function (cb) {
         ad.keys(function (err, keys) {
           if (err) { cb(err); return; }
           var mine = keys.filter(parseKey).sort();
-          ad.get(mine.concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : [], keys.indexOf('bud') >= 0 ? ['bud'] : [], keys.indexOf('lim') >= 0 ? ['lim'] : [], keys.indexOf('pay') >= 0 ? ['pay'] : []), function (err2, values) {
+          ad.get(mine.concat(keys.indexOf('cfg') >= 0 ? ['cfg'] : [], keys.indexOf('crd') >= 0 ? ['crd'] : [], keys.indexOf('bud') >= 0 ? ['bud'] : [], keys.indexOf('lim') >= 0 ? ['lim'] : [], keys.indexOf('pay') >= 0 ? ['pay'] : [], keys.indexOf('dbt') >= 0 ? ['dbt'] : []), function (err2, values) {
             if (err2) { cb(err2); return; }
             var months = {}, count = 0, bad = false;
             mine.forEach(function (k) {
@@ -408,6 +426,8 @@
             if (Object.keys(limits).length) { out.limits = limits; }
             var pays = readPays(values.pay);
             if (pays.list.length) { out.pays = { list: pays.list }; }
+            var debts = readDebts(values.dbt);
+            if (debts.length) { out.debts = debts; }
             cb(null, { text: JSON.stringify(out), count: count });
           });
         });
@@ -455,13 +475,24 @@
           });
         }
         function pays() { // платежи из копии дописываются к своим, свои не меняются
-          if (!data.pays) { cb(null, total); return; }
+          if (!data.pays) { debts(); return; }
           ad.get(['pay'], function (err, values) {
-            if (err) { cb(null, total); return; }
+            if (err) { debts(); return; }
             var mine = readPays(values.pay), changed = false;
             data.pays.list.forEach(function (p) { if (mine.list.length < 20 && !mine.list.some(function (x) { return x[0] === p[0]; })) { mine.list.push(p); changed = true; } });
-            if (!changed) { cb(null, total); return; }
-            ad.set('pay', JSON.stringify(mine), function () { cb(null, total); });
+            if (!changed) { debts(); return; }
+            ad.set('pay', JSON.stringify(mine), function () { debts(); });
+          });
+        }
+        function debts() { // люди из копии дописываются к своим, свои не меняются
+          if (!data.debts) { cb(null, total); return; }
+          ad.get(['dbt'], function (err, values) {
+            if (err) { cb(null, total); return; }
+            var mine = readDebts(values.dbt), changed = false;
+            data.debts.forEach(function (p) { if (mine.length < F.DEBTS_MAX && !mine.some(function (x) { return x[0] === p[0]; })) { mine.push(p); changed = true; } });
+            var text = JSON.stringify(mine);
+            if (!changed || F.utf8len(text) > LIMIT) { cb(null, total); return; }
+            ad.set('dbt', text, function () { cb(null, total); });
           });
         }
         function credits() { // кредиты из копии дописываются к своим, свои не меняются

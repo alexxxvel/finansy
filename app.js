@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'f3b1200708'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '33539502ea'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -252,11 +252,11 @@
 
   /** строка записи: в «Истории» со значком и названием категории, в листе категории — с датой */
   function opRow(op, bare) {
-    var dict = F.dict(op.k, op.c), b = btn('op' + (bare ? ' op--bare' : '')), goal = F.isGoalOp(op);
+    var dict = F.dict(op.k, op.c), b = btn('op' + (bare ? ' op--bare' : '')), goal = F.isGoalOp(op), debt = F.isDebtOp(op);
     b.setAttribute('data-id', op.id);
     // запись цели: «Отложено» или «Снято», название цели серым; в «Потрачено» и в доходы она не входит
     var name = el('span', '', bare ? F.dayLabel(op.d) : goal ? (op.k === 'e' ? 'Отложено' : 'Снято') : dict.name);
-    rowNote(name, [goal && !bare ? dict.name : '', op.u !== 'BYN' ? F.fmtShort(op.a) + F.NB + op.u : '', op.n || ''].filter(Boolean).join(', ')); // сумма в валюте первой: длинную заметку строка обрежет, а её нет
+    rowNote(name, [goal && !bare ? dict.name : '', debt ? (op.k === 'e' ? 'отдано' : 'получено') : '', op.u !== 'BYN' ? F.fmtShort(op.a) + F.NB + op.u : '', op.n || ''].filter(Boolean).join(', ')); // сумма в валюте первой: длинную заметку строка обрежет, а её нет
     add(b, bare ? null : icon(dict.icon), name, el('data', op.k === 'i' ? 'is-plus' : '', (op.k === 'i' ? '+' : '') + F.fmt(F.bynOf(op))), icon('right', 'share__go'));
     b.addEventListener('click', function () { openEntry(op); });
     return b;
@@ -298,11 +298,12 @@
     // шкала: дорожка = доход (при перерасходе и без дохода — сами траты); не больше трёх сегментов
     // отложенное на цели потратить нельзя: оно вычитается из доступного; снятое с целей сверх отложенного, наоборот, добавляется
     var back = Math.max(0, s.taken - s.saved), put = Math.max(0, s.saved - s.taken), B = budgetOn() ? st.budget.a : 0;
-    var avail = s.income + st.carry + back, left = avail - s.spent - put; // доступно в этом месяце: доход, остаток с прошлых и снятое из накоплений
+    var dnet = s.got - s.lent; // долги (решение 19.10.2026): взятое и возвращённое вам добавляется к доступному, отданное вычитается; в «Потрачено» не входит
+    var avail = s.income + st.carry + back + Math.max(0, dnet), left = avail - s.spent - put - Math.max(0, -dnet); // доступно в этом месяце: доход, остаток с прошлых и снятое из накоплений
     // бюджет (решение 17.10.2026): если задан, шкала считается от него, даже когда доходы записаны — это сумма, которую человек решил тратить сам
     if (B) { avail = B; left = B - s.spent; }
-    var noBase = !B && !s.income && !st.carry && !back; // ни дохода, ни бюджета: шкалу не с чем сравнить — её нет (залитая читалась как «всё потрачено»)
-    var base = B ? Math.max(B, s.spent, 1) : Math.max(avail, s.spent + put, 1);
+    var noBase = !B && !s.income && !st.carry && !back && dnet <= 0; // ни дохода, ни бюджета: шкалу не с чем сравнить — её нет (залитая читалась как «всё потрачено»)
+    var base = B ? Math.max(B, s.spent, 1) : Math.max(avail, s.spent + put + Math.max(0, -dnet), 1);
     var bar = el('div', 'spent__bar');
     bar.setAttribute('role', 'img');
     bar.setAttribute('aria-label', avail > 0 ? 'Потрачено ' + Math.round(s.spent / avail * 100) + ' процентов доступного' : 'Доход ещё не внесён');
@@ -729,7 +730,7 @@
   /** день, в который траты месяца перешли бюджет */
   function budgetGone(B) {
     var acc = 0, day = '';
-    st.ops.filter(function (op) { return op.k === 'e' && !F.isGoalOp(op); }).sort(function (x, y) { return x.d === y.d ? (x.id < y.id ? -1 : 1) : (x.d < y.d ? -1 : 1); })
+    st.ops.filter(function (op) { return op.k === 'e' && !F.isMoveOp(op); }).sort(function (x, y) { return x.d === y.d ? (x.id < y.id ? -1 : 1) : (x.d < y.d ? -1 : 1); })
       .some(function (op) { acc += F.bynOf(op); if (acc > B) { day = op.d; return true; } return false; });
     return day;
   }
@@ -1012,7 +1013,7 @@
     var seg = el('div', 'seg tabseg');
     seg.setAttribute('role', 'group');
     seg.setAttribute('aria-label', 'Раздел');
-    [['goals', 'Цели'], ['credits', 'Кредиты']].forEach(function (s) {
+    [['goals', 'Цели'], ['credits', 'Кредиты'], ['debts', 'Долги']].forEach(function (s) {
       var b = btn('', s[1]);
       b.setAttribute('data-sect', s[0]);
       b.setAttribute('aria-pressed', String(st.sect === s[0]));
@@ -1034,6 +1035,7 @@
   }
   function paintGoals() {
     if (st.sect === 'credits') { paintCredits(); return; }
+    if (st.sect === 'debts') { paintDebts(); return; }
     var goals = F.GOALS, now = F.monthOf(F.today()), head = tabHead('Цели');
     clear(view);
     if (!goals.length) {
@@ -1194,6 +1196,257 @@
     add(sheet, cards, closed.length ? closedRow(closed, null) : null, newCreditBtn(null));
     add(view, head, sectSeg(), hero, sheet);
     fitSum(sumEl);
+  }
+  // ---------- долги между людьми (пункт 14, решение разработчика 19.10.2026: вариант А — раздел рядом с кредитами; «Осталось» в обе стороны) ----------
+  // Подписи без рода и без склонения имени: пол человека и пользователя приложение не знает, «от Jo» правильно не склонит
+  function debtBar(total, back) {
+    var bar = el('i', 'goal__bar debt__bar'), f = el('b');
+    f.style.transform = 'scaleX(' + Math.min(1, back / total).toFixed(4) + ')';
+    bar.appendChild(f);
+    bar.setAttribute('role', 'img');
+    bar.setAttribute('aria-label', 'Возвращено ' + Math.min(100, Math.floor(back / total * 100)) + ' процентов');
+    return bar;
+  }
+  /** строка под суммой: сколько уже вернули из долга, а без возвратов — сколько отдано или взято */
+  function debtRest(s) {
+    var total = Math.max(s.gave, s.got), back = Math.min(s.gave, s.got);
+    return back > 0 ? 'возвращено ' + F.fmt(back) + ' из' + F.NB + F.fmt(total) : (s.bal > 0 ? 'отдано ' : 'взято ') + F.fmt(total);
+  }
+  function debtLine(bal) { return bal > 0 ? 'вернёт вам' : bal < 0 ? 'вы вернёте' : 'рассчитались'; }
+  function debtCard(p, s) {
+    var sec = el('section', 'goal'), b = btn('goal__btn debt'), head = el('span', 'cats__head'), pc = el('span', 'goal__pct'), line = el('span', 'goal__line');
+    var total = Math.max(s.gave, s.got), back = Math.min(s.gave, s.got);
+    b.setAttribute('data-debt', p.id);
+    pc.appendChild(icon('right', 'share__go'));
+    add(head, el('span', 'goal__title', p.name), pc);
+    add(line, document.createTextNode(debtLine(s.bal) + ' '), el('b', '', F.fmt(Math.abs(s.bal))));
+    add(b, head, line, back > 0 ? debtBar(total, back) : null, el('span', 'goal__rest', nb(debtRest(s)))); // пустая дорожка при нуле читалась бы как незагруженная шкала
+    b.addEventListener('click', function () { openDebtView(p.id, null); });
+    sec.appendChild(b);
+    return sec;
+  }
+  function debtsHead() {
+    var head = el('div', 'bar'), title = el('h1', 'month', 'Долги'), acts = el('span', 'bar__acts'), nw = btn('capsule capsule--icon'), label = el('span');
+    title.id = 'goalsTitle';
+    nw.id = 'debtNew';
+    add(label, icon('plus'), document.createTextNode('Новый'));
+    nw.appendChild(label);
+    nw.addEventListener('click', function () { openEntry(null, { kind: 'give', fresh: true }); });
+    add(acts, nw, gearBtn());
+    add(head, title, acts);
+    return head;
+  }
+  function settledRow(list) {
+    var b = btn('more more--copy more--done');
+    b.id = 'settledBtn';
+    add(b, el('span', '', 'Рассчитались'), el('data', '', String(list.length)), icon('right'));
+    b.addEventListener('click', openSettled);
+    return b;
+  }
+  /** раздел «Долги»: крупно большая сторона, у человека имя, одно число и шкала возврата; рассчитавшиеся — одной строкой */
+  function paintDebts() {
+    var head = debtsHead(), all = F.DEBTS.map(function (p) { return { p: p, s: F.debtState(p, st.all) }; });
+    var act = all.filter(function (x) { return x.s.bal !== 0; }).sort(function (x, y) { return Math.abs(y.s.bal) - Math.abs(x.s.bal); }), settled = all.filter(function (x) { return x.s.bal === 0; });
+    clear(view);
+    if (!act.length) {
+      var empty = el('div', 'sheet sheet--top');
+      add(empty, el('p', 'empty', nb(settled.length ? 'Со всеми рассчитались. Новый долг — кнопкой «Новый» вверху.' : 'Долгов нет. Запишите, кому дали или у кого взяли: кнопка «Новый» вверху.')), settled.length ? settledRow(settled) : null);
+      add(view, head, sectSeg(), empty);
+      return;
+    }
+    var plus = 0, minus = 0, cards = el('div', 'saved__goals');
+    act.forEach(function (x) {
+      if (x.s.bal > 0) { plus += x.s.bal; } else { minus -= x.s.bal; }
+      cards.appendChild(debtCard(x.p, x.s));
+    });
+    var mine = minus > plus, big = mine ? minus : plus, other = mine ? plus : minus; // крупно большая сторона: сколько должны вам или сколько должны вы
+    var hero = el('section', 'spent'), sumEl = el('p', sumClass(big)), node = { whole: el('span'), frac: el('i') }, sheet = el('div', 'sheet');
+    sumEl.id = 'debtsSum';
+    setSum(node, big);
+    add(sumEl, node.whole, node.frac, el('abbr', '', 'BYN'));
+    var legend = null;
+    if (other) {
+      legend = el('div', 'spent__legend');
+      var o = el('span', '', (mine ? 'вам должны ' : 'вы должны ') + F.fmt(other));
+      o.id = 'debtsOther';
+      legend.appendChild(o);
+    }
+    var label = el('p', 'spent__label', mine ? 'Вы должны' : 'Вам должны');
+    label.id = 'debtsLabel';
+    add(hero, label, sumEl, legend);
+    add(sheet, cards, settled.length ? settledRow(settled) : null);
+    add(view, head, sectSeg(), hero, sheet);
+    fitSum(sumEl);
+  }
+  function openSettled() {
+    var list = F.DEBTS.filter(function (p) { return F.debtState(p, st.all).bal === 0; });
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick'), ul = el('ul', 'rows rows--ops');
+      ul.id = 'settledList';
+      list.forEach(function (p) {
+        var li = el('li'), b = btn('op op--bare'), s = F.debtState(p, st.all), name = el('span', '', p.name);
+        b.setAttribute('data-debt', p.id);
+        rowNote(name, s.ops.length ? 'с ' + F.dayLabel(s.ops[s.ops.length - 1].d) : '');
+        add(b, name, el('data', '', F.fmt(Math.max(s.gave, s.got))), icon('right', 'share__go'));
+        b.addEventListener('click', function () { openDebtView(p.id, openSettled); });
+        li.appendChild(b);
+        ul.appendChild(li);
+      });
+      add(box, el('h2', 'pick__title', 'Рассчитались'), el('p', 'pick__info', nb('Долгов между вами нет. Записи остаются в «Истории».')), ul);
+      m.appendChild(box);
+    }, null);
+  }
+  function debtRec(op) {
+    var li = el('li'), b = btn('op op--bare'), name = el('span', '', F.dayLabel(op.d));
+    b.setAttribute('data-id', op.id);
+    rowNote(name, [op.k === 'e' ? 'отдано' : 'получено', op.u !== 'BYN' ? F.fmtShort(op.a) + F.NB + op.u : '', op.n || ''].filter(Boolean).join(', '));
+    add(b, name, el('data', '', F.fmt(F.bynOf(op))), icon('right', 'share__go'));
+    b.addEventListener('click', function () { openEntry(op); });
+    li.appendChild(b);
+    return li;
+  }
+  /** лист человека: сколько вернут крупно, шкала возврата, записи словами; внизу две кнопки по тому, кто кому должен */
+  function openDebtView(id, back) {
+    var p = F.find(F.DEBTS, id);
+    if (!p) { return; }
+    var s = F.debtState(p, st.all), total = Math.max(s.gave, s.got), returned = Math.min(s.gave, s.got);
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--goalview'), top = el('div', 'goal__top'), edit = btn('capsule'), sum = el('p', 'goal__sum'), num = el('span', 'goal__num'), parts = F.fmtParts(Math.abs(s.bal));
+      box.id = 'debtView';
+      edit.id = 'debtEdit';
+      edit.appendChild(el('span', '', 'Изменить'));
+      edit.addEventListener('click', function () { openDebtEdit(p, function () { openDebtView(id, back); }, function () { openDebtView(id, back); }); });
+      add(top, el('h2', 'pick__title', p.name), edit);
+      sum.id = 'debtBal';
+      add(num, el('span', '', parts.whole), el('i', '', parts.frac));
+      add(sum, num, el('small', '', debtLine(s.bal)));
+      add(box, top, sum);
+      if (returned > 0 && s.bal !== 0) {
+        var meter = el('div', 'goal__meter');
+        add(meter, debtBar(total, returned), el('span', '', 'возвращено ' + Math.min(100, Math.floor(returned / total * 100)) + '%'));
+        box.appendChild(meter);
+      }
+      var info = el('p', 'pick__info', nb(s.bal > 0 ? 'Это не трата: в «Потрачено» не входит, но пока деньги не вернулись, на руках у вас на ' + F.fmt(s.bal) + ' меньше.'
+        : s.bal < 0 ? 'Это не доход: в доходы не входит, но пока вы не вернули, на руках у вас на ' + F.fmt(-s.bal) + ' больше.' : 'Долгов между вами нет. Записи остаются в «Истории».'));
+      info.id = 'debtInfo';
+      box.appendChild(info);
+      box.appendChild(el('p', 'lbl lbl--gap', 'Записи'));
+      if (s.ops.length) {
+        var ul = el('ul', 'rows rows--ops');
+        s.ops.slice(0, 50).forEach(function (op) { ul.appendChild(debtRec(op)); });
+        box.appendChild(ul);
+      } else { box.appendChild(el('p', 'pick__info', nb('Записей пока нет.'))); }
+      // кому должны вы — «Взять ещё» и «Вернуть», кто должен вам — «Дать ещё» и «Получить»
+      var foot = el('footer', 'modal__dock modal__dock--duo'), quiet = btn('btn btn--quiet', s.bal < 0 ? 'Взять ещё' : s.bal > 0 ? 'Дать ещё' : 'Дать'), main = btn('btn', s.bal < 0 ? 'Вернуть' : 'Получить');
+      quiet.id = 'debtMore';
+      main.id = 'debtMain';
+      quiet.addEventListener('click', function () { openEntry(null, { kind: s.bal < 0 ? 'get' : 'give', cat: 'd_' + id }); });
+      main.addEventListener('click', function () { openEntry(null, { kind: s.bal < 0 ? 'give' : 'get', cat: 'd_' + id }); });
+      add(foot, quiet, main);
+      add(m, box, foot);
+    }, back);
+  }
+  /** новый человек или переименование; удаление убирает и записи долга */
+  function openDebtEdit(p, back, done) {
+    var busy = false, nameEl = null;
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat pick--newgoal'), foot = el('footer', 'modal__dock'), go = btn('btn', p ? 'Сохранить' : 'Добавить'), info = el('p', 'pick__info'), lbl = el('label', 'lbl', 'Имя');
+      nameEl = el('input', 'field');
+      nameEl.id = 'debtName';
+      nameEl.type = 'text';
+      nameEl.maxLength = 24;
+      nameEl.placeholder = 'Например, Саша';
+      nameEl.value = p ? p.name : '';
+      nameEl.setAttribute('enterkeyhint', 'done');
+      nameEl.setAttribute('autocomplete', 'off');
+      nameEl.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { nameEl.blur(); } });
+      lbl.setAttribute('for', 'debtName');
+      info.id = 'debtMsg';
+      info.textContent = nb(p ? 'Имя видно только вам.' : 'Одно имя — один человек: все долги с ним будут в одной строке.');
+      go.id = 'debtSave';
+      go.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
+      go.addEventListener('click', function () {
+        if (busy) { return; }
+        var name = F.cleanNote(nameEl.value).slice(0, 24).replace(/ $/, ''), key = name.toLowerCase();
+        var same = null;
+        F.DEBTS.forEach(function (x) { if (!same && x.name.toLowerCase() === key && (!p || x.id !== p.id)) { same = x; } });
+        if (!name) { info.textContent = 'Введите имя.'; haptic('err'); return; }
+        if (same && p) { info.textContent = nb('Человек с таким именем уже есть.'); haptic('err'); return; }
+        if (same) { haptic(); if (done) { done(same.id); } return; } // такое имя уже есть: выбираем его, второй «Саша» не появится
+        if (!p && F.DEBTS.length >= F.DEBTS_MAX) { info.textContent = nb('Людей уже сорок. Удалите того, с кем рассчитались.'); haptic('err'); return; }
+        var list = F.packDebts(), id = p ? p.id : F.catId(idsOf(list));
+        if (p) { list = list.map(function (x) { return x[0] === id ? [id, name] : x; }); } else { list.push([id, name]); }
+        busy = true;
+        store.patchDebts(function () { return list; }, function (err) {
+          if (err) { busy = false; haptic('err'); toast(explain(err)); return; }
+          haptic('ok');
+          reload(false, function () { if (done) { done(id); } else if (back) { back(); } else { closeModal(0); } });
+        });
+      });
+      var del = null;
+      if (p) {
+        del = btn('link', 'Удалить человека');
+        del.id = 'debtDel';
+        del.addEventListener('click', function () {
+          if (busy) { return; }
+          ask('Удалить «' + p.name + '» и записи долга? «Осталось» пересчитается без них.', function (yes) {
+            if (!yes) { return; }
+            var list = [], cat = 'd_' + p.id;
+            Object.keys(st.all).forEach(function (month) { st.all[month].forEach(function (op) { if (op.c === cat) { list.push({ id: op.id, m: month }); } }); });
+            busy = true;
+            store.removeOps(list, function (err) {
+              if (err) { busy = false; haptic('err'); toast(explain(err)); return; }
+              store.patchDebts(function (cur) { return cur.filter(function (x) { return x[0] !== p.id; }); }, function (err2) {
+                if (err2) { busy = false; haptic('err'); toast(explain(err2)); return; }
+                haptic('ok');
+                closeModal(0);
+                reload(true, function () { toast('Удалено'); });
+              });
+            });
+          });
+        });
+      }
+      add(box, el('h2', 'pick__title', p ? 'Изменить' : 'Новый человек'), lbl, nameEl, info, del);
+      foot.appendChild(go);
+      add(m, box, foot);
+    }, back);
+    if (!p && nameEl) { nameEl.focus(); }
+  }
+  /** верх листа ввода долга: имя крупно слева (без склонения) и серым — что делаем */
+  function debtTop(op) {
+    var p = F.debtOf(entry.cat), top = el('div', 'entry__who'), bal = p ? F.debtState(p, st.all, op ? op.id : null).bal : 0;
+    var sub = op ? (op.k === 'e' ? 'отдано' : 'получено') : entry.fresh ? '' : entry.kind === 'give' ? (bal < 0 ? 'возврат' : 'дать') : (bal > 0 ? 'возврат' : 'взять');
+    top.id = 'entryWho';
+    add(top, el('h2', 'pick__title', entry.fresh ? 'Новый долг' : p ? p.name : 'Долг'), sub ? el('span', '', sub) : null);
+    return top;
+  }
+  /** под суммой долга: каким он станет; при возврате — «Вся сумма» одним касанием */
+  function debtHints(e, minor, byn) {
+    var p = F.debtOf(e.cat);
+    if (!p) { e.hint.textContent = nb(e.kind === 'give' ? 'Это не трата: в «Потрачено» не войдёт' : 'Это не доход: в доходы не войдёт'); return; }
+    var bal = F.debtState(p, st.all, e.edit ? e.edit.id : null).bal, will = bal + (minor ? (e.kind === 'give' ? byn : -byn) : 0);
+    if (will > 0) { add(e.hint, document.createTextNode('Вернёт вам '), el('b', '', F.fmt(will))); }
+    else if (will < 0) { add(e.hint, document.createTextNode('Вы вернёте '), el('b', '', F.fmt(-will))); }
+    else { e.hint.appendChild(el('b', '', 'Рассчитались')); }
+    var giveBack = (e.kind === 'give' && bal < 0) || (e.kind === 'get' && bal > 0);
+    if (giveBack && !e.edit) {
+      var all = btn('quick__btn');
+      all.id = 'debtAll';
+      add(all, el('span', '', 'Вся сумма'), el('b', '', F.fmt(Math.abs(bal))));
+      all.addEventListener('click', function () {
+        if (!entry || entry.busy) { return; }
+        entry.digits = digitsOf(Math.abs(bal));
+        entry.cur = 'BYN';
+        haptic();
+        paintEntry();
+      });
+      e.quick.appendChild(all);
+      e.quick.hidden = false;
+      e.hint.hidden = false;
+    }
   }
   /** строка платежа на листе кредита: день, заметка, сумма в валюте кредита; нажатие открывает правку */
   function creditRec(op, k) {
@@ -2081,6 +2334,7 @@
       st.cfg = v.cfg || {};
       F.useCfg(st.cfg); // свои категории, если заданы: до подсчёта сводок
       F.useCredits(v.credits); // кредиты — до сводок: по ним строки «Куда ушло» получают названия
+      F.useDebts(v.debts); // люди — до сводок: записи долга получают имя
       st.budget = v.budget || { a: 0, off: 0 };
       st.limits = v.limits || {};
       st.pays = v.pays || { list: [], hide: '' };
@@ -2224,10 +2478,11 @@
   /** preset — с чего открыть новый лист: { kind: 's' отложить | 't' снять | 'p' платёж по кредиту, cat, digits, cur, date, note } */
   function openEntry(op, preset) {
     if (!st.loaded || st.error) { return; }
-    var pre = preset || {}, goalOp = !!op && F.isGoalOp(op);
+    var pre = preset || {}, goalOp = !!op && F.isGoalOp(op), debtOp = !!op && F.isDebtOp(op);
     entry = {
       edit: op || null,
-      kind: op ? (goalOp ? (op.k === 'e' ? 's' : 't') : op.k) : pre.kind || 'e', // 'e' трата, 'i' доход, 's' отложить на цель, 't' снять с цели, 'p' платёж (хранится тратой)
+      kind: op ? (goalOp ? (op.k === 'e' ? 's' : 't') : debtOp ? (op.k === 'e' ? 'give' : 'get') : op.k) : pre.kind || 'e', fresh: !op && !!pre.fresh, // долг: 'give' отдано, 'get' получено; fresh — новый долг с выбором человека
+      // 'e' трата, 'i' доход, 's' отложить на цель, 't' снять с цели, 'p' платёж (хранится тратой)
       digits: op ? F.fmt(op.a).replace(/\s/g, '').replace(/,00$/, '').replace(/(,\d)0$/, '$1') : pre.digits || '',
       cur: op ? op.u : pre.cur || 'BYN',
       cat: op ? op.c : pre.cat || '',
@@ -2242,9 +2497,10 @@
 
       // вид записи: у новой — «Трата / Доход / Отложить»; «Снять» и правка записи цели — отдельный режим с заголовком вместо переключателя
       var mode = entry.kind === 't' ? (op ? 'Снято из накоплений' : 'Снять из накоплений') : goalOp ? 'Отложено на цель' : entry.kind === 'p' ? 'Платёж' : '';
-      var seg = mode ? el('p', 'entry__mode', nb(mode)) : el('div', 'seg');
-      if (mode) { seg.id = 'entryMode'; } else { seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Что добавляем'); }
-      entry.segBtns = (mode ? [] : [['e', 'Трата'], ['i', 'Доход']].concat(op ? [] : [['s', 'Отложить']])).map(function (k) {
+      var debt = entry.kind === 'give' || entry.kind === 'get';
+      var seg = debt ? debtTop(op) : mode ? el('p', 'entry__mode', nb(mode)) : el('div', 'seg');
+      if (debt) { /* верх — имя человека */ } else if (mode) { seg.id = 'entryMode'; } else { seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Что добавляем'); }
+      entry.segBtns = (mode || debt ? [] : [['e', 'Трата'], ['i', 'Доход']].concat(op ? [] : [['s', 'Отложить']])).map(function (k) {
         var b = btn('', k[1]);
         b.setAttribute('data-kind', k[0]);
         b.addEventListener('click', function () {
@@ -2261,7 +2517,20 @@
         return b;
       });
 
-      var strip = el('div', 'strip');
+      var way = null;
+      if (debt && entry.fresh) { // новый долг: «Дать / Получить» в строке вместо заметки — лист той же высоты, что обычный, и помещается на 320×568
+        way = el('div', 'seg seg--way');
+        way.setAttribute('role', 'group');
+        way.setAttribute('aria-label', 'Кто кому');
+        entry.segBtns = [['give', 'Дать'], ['get', 'Получить']].map(function (k) {
+          var b = btn('', k[1]);
+          b.setAttribute('data-kind', k[0]);
+          b.addEventListener('click', function () { if (!entry || entry.kind === k[0]) { return; } entry.kind = k[0]; haptic(); paintEntry(); });
+          way.appendChild(b);
+          return b;
+        });
+      }
+      var strip = el('div', 'strip' + (way ? ' strip--way' : ''));
       // заметка: обычное поле телефона. Стоит вверху листа, поэтому клавиатура телефона его не закрывает
       entry.noteInput = el('input', 'note-in');
       entry.noteInput.type = 'text';
@@ -2291,7 +2560,7 @@
       });
       dateWrap.addEventListener('click', function () { try { if (entry.dateInput.showPicker) { entry.dateInput.showPicker(); } } catch (e) { /* откроется обычным нажатием */ } });
       add(dateWrap, entry.dateText, icon('down'), entry.dateInput);
-      add(strip, entry.noteInput, dateWrap);
+      add(strip, debt ? (way || el('span', 'strip__gap')) : entry.noteInput, dateWrap); // у долга заметки на листе нет: строка занята «Дать / Получить» или пуста
 
       var box = el('section', 'entry');
       entry.box = box;
@@ -2378,9 +2647,9 @@
     return pages;
   }
   function paintChips() {
-    var goalKind = entry.kind === 's' || entry.kind === 't', pay = entry.kind === 'p';
+    var goalKind = entry.kind === 's' || entry.kind === 't', pay = entry.kind === 'p', debt = entry.kind === 'give' || entry.kind === 'get';
     var credits = activeCredits().map(function (k) { return { id: 'k_' + k.id, name: k.name, wide: k.name.length > 11, full: k.name.length > 18 }; }); // в платеже метки по половине ряда, во весь ряд только длинные
-    var list = entry.kind === 'e' ? F.CATS.concat(credits) : entry.kind === 'i' ? F.SRCS : pay ? credits : F.GOALS.map(function (g) { return { id: 'g_' + g.id, name: g.name, wide: false, full: g.name.length > 13 }; }), cols = entry.kind === 'e' ? 3 : 2; // длинное название занимает весь ряд; кредиты стоят и в конце категорий трат
+    var list = debt ? (entry.fresh ? F.DEBTS.map(function (p) { return { id: 'd_' + p.id, name: p.name, wide: p.name.length > 11, full: p.name.length > 18 }; }).concat([{ id: '+', name: 'Человек', fresh: true, person: true }]) : []) : entry.kind === 'e' ? F.CATS.concat(credits) : entry.kind === 'i' ? F.SRCS : pay ? credits : F.GOALS.map(function (g) { return { id: 'g_' + g.id, name: g.name, wide: false, full: g.name.length > 13 }; }), cols = entry.kind === 'e' || debt ? 3 : 2; // длинное название занимает весь ряд; кредиты стоят и в конце категорий трат
     if (entry.kind === 's' && !entry.edit) { list = list.concat([{ id: '+', name: 'Новая цель', fresh: true }]); } // снять можно только из цели, которая уже есть
     if (pay) { list = list.concat([{ id: '+', name: 'Новый кредит', fresh: true, credit: true }]); }
     var pages = chipPages(list, cols);
@@ -2391,15 +2660,20 @@
     if (entry.page >= pages.length) { entry.page = 0; }
     clear(entry.chips);
     entry.chips.className = 'chips' + (cols === 2 ? ' chips--two' : '') + (entry.segBtns.length ? '' : ' chips--fit'); // без переключателя вида высоту на три ряда держать незачем: сумма встаёт по центру, без дыры над метками
-    entry.chips.setAttribute('aria-label', goalKind ? 'Цель' : pay ? 'Кредит' : entry.kind === 'e' ? 'Категория' : 'Источник');
+    entry.chips.setAttribute('aria-label', debt ? 'Кто' : goalKind ? 'Цель' : pay ? 'Кредит' : entry.kind === 'e' ? 'Категория' : 'Источник');
     entry.chipBtns = pages[entry.page].map(function (c) {
       if (c.fresh) { // «Новая цель» прямо с листа: набранная сумма не теряется
         var nl = el('li', 'chips__new'), nbn = btn('');
-        nbn.id = c.credit ? 'chipNewCredit' : 'chipNewGoal';
+        nbn.id = c.person ? 'chipNewPerson' : c.credit ? 'chipNewCredit' : 'chipNewGoal';
         add(nbn, icon('plus'), document.createTextNode(c.name));
         nbn.addEventListener('click', function () {
           if (!entry || entry.busy) { return; }
-          var keep = { kind: entry.kind, digits: entry.digits, cur: entry.cur, date: entry.date, note: entry.note };
+          var keep = { kind: entry.kind, digits: entry.digits, cur: entry.cur, date: entry.date, note: entry.note, fresh: entry.fresh };
+          if (c.person) { // новый человек прямо с листа долга: набранная сумма не теряется
+            if (F.DEBTS.length >= F.DEBTS_MAX) { haptic('err'); toast('Людей уже сорок. Удалите того, с кем рассчитались.'); return; }
+            openDebtEdit(null, function () { openEntry(null, keep); }, function (id) { keep.cat = 'd_' + id; openEntry(null, keep); });
+            return;
+          }
           if (c.credit) { // новый кредит прямо с листа платежа: набранная сумма не теряется
             if (F.CREDITS.length >= F.CREDITS_MAX) { haptic('err'); toast('Кредитов уже двенадцать. Удалите погашенный.'); return; }
             openCreditEdit(null, function () { openEntry(null, keep); }, function (id) {
@@ -2487,6 +2761,7 @@
     e.hint2.hidden = true;
     e.over = '';
     if (showDone) { seriesDone(e); }
+    else if (e.kind === 'give' || e.kind === 'get') { debtHints(e, minor, byn); }
     else if (e.kind === 's' || e.kind === 't') { goalHints(e, minor, byn); }
     else if (e.kind !== 'i' && F.creditOf(e.cat)) { creditHints(e, minor, byn); }
     else if (e.cur !== 'BYN') {
@@ -2507,11 +2782,11 @@
     if (e.busy) { label = 'Сохраняем'; }
     else if (!minor && e.series) { label = 'Готово' + F.NB + '·' + F.NB + e.series + F.NB + F.plural(e.series, 'запись', 'записи', 'записей'); off = false; e.closeOnly = true; } // серия идёт, ничего не набрано: закрыть лист
     else if (!minor) { label = 'Введите сумму'; }
-    else if (!e.cat) { label = e.kind === 'e' ? 'Выберите категорию' : e.kind === 'i' ? 'Выберите источник' : e.kind === 'p' ? 'Выберите кредит' : 'Выберите цель'; }
+    else if (!e.cat) { label = e.kind === 'give' || e.kind === 'get' ? 'Выберите человека' : e.kind === 'e' ? 'Выберите категорию' : e.kind === 'i' ? 'Выберите источник' : e.kind === 'p' ? 'Выберите кредит' : 'Выберите цель'; }
     else if (e.over) { label = e.over; } // снять больше, чем есть в цели, нельзя: кнопка называет, сколько там
     else {
       var money = e.cur === 'BYN' ? F.fmt(minor) : F.fmtShort(minor) + F.NB + e.cur;
-      label = e.edit ? 'Сохранить' : e.kind === 'e' ? 'Добавить трату' : e.kind === 'i' ? 'Добавить доход' : (e.kind === 's' ? 'Отложить ' : e.kind === 'p' ? 'Внести ' : 'Снять ') + money;
+      label = e.edit ? 'Сохранить' : e.kind === 'give' || e.kind === 'get' ? 'Записать ' + money : e.kind === 'e' ? 'Добавить трату' : e.kind === 'i' ? 'Добавить доход' : (e.kind === 's' ? 'Отложить ' : e.kind === 'p' ? 'Внести ' : 'Снять ') + money;
       off = false;
     }
     if (!(!minor && e.series && !e.busy)) { e.closeOnly = false; }
@@ -2585,7 +2860,7 @@
     if (more !== true && e.closeOnly) { closeSeries(); return; }
     var minor = F.parseTyped(e.digits);
     if (!minor || !e.cat || e.over) { haptic('err'); return; }
-    var op = F.makeOp(e.kind === 'i' || e.kind === 't' ? 'i' : 'e', e.cat, minor, e.cur, e.date, e.edit ? e.edit.id : null, e.note); // отложенное хранится как трата с категорией цели, снятое — как доход
+    var op = F.makeOp(e.kind === 'i' || e.kind === 't' || e.kind === 'get' ? 'i' : 'e', e.cat, minor, e.cur, e.date, e.edit ? e.edit.id : null, e.note); // отложенное хранится как трата с категорией цели, снятое — как доход
     if (e.edit && e.edit.u === e.cur && e.edit.r) { op.r = e.edit.r; } // правка не меняет курс, по которому запись была внесена
     e.busy = true;
     paintEntry();
@@ -2651,7 +2926,7 @@
   function addOp(op) {
     store.add(op, function (err) {
       afterWrite(err, op.d, function () { // случайную запись можно убрать сразу, не заходя в «Историю»
-        toast(F.isGoalOp(op) ? (op.k === 'e' ? 'Отложено на цель' : 'Снято из накоплений') : F.isCreditOp(op) ? 'Платёж внесён' : op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), undone); });
+        toast(F.isGoalOp(op) ? (op.k === 'e' ? 'Отложено на цель' : 'Снято из накоплений') : F.isDebtOp(op) ? (op.k === 'e' ? 'Записано: отдано' : 'Записано: получено') : F.isCreditOp(op) ? 'Платёж внесён' : op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), undone); });
       });
     });
   }

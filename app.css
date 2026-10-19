@@ -775,3 +775,22 @@ html { overflow: hidden; }
 .import__area { height: auto; min-height: 84px; margin-top: 12px; padding: 14px 16px; resize: none; font: 400 17px/1.35 var(--font); }
 .import__err { min-height: 20px; margin-top: 8px; font: 500 15px/1.35 var(--font); color: var(--ink); }
 .first__code { display: inline-block; margin: -12px 0; padding: 12px 0; font: 600 17px/1.4 var(--font); color: var(--ink); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--tert); } /* касание 44 px, строка подзаголовка не растёт */
+
+/* ---------- долги (пункт 14) ---------- */
+/* шапка раздела: «+ Новый» капсулой рядом с шестерёнкой — синяя «Добавить» внизу остаётся единственной большой кнопкой */
+.bar__acts { display: flex; align-items: center; gap: 4px; }
+.capsule--icon span { display: inline-flex; align-items: center; gap: 4px; padding: 0 14px 0 10px; }
+.capsule--icon svg { width: 16px; height: 16px; }
+/* карточка человека: имя чёрным и целиком, в две строки — по имени узнают человека */
+.goal__btn.debt .cats__head { align-items: flex-start; }
+.goal__btn.debt .cats__head > .goal__title { font: 600 17px/1.25 var(--font); letter-spacing: -.015em; color: var(--ink); white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+.goal__btn.debt .goal__line { white-space: nowrap; }
+.debt__bar { margin-top: 10px; }
+.goal__btn.debt .goal__rest { margin-top: 6px; }
+/* лист ввода долга: имя крупно слева, без склонения; «Дать / Получить» в строке вместо заметки */
+.entry__who { flex: none; display: flex; align-items: baseline; gap: 10px; min-width: 0; min-height: 48px; }
+.entry__who .pick__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry__who span { flex: none; font: 500 17px/1.2 var(--font); color: var(--muted); }
+.strip--way .seg--way { flex: 1; min-width: 0; }
+.strip--way .seg--way button { padding: 0 8px; }
+.strip__gap { flex: 1; }

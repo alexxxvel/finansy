@@ -288,6 +288,46 @@
     CREDITS.splice.apply(CREDITS, [0, CREDITS.length].concat(ok.map(function (k) { return { id: k[0], name: k[1], a: k[2], u: k[3], s: k[4], p: k[5], f: k[6] }; })));
   }
   function packCredits() { return CREDITS.map(function (k) { return [k.id, k.name, k.a, k.u, k.s, k.p, k.f]; }); }
+  // ---------- долги между людьми (пункт 14, решение разработчика 19.10.2026: раздел рядом с кредитами, «Осталось» в обе стороны) ----------
+  // Люди — отдельный ключ хранилища (dbt): [[id, имя], …] до 40. Записи долга — обычные записи с категорией d_<id>:
+  // трата — отдано (дали в долг или вернули свой), доход — получено (взяли в долг или вам вернули). В «Потрачено» и доходы не входят, «Осталось» меняют.
+  var DEBTS = [], DEBTS_MAX = 40;
+  function validDebts(list) {
+    if (!list || typeof list.length !== 'number' || list.length > DEBTS_MAX) { return null; }
+    var out = [], seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
+      if (!p || typeof p.length !== 'number' || typeof p[0] !== 'string' || !/^[a-z0-9]{1,10}$/.test(p[0]) || seen[p[0]]) { return null; }
+      var name = cleanNote(p[1]).slice(0, 24);
+      if (!name) { return null; }
+      seen[p[0]] = 1;
+      out.push([p[0], name]);
+    }
+    return out;
+  }
+  function useDebts(list) {
+    var ok = validDebts(list) || [];
+    DEBTS.splice.apply(DEBTS, [0, DEBTS.length].concat(ok.map(function (p) { return { id: p[0], name: p[1] }; })));
+  }
+  function packDebts() { return DEBTS.map(function (p) { return [p.id, p.name]; }); }
+  function isDebtOp(op) { return !!op && typeof op.c === 'string' && op.c.indexOf('d_') === 0; }
+  function debtOf(cat) { return typeof cat === 'string' && cat.indexOf('d_') === 0 ? find(DEBTS, cat.slice(2)) : null; }
+  /** запись не трата и не доход: отложено на цель, снято с цели или долг */
+  function isMoveOp(op) { return isGoalOp(op) || isDebtOp(op); }
+  /** долг человека: bal — сколько он вернёт вам (минус — сколько вернёте вы), gave и got — отдано и получено всего, ops — записи, свежие сверху.
+      skip — id записи, которую не считать (правка) */
+  function debtState(p, all, skip) {
+    var cat = 'd_' + p.id, gave = 0, got = 0, ops = [];
+    Object.keys(all || {}).forEach(function (m) {
+      all[m].forEach(function (op) {
+        if (op.c !== cat || op.id === skip) { return; }
+        if (op.k === 'e') { gave += bynOf(op); } else { got += bynOf(op); }
+        ops.push(op);
+      });
+    });
+    ops.sort(function (x, y) { return x.d === y.d ? (x.id < y.id ? 1 : -1) : (x.d < y.d ? 1 : -1); });
+    return { bal: gave - got, gave: gave, got: got, ops: ops };
+  }
   function isCreditOp(op) { return !!op && typeof op.c === 'string' && op.c.indexOf('k_') === 0; }
   function creditOf(cat) { return typeof cat === 'string' && cat.indexOf('k_') === 0 ? find(CREDITS, cat.slice(2)) : null; }
   /** состояние кредита: сколько осталось (в его валюте; меньше нуля — переплата), сколько внесено в этом месяце (в его валюте и в рублях), платежи свежие сверху */
@@ -365,7 +405,7 @@
     var out = [];
     Object.keys(all || {}).forEach(function (m) {
       if (m < from.slice(0, 7) || m > to.slice(0, 7)) { return; }
-      all[m].forEach(function (op) { if (op.d >= from && op.d <= to && !isGoalOp(op)) { out.push(op); } });
+      all[m].forEach(function (op) { if (op.d >= from && op.d <= to && !isMoveOp(op)) { out.push(op); } });
     });
     return out;
   }
@@ -417,7 +457,7 @@
   function weekdayAvg(all, now) {
     now = now || today();
     var first = '', sums = [0, 0, 0, 0, 0, 0, 0], n = [0, 0, 0, 0, 0, 0, 0];
-    Object.keys(all || {}).forEach(function (m) { all[m].forEach(function (op) { if (!isGoalOp(op) && op.d <= now && (!first || op.d < first)) { first = op.d; } }); });
+    Object.keys(all || {}).forEach(function (m) { all[m].forEach(function (op) { if (!isMoveOp(op) && op.d <= now && (!first || op.d < first)) { first = op.d; } }); });
     if (!first) { return null; }
     inRange(all, first, now).forEach(function (op) { if (op.k === 'e') { sums[dow(op.d)] += bynOf(op); } });
     var span = daysBetween(first, now) + 1;
@@ -433,7 +473,7 @@
   /** первая дата с записями (без записей целей) */
   function firstDate(all) {
     var first = '';
-    Object.keys(all || {}).forEach(function (m) { all[m].forEach(function (op) { if (!isGoalOp(op) && (!first || op.d < first)) { first = op.d; } }); });
+    Object.keys(all || {}).forEach(function (m) { all[m].forEach(function (op) { if (!isMoveOp(op) && (!first || op.d < first)) { first = op.d; } }); });
     return first;
   }
 
@@ -450,6 +490,7 @@
   function dict(kind, id) {
     if (typeof id === 'string' && id.indexOf('g_') === 0) { var g = goalOf(id); return { id: id, name: g ? g.name : 'Удалённая цель', icon: 'wallet', goal: true }; }
     if (typeof id === 'string' && id.indexOf('k_') === 0) { var k = creditOf(id); return { id: id, name: k ? k.name : 'Удалённый кредит', icon: 'card', credit: true }; } // платёж по кредиту — трата с названием кредита
+    if (typeof id === 'string' && id.indexOf('d_') === 0) { var p = debtOf(id); return { id: id, name: p ? p.name : 'Удалённый человек', icon: 'users', debt: true }; } // долг — запись с именем человека
     return find(kind === 'i' ? SRCS : CATS, id) || find(OFF[kind === 'i' ? 'i' : 'e'], id) || { id: id, name: 'Без категории', icon: 'dots' };
   }
   /** список для хранения: [[id, название, значок], …] */
@@ -526,9 +567,9 @@
       if (validGoals(data.cfg.goals)) { cfg.goals = validGoals(data.cfg.goals); }
       if (!Object.keys(cfg).length) { cfg = null; }
     }
-    var credits = validCredits(data.credits), budget = validBudget(data.budget), limits = validLimits(data.limits), pays = validPays(data.pays); // у этих настроек в хранилище свои ключи
+    var credits = validCredits(data.credits), budget = validBudget(data.budget), limits = validLimits(data.limits), pays = validPays(data.pays), debts = validDebts(data.debts); // у этих настроек в хранилище свои ключи
     return count ? { months: months, count: count, cfg: cfg, credits: credits && credits.length ? credits : null, budget: budget && budget.a ? budget : null, limits: limits && Object.keys(limits).length ? limits : null,
-      pays: pays && pays.list.length ? pays : null } : null;
+      pays: pays && pays.list.length ? pays : null, debts: debts && debts.length ? debts : null } : null;
   }
 
   function plural(n, one, few, many) {
@@ -540,10 +581,11 @@
 
   /** сводка месяца: всё в рублях (копейки). Отложенное на цели и снятое с них — не траты и не доходы: считаются отдельно (saved, taken) */
   function summarize(ops) {
-    var spent = 0, income = 0, cats = {}, srcs = {}, saved = 0, taken = 0;
+    var spent = 0, income = 0, cats = {}, srcs = {}, saved = 0, taken = 0, lent = 0, got = 0;
     ops.forEach(function (op) {
       var b = bynOf(op), bucket = op.k === 'e' ? cats : srcs;
       if (isGoalOp(op)) { if (op.k === 'e') { saved += b; } else { taken += b; } return; }
+      if (isDebtOp(op)) { if (op.k === 'e') { lent += b; } else { got += b; } return; } // долг: не трата и не доход, но деньги на руках меняются
       if (op.k === 'e') { spent += b; } else { income += b; }
       var row = bucket[op.c] || (bucket[op.c] = { id: op.c, sum: 0, foreign: {} });
       row.sum += b;
@@ -555,7 +597,7 @@
         return { id: c.id, name: c.name, icon: c.icon, sum: r.sum, note: CURS.filter(function (u) { return r.foreign[u]; }).map(function (u) { return fmtShort(r.foreign[u]) + NB + u; }).join(', ') };
       }).sort(function (x, y) { return y.sum - x.sum; });
     }
-    return { spent: spent, income: income, left: income - spent - saved + taken, saved: saved, taken: taken, cats: rows(cats, 'e'), srcs: rows(srcs, 'i') };
+    return { spent: spent, income: income, left: income - spent - saved + taken - lent + got, saved: saved, taken: taken, lent: lent, got: got, cats: rows(cats, 'e'), srcs: rows(srcs, 'i') };
   }
 
   /** записи по дням, свежие сверху */
@@ -601,7 +643,7 @@
     var from = shiftDay(now, -92), map = {}, list = [];
     Object.keys(all || {}).forEach(function (m) {
       all[m].forEach(function (op) {
-        if (op.k !== kind || op.d < from || op.d > now || isGoalOp(op)) { return; } // отложенное на цель частой тратой не предлагается
+        if (op.k !== kind || op.d < from || op.d > now || isMoveOp(op)) { return; } // отложенное на цель и долги частой тратой не предлагается
         var key = [op.c, op.a, op.u, (op.n || '').toLowerCase()].join('|'), it = map[key];
         if (!it) { it = map[key] = { k: kind, c: op.c, a: op.a, u: op.u, n: op.n || '', count: 0, last: '' }; list.push(it); }
         it.count++;
@@ -636,7 +678,7 @@
     ops.forEach(function (op) {
       var d = op.d.split('-'), note = op.n || '';
       if (/^[=+\-@]/.test(note)) { note = "'" + note; } // Excel принял бы такую заметку за формулу
-      rows.push([d[2] + '.' + d[1] + '.' + d[0], isGoalOp(op) ? (op.k === 'e' ? 'Отложено' : 'Снято') : (op.k === 'e' ? 'Трата' : 'Доход'), dict(op.k, op.c).name, num(op.a), op.u, num(bynOf(op)), note]);
+      rows.push([d[2] + '.' + d[1] + '.' + d[0], isGoalOp(op) ? (op.k === 'e' ? 'Отложено' : 'Снято') : isDebtOp(op) ? (op.k === 'e' ? 'Долг: отдано' : 'Долг: получено') : (op.k === 'e' ? 'Трата' : 'Доход'), dict(op.k, op.c).name, num(op.a), op.u, num(bynOf(op)), note]);
     });
     return rows.map(function (r) {
       return r.map(function (cell) {
@@ -813,6 +855,7 @@
     parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX,
     WEEKDAYS_SHORT: WEEKDAYS_SHORT, MONTHS_GEN: MONTHS_GEN, dow: dow, daysBetween: daysBetween, lastDay: lastDay, statsPeriod: statsPeriod, periodShift: periodShift, inRange: inRange, rangeStats: rangeStats,
     catRows: catRows, catChanges: catChanges, topNotes: topNotes, weekdayAvg: weekdayAvg, cumulative: cumulative, firstDate: firstDate,
+    DEBTS: DEBTS, DEBTS_MAX: DEBTS_MAX, validDebts: validDebts, useDebts: useDebts, packDebts: packDebts, isDebtOp: isDebtOp, debtOf: debtOf, debtState: debtState, isMoveOp: isMoveOp,
     validBudget: validBudget, validLimits: validLimits, validPays: validPays, payPaid: payPaid, encodeShare: encodeShare, decodeShare: decodeShare, findShare: findShare,
     CREDITS: CREDITS, CREDITS_MAX: CREDITS_MAX, REMIND: REMIND, CLOSED: CLOSED, validCredits: validCredits, useCredits: useCredits, packCredits: packCredits,
     isCreditOp: isCreditOp, creditOf: creditOf, creditState: creditState, creditDue: creditDue, creditPlan: creditPlan
