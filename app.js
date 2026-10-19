@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '18c3e92621'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '2b1c5c96cb'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -381,6 +381,7 @@
       if (payNode) { spent.appendChild(payNode); }
       // напоминание о кредите включает сам человек; когда заведены платежи месяца, кредит — в их списке, и отдельной строки нет (о кредите одна строка, не две)
       if (!(st.pays.list || []).length) { F.CREDITS.forEach(function (k) { if (remindDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } }); }
+      if (!spent.querySelector('.remind')) { var saveNode = saveCard(); if (saveNode) { spent.appendChild(saveNode); } } // итог прошлого месяца — после платежей и кредитов
       if (!spent.querySelector('.remind')) { var homeNode = homeCard(); if (homeNode) { spent.appendChild(homeNode); } } // больше одной карточки сразу не бывает
     }
 
@@ -819,6 +820,106 @@
     });
   }
   /** один раз на главной: только когда других карточек нет */
+  // ---------- доля сбережений (пункт 16, решение разработчика 19.10.2026: вариант В — блок в «Аналитике» и карточка итога месяца) ----------
+  /** тот же день в другом месяце (31-е в коротком месяце — его последний день) */
+  function sameDay(month, date) {
+    var p = month.split('-'), last = new Date(+p[0], +p[1], 0).getDate();
+    return month + '-' + ('0' + Math.min(+date.slice(8, 10), last)).slice(-2);
+  }
+  /** «−10%» с настоящим минусом */
+  function pctText(p) { return (p < 0 ? '−' : '') + Math.abs(p) + '%'; }
+  function bigPct(p) {
+    var b = el('p', 'save-num');
+    b.id = 'saveNum';
+    add(b, el('span', '', (p < 0 ? '−' : '') + Math.abs(p)), el('i', '', '%'));
+    return b;
+  }
+  /** блок «Сбережения» в «Аналитике» за месяц: текущий — «пока» и сравнение с тем же днём прошлого, закрытый — окончательно; столбики до шести месяцев */
+  function savingsBlock(P, now) {
+    var month = F.monthOf(P.from), curMonth = F.monthOf(now), current = month === curMonth, s = F.savingsOf(st.all, month, current ? now : null);
+    if (s.pct === null) { return null; } // без дохода доли нет (так живёт мама — только траты)
+    var box = el('div', 'save'), top = el('div', 'save-top'), cmp = el('p', 'save-top__cmp');
+    cmp.id = 'saveCmp';
+    if (s.saved < 0) { // траты больше дохода: не процент, а сколько сверх
+      var neg = el('p', 'save-neg', nb('Траты больше дохода на ' + F.fmt(-s.saved)));
+      neg.id = 'saveNeg';
+      top.appendChild(neg);
+    } else { top.appendChild(bigPct(s.pct)); }
+    if (current) {
+      var pm = F.prevMonth(month), ps = F.savingsOf(st.all, pm, sameDay(pm, now)), when = 'к' + F.NB + rangeText(sameDay(pm, now), sameDay(pm, now));
+      if (ps.pct !== null) { var d = s.pct - ps.pct; cmp.textContent = nb(d ? 'на ' + Math.abs(d) + '% ' + (d > 0 ? 'больше' : 'меньше') + ', чем ' + when : 'столько же, сколько ' + when); }
+    } else { cmp.textContent = nb(s.saved >= 0 ? 'сберегли ' + F.fmt(s.saved) + ' из ' + F.fmt(s.income) + ' дохода' : 'доход ' + F.fmt(s.income) + ', траты ' + F.fmt(s.spent)); }
+    if (cmp.textContent) { top.appendChild(cmp); }
+    box.appendChild(top);
+    // столбики: до шести месяцев по выбранный, только месяцы с доходом
+    var list = [], m = month;
+    for (var i = 0; i < 6; i++) { var x = F.savingsOf(st.all, m, m === curMonth ? now : null); if (x.pct !== null) { list.unshift({ m: m, p: x.pct, now: m === curMonth }); } m = F.prevMonth(m); }
+    if (list.length >= 2) {
+      var mx = 1, neg2 = false, ul = el('ul', 'sbars');
+      list.forEach(function (it) { if (it.p > mx) { mx = it.p; } if (it.p < 0) { neg2 = true; } });
+      if (neg2) { ul.className = 'sbars sbars--neg'; }
+      ul.id = 'saveBars';
+      ul.style.gridTemplateColumns = 'repeat(' + list.length + ', minmax(0, 1fr))';
+      list.forEach(function (it) {
+        var li = el('li'), b = btn('sbar' + (it.now ? ' is-now' : '') + (it.m === month && !it.now ? ' is-sel' : '') + (it.p < 0 ? ' is-neg' : '')), up = el('span', 'sbar__up'), dn = el('span', 'sbar__dn'), bar = el('i'), v = el('span', 'sbar__v', (it.now ? 'пока ' : '') + pctText(it.p));
+        bar.style.height = (it.p < 0 ? 18 : Math.max(4, Math.round(it.p / mx * 80))) + 'px';
+        if (it.p < 0) { add(dn, bar, v); } else { add(up, v, bar); }
+        b.setAttribute('data-month', it.m);
+        b.setAttribute('aria-label', F.monthLabel(it.m) + ': ' + pctText(it.p) + (it.now ? ', месяц ещё идёт' : ''));
+        add(b, up, dn, el('span', 'sbar__m', F.monthLabel(it.m).slice(0, 3).toLowerCase()));
+        b.addEventListener('click', function () { // касание — этот месяц в «Аналитике»
+          if (it.m === month) { return; }
+          st.stats.kind = 'month';
+          st.stats.at = it.now ? now : it.m + '-15';
+          haptic();
+          paint(true);
+        });
+        li.appendChild(b);
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+      var closed = list.filter(function (it) { return !it.now; }), avg = '';
+      if (closed.length) {
+        var sum = 0;
+        closed.forEach(function (it) { sum += it.p; });
+        avg = 'В среднем за ' + closed.length + F.NB + F.plural(closed.length, 'месяц', 'месяца', 'месяцев') + ' ' + pctText(Math.round(sum / closed.length)) + '.';
+      }
+      var tail = current ? ' Месяц ещё идёт: цифра станет окончательной 1' + F.NB + F.MONTHS_GEN[+F.periodShift('month', month + '-01', 1).slice(5, 7) - 1] + '.' : '';
+      var note = el('p', 'save-avg', nb((avg + tail).trim()));
+      note.id = 'saveAvg';
+      if (note.textContent) { box.appendChild(note); }
+    }
+    return vizBlock('Сбережения', current ? 'к' + F.NB + rangeText(now, now) + ', пока' : 'итог месяца', box, 'vizSave');
+  }
+  function saveHidden(month) { try { return localStorage.getItem('fin_savehide') === month; } catch (e) { return false; } }
+  /** карточка итога прошлого месяца на главной: 1–7 числа, пока не убрали крестиком; касание — этот месяц в «Аналитике» */
+  function saveCard() {
+    var now = F.today(), pm = F.prevMonth(F.monthOf(now)), s = F.savingsOf(st.all, pm, null);
+    if (+now.slice(8, 10) > 7 || s.pct === null || saveHidden(pm)) { return null; }
+    var row = el('div', 'remind remind--save'), text = btn('remind__text save-card'), strong = el('strong'), x = btn('remind__x'), ppm = F.prevMonth(pm), ps = F.savingsOf(st.all, ppm, null), name = F.monthLabel(pm);
+    row.id = 'saveCard';
+    var before = ps.pct === null ? '' : F.inMonth(ppm) + (ps.saved >= 0 ? ' сберегли ' + pctText(ps.pct) : ' траты больше дохода');
+    if (s.saved >= 0) {
+      var num = el('b', 'save-card__num');
+      add(num, document.createTextNode(String(s.pct)), el('i', '', '%'));
+      add(strong, document.createTextNode(name + ': сберегли'), num);
+      add(text, strong, el('small', '', nb(F.fmt(s.saved) + ' из ' + F.fmt(s.income) + ' дохода' + (before ? ' · ' + before : ''))));
+    } else {
+      strong.textContent = name + ': траты больше дохода';
+      add(text, strong, el('small', '', nb('на ' + F.fmt(-s.saved) + (before ? ' · ' + before : ''))));
+    }
+    text.addEventListener('click', function () { st.tab = 'stats'; st.stats.kind = 'month'; st.stats.at = pm + '-15'; haptic(); paintDock(); paint(true); });
+    x.id = 'saveCardHide';
+    x.setAttribute('aria-label', 'Убрать до следующего месяца');
+    x.appendChild(icon('close'));
+    x.addEventListener('click', function () {
+      try { localStorage.setItem('fin_savehide', pm); } catch (e) { /* без памяти карточка вернётся при следующем открытии */ }
+      haptic('ok');
+      if (row.parentNode) { row.parentNode.removeChild(row); }
+    });
+    add(row, text, x);
+    return row;
+  }
   function homeCard() {
     if (!homeCan() || homeOff() || usedDays() < 3) { return null; }
     var row = el('div', 'remind remind--home'), text = el('span'), go = btn('capsule remind__pay'), x = btn('remind__x');
@@ -2402,6 +2503,7 @@
     else {
       var pf = F.statsPeriod(P.kind, P.prevFrom, now), prevFull = first && first <= pf.to ? F.rangeStats(st.all, pf.from, pf.to) : null;
       sheet.appendChild(vizBlock('Как шли траты', prevFull ? (P.kind === 'week' ? 'к прошлой неделе' : 'к' + F.NB + rangeText(P.prevEnd, P.prevEnd)) : '', paceChart(P, cur, prevFull ? prevFull.days : null), 'vizPace'));
+      if (P.kind === 'month') { var saveBlock = savingsBlock(P, now); if (saveBlock) { sheet.appendChild(saveBlock); } } // сбережения — сразу после «Как шли траты»
     }
     sheet.appendChild(vizBlock('Коротко', rangeText(P.from, P.end), factRows(P, cur), 'vizFacts'));
     if (prev) {

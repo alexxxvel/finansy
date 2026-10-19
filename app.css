@@ -832,3 +832,35 @@ html { overflow: hidden; }
 .nofind__try { margin-top: 6px; }
 .findbody { flex: 1 0 auto; display: flex; flex-direction: column; } /* лист под полем тянется до низа, как в обычной истории */
 [hidden] { display: none !important; } /* 19.10.2026: седьмой раз display у элемента перебивал hidden (крестик поиска) — одно правило на всё приложение, держит проверка в обходе экранов e2e */
+
+/* ---------- доля сбережений (пункт 16) ---------- */
+/* крупная цифра фирменным приёмом: число крупно, «%» мелко серым, как копейки */
+.save-top { display: grid; gap: 4px; margin: 8px 0 18px; }
+.save-num { display: flex; align-items: baseline; margin: 0; }
+.save-num span { font: 700 64px/1 var(--font); letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+.save-num i { margin-left: 2px; font: 600 30px/1 var(--font); font-style: normal; color: var(--muted); }
+.save-neg { font: 700 22px/1.25 var(--font); letter-spacing: -.02em; }
+.save-top__cmp { font: 500 15px/1.3 var(--font); color: var(--muted); }
+/* столбики: линия нуля, закрытые серым, выбранный графитом, текущий бледный «пока», минус вниз */
+.sbars { display: grid; gap: 10px; }
+.sbars li { min-width: 0; }
+.sbar { display: grid; grid-template-rows: 104px auto auto; justify-items: center; width: 100%; }
+.sbars--neg .sbar { grid-template-rows: 104px 36px auto; }
+.sbar__up { display: grid; justify-items: center; align-content: end; gap: 4px; width: 100%; border-bottom: 1px solid var(--line); }
+.sbar__dn { display: grid; justify-items: center; align-content: start; gap: 4px; width: 100%; }
+.sbar i { display: block; width: 100%; max-width: 28px; background: var(--quat); }
+.sbar__up i { border-radius: 6px 6px 0 0; }
+.sbar__dn i { border-radius: 0 0 6px 6px; }
+.sbar.is-sel i { background: var(--ink); }
+.sbar.is-now i { background: var(--fill); }
+.sbar__v { font: 600 13px/1 var(--font); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sbar.is-sel .sbar__v { color: var(--ink); }
+.sbar__m { margin-top: 8px; font: 500 13px/1 var(--font); color: var(--muted); }
+.save-avg { margin-top: 16px; font: 400 15px/1.4 var(--font); color: var(--muted); }
+/* карточка итога месяца на главной: цифра отдельной строкой, касание ведёт в «Аналитику» */
+.remind--save { grid-template-columns: 1fr auto; }
+.save-card { display: grid; gap: 4px; min-width: 0; text-align: left; }
+.save-card strong { display: grid; gap: 4px; }
+.save-card__num { font: 700 34px/1 var(--font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.save-card__num i { margin-left: 1px; font: 600 18px/1 var(--font); font-style: normal; color: var(--muted); }
+.save-card small { overflow: visible; white-space: normal; text-overflow: clip; } /* сравнение с прошлым месяцем не обрезается многоточием: переносится */

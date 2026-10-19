@@ -328,6 +328,16 @@
     ops.sort(function (x, y) { return x.d === y.d ? (x.id < y.id ? 1 : -1) : (x.d < y.d ? 1 : -1); });
     return { bal: gave - got, gave: gave, got: got, ops: ops };
   }
+  /** доля сбережений месяца (пункт 16): доход минус траты, отложенное на цели — сбережено, долги не считаются.
+      upto — до какого дня считать (текущий месяц и тот же день прошлого). pct — целые проценты; дохода нет — null */
+  function savingsOf(all, month, upto) {
+    var inc = 0, sp = 0;
+    (all[month] || []).forEach(function (op) {
+      if (isMoveOp(op) || (upto && op.d > upto)) { return; }
+      if (op.k === 'i') { inc += bynOf(op); } else { sp += bynOf(op); }
+    });
+    return { income: inc, spent: sp, saved: inc - sp, pct: inc > 0 ? Math.round((inc - sp) / inc * 100) : null };
+  }
   function isCreditOp(op) { return !!op && typeof op.c === 'string' && op.c.indexOf('k_') === 0; }
   function creditOf(cat) { return typeof cat === 'string' && cat.indexOf('k_') === 0 ? find(CREDITS, cat.slice(2)) : null; }
   /** состояние кредита: сколько осталось (в его валюте; меньше нуля — переплата), сколько внесено в этом месяце (в его валюте и в рублях), платежи свежие сверху */
@@ -855,7 +865,7 @@
     parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX,
     WEEKDAYS_SHORT: WEEKDAYS_SHORT, MONTHS_GEN: MONTHS_GEN, dow: dow, daysBetween: daysBetween, lastDay: lastDay, statsPeriod: statsPeriod, periodShift: periodShift, inRange: inRange, rangeStats: rangeStats,
     catRows: catRows, catChanges: catChanges, topNotes: topNotes, weekdayAvg: weekdayAvg, cumulative: cumulative, firstDate: firstDate,
-    DEBTS: DEBTS, DEBTS_MAX: DEBTS_MAX, validDebts: validDebts, useDebts: useDebts, packDebts: packDebts, isDebtOp: isDebtOp, debtOf: debtOf, debtState: debtState, isMoveOp: isMoveOp,
+    savingsOf: savingsOf, DEBTS: DEBTS, DEBTS_MAX: DEBTS_MAX, validDebts: validDebts, useDebts: useDebts, packDebts: packDebts, isDebtOp: isDebtOp, debtOf: debtOf, debtState: debtState, isMoveOp: isMoveOp,
     validBudget: validBudget, validLimits: validLimits, validPays: validPays, payPaid: payPaid, encodeShare: encodeShare, decodeShare: decodeShare, findShare: findShare,
     CREDITS: CREDITS, CREDITS_MAX: CREDITS_MAX, REMIND: REMIND, CLOSED: CLOSED, validCredits: validCredits, useCredits: useCredits, packCredits: packCredits,
     isCreditOp: isCreditOp, creditOf: creditOf, creditState: creditState, creditDue: creditDue, creditPlan: creditPlan
