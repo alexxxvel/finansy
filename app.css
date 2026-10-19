@@ -777,10 +777,6 @@ html { overflow: hidden; }
 .first__code { display: inline-block; margin: -12px 0; padding: 12px 0; font: 600 17px/1.4 var(--font); color: var(--ink); text-decoration: underline; text-underline-offset: 4px; text-decoration-color: var(--tert); } /* касание 44 px, строка подзаголовка не растёт */
 
 /* ---------- долги (пункт 14) ---------- */
-/* шапка раздела: «+ Новый» капсулой рядом с шестерёнкой — синяя «Добавить» внизу остаётся единственной большой кнопкой */
-.bar__acts { display: flex; align-items: center; gap: 4px; }
-.capsule--icon span { display: inline-flex; align-items: center; gap: 4px; padding: 0 14px 0 10px; }
-.capsule--icon svg { width: 16px; height: 16px; }
 /* карточка человека: имя чёрным и целиком, в две строки — по имени узнают человека */
 .goal__btn.debt .cats__head { align-items: flex-start; }
 .goal__btn.debt .cats__head > .goal__title { font: 600 17px/1.25 var(--font); letter-spacing: -.015em; color: var(--ink); white-space: normal; overflow: visible; overflow-wrap: anywhere; }

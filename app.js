@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '33539502ea'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '99a523be1a'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -167,6 +167,16 @@
   }
 
   // ---------- нижние капсулы ----------
+  /** подпись синей кнопки: на вкладке «Цели» она называет своё действие раздела, а не общее «Добавить»
+      (замечание разработчика 19.10.2026: рядом с «Новая цель» «Добавить» путала) */
+  var addText = null;
+  function addLabel() {
+    if (st.tab !== 'goals') { return 'Добавить'; }
+    if (st.sect === 'credits') { return activeCredits().length ? 'Внести платёж' : 'Новый кредит'; }
+    if (st.sect === 'debts') { return 'Записать долг'; }
+    return F.GOALS.length ? 'Отложить' : 'Новая цель';
+  }
+  function syncAdd() { if (addText) { addText.nodeValue = addLabel(); } }
   /** низ (решение разработчика 14.10.2026): широкая синяя «Добавить» с подписью над четырьмя вкладками */
   function paintDock() {
     clear(dock);
@@ -188,10 +198,12 @@
     });
     var a = btn('btn btn--add');
     a.id = 'addBtn';
-    add(a, icon('plus'), document.createTextNode('Добавить'));
+    addText = document.createTextNode(addLabel());
+    add(a, icon('plus'), addText);
     a.addEventListener('click', function () {
       if (st.tab !== 'goals') { openEntry(null); return; }
       if (st.sect === 'credits') { payOrNew(); return; } // в разделе кредитов плюс вносит платёж; кредитов нет — заводит первый
+      if (st.sect === 'debts') { openEntry(null, { kind: 'give', fresh: true }); return; } // в разделе долгов — новая запись долга с выбором человека
       // на вкладке «Цели» плюс сразу откладывает; целей нет — заводит первую
       if (!F.GOALS.length) { openGoalEdit(null, null, null); } else { openEntry(null, { kind: 's', cat: F.GOALS.length === 1 ? 'g_' + F.GOALS[0].id : '' }); }
     });
@@ -1040,7 +1052,7 @@
     clear(view);
     if (!goals.length) {
       var empty = el('div', 'sheet sheet--top');
-      add(empty, el('p', 'empty', nb('Целей пока нет. Заведите первую: подушку, отпуск, технику. Приложение покажет, сколько накоплено и сколько ещё нужно.')), newGoalBtn(null));
+      add(empty, el('p', 'empty', nb('Целей пока нет. Заведите первую кнопкой «Новая цель» внизу: подушку, отпуск, технику. Приложение покажет, сколько накоплено и сколько ещё нужно.'))); // синяя внизу заводит первую: серая рядом была бы двойником
       add(view, head, sectSeg(), empty);
       return;
     }
@@ -1170,8 +1182,8 @@
     clear(view);
     if (!act.length) {
       var empty = el('div', 'sheet sheet--top');
-      add(empty, el('p', 'empty', nb(closed.length ? 'Все кредиты погашены. Новый появится здесь, как только вы его заведёте.' : 'Кредитов и рассрочек пока нет. Заведите их, и приложение покажет, сколько осталось погасить и когда последний платёж.')),
-        newCreditBtn(null), closed.length ? closedRow(closed, null) : null);
+      add(empty, el('p', 'empty', nb(closed.length ? 'Все кредиты погашены. Новый заводится кнопкой «Новый кредит» внизу.' : 'Кредитов и рассрочек пока нет. Заведите их кнопкой «Новый кредит» внизу, и приложение покажет, сколько осталось погасить и когда последний платёж.')),
+        closed.length ? closedRow(closed, null) : null);
       add(view, head, sectSeg(), empty);
       return;
     }
@@ -1225,16 +1237,16 @@
     sec.appendChild(b);
     return sec;
   }
-  function debtsHead() {
-    var head = el('div', 'bar'), title = el('h1', 'month', 'Долги'), acts = el('span', 'bar__acts'), nw = btn('capsule capsule--icon'), label = el('span');
-    title.id = 'goalsTitle';
-    nw.id = 'debtNew';
-    add(label, icon('plus'), document.createTextNode('Новый'));
-    nw.appendChild(label);
-    nw.addEventListener('click', function () { openEntry(null, { kind: 'give', fresh: true }); });
-    add(acts, nw, gearBtn());
-    add(head, title, acts);
-    return head;
+  /** «Новый человек» серой кнопкой по центру, как «Новая цель» и «Новый кредит»; деньги вносит синяя «Записать долг» */
+  function newPersonBtn() {
+    var b = btn('btn btn--quiet btn--new');
+    b.id = 'debtPerson';
+    add(b, icon('plus'), document.createTextNode('Новый человек'));
+    b.addEventListener('click', function () {
+      if (F.DEBTS.length >= F.DEBTS_MAX) { haptic('err'); toast('Людей уже сорок. Удалите того, с кем рассчитались.'); return; }
+      openDebtEdit(null, null, function (id) { openDebtView(id, null); });
+    });
+    return b;
   }
   function settledRow(list) {
     var b = btn('more more--copy more--done');
@@ -1245,12 +1257,12 @@
   }
   /** раздел «Долги»: крупно большая сторона, у человека имя, одно число и шкала возврата; рассчитавшиеся — одной строкой */
   function paintDebts() {
-    var head = debtsHead(), all = F.DEBTS.map(function (p) { return { p: p, s: F.debtState(p, st.all) }; });
+    var head = tabHead('Долги'), all = F.DEBTS.map(function (p) { return { p: p, s: F.debtState(p, st.all) }; });
     var act = all.filter(function (x) { return x.s.bal !== 0; }).sort(function (x, y) { return Math.abs(y.s.bal) - Math.abs(x.s.bal); }), settled = all.filter(function (x) { return x.s.bal === 0; });
     clear(view);
     if (!act.length) {
       var empty = el('div', 'sheet sheet--top');
-      add(empty, el('p', 'empty', nb(settled.length ? 'Со всеми рассчитались. Новый долг — кнопкой «Новый» вверху.' : 'Долгов нет. Запишите, кому дали или у кого взяли: кнопка «Новый» вверху.')), settled.length ? settledRow(settled) : null);
+      add(empty, el('p', 'empty', nb(settled.length ? 'Со всеми рассчитались. Новый долг — кнопкой «Записать долг» внизу.' : 'Долгов нет. Запишите, кому дали или у кого взяли: кнопка «Записать долг» внизу.')), settled.length ? settledRow(settled) : null);
       add(view, head, sectSeg(), empty);
       return;
     }
@@ -1274,7 +1286,7 @@
     var label = el('p', 'spent__label', mine ? 'Вы должны' : 'Вам должны');
     label.id = 'debtsLabel';
     add(hero, label, sumEl, legend);
-    add(sheet, cards, settled.length ? settledRow(settled) : null);
+    add(sheet, cards, settled.length ? settledRow(settled) : null, newPersonBtn());
     add(view, head, sectSeg(), hero, sheet);
     fitSum(sumEl);
   }
@@ -2303,6 +2315,7 @@
 
   function paint(animate) {
     var first = firstRun();
+    syncAdd();
     stage.className = 'stage' + (first ? ' stage--first' : '');
     if (first) { paintFirst(); view.scrollTop = 0; return; }
     st.first = null;
