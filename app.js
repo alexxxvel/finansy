@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '2b1c5c96cb'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'a837ac65eb'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -51,6 +51,11 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
+    lock: '<rect x="5" y="11" width="14" height="9.5" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    plane: '<path d="M21 4 3 11l6.5 2.5L18 7l-6.5 7.5V20l3.5-4 4 3z"/>',
+    'face-good': '<circle cx="12" cy="12" r="9.25"/><path d="M8.75 9.75v.5M15.25 9.75v.5"/><path d="M8.25 14c.9 1.5 2.2 2.25 3.75 2.25S14.85 15.5 15.75 14"/>',
+    'face-meh': '<circle cx="12" cy="12" r="9.25"/><path d="M8.75 9.75v.5M15.25 9.75v.5"/><path d="M8.75 15h6.5"/>',
+    'face-bad': '<circle cx="12" cy="12" r="9.25"/><path d="M8.75 9.75v.5M15.25 9.75v.5"/><path d="M8.25 16.25c.9-1.5 2.2-2.25 3.75-2.25s2.85.75 3.75 2.25"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
     back: '<path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1ZM17 9l-6 6M11 9l6 6"/>'
   };
@@ -383,6 +388,7 @@
       if (!(st.pays.list || []).length) { F.CREDITS.forEach(function (k) { if (remindDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } }); }
       if (!spent.querySelector('.remind')) { var saveNode = saveCard(); if (saveNode) { spent.appendChild(saveNode); } } // итог прошлого месяца — после платежей и кредитов
       if (!spent.querySelector('.remind')) { var homeNode = homeCard(); if (homeNode) { spent.appendChild(homeNode); } } // больше одной карточки сразу не бывает
+      if (!spent.querySelector('.remind')) { var moodNode = moodCard(); if (moodNode) { spent.appendChild(moodNode); } } // вопрос про приложение — последним
     }
 
     var sheet = el('div', 'sheet');
@@ -918,6 +924,201 @@
       if (row.parentNode) { row.parentNode.removeChild(row); }
     });
     add(row, text, x);
+    return row;
+  }
+  // ---------- обратная связь (пункт 17, решение разработчика 19.10.2026: анонимно через посредника, голос «Хочу», раз в месяц вопрос про приложение, «Написать автору») ----------
+  var AUTHOR = 'umna_by';
+  /** адрес посредника на хостинге автора (relay/feedback.php, настройка — relay/README.md). Пусто — домена ещё нет:
+      лист честно открывает личный чат («автор увидит ваше имя»), голосования и вопроса на главной нет */
+  var FEEDBACK_URL = window.__finFeedback || '';
+  var IDEAS = [['fam', 'Общий учёт с семьёй', 'двое ведут одни траты'], ['rep', 'Повторяющиеся траты', 'каждый месяц записываются сами'],
+    ['eve', 'Напоминание вечером', '«запишите траты за сегодня»'], ['rcpt', 'Фото чека', 'сумма из снимка']]; // тот же список — в relay/feedback.php
+  // вопросы раз в месяц по очереди — про приложение, а не про деньги месяца (замечание разработчика 19.10.2026); у каждого свои подписи
+  var ASKS = [['Как вам приложение «Финансы»?', ['Хорошо', 'Так себе', 'Плохо']], ['Удобно пользоваться приложением?', ['Удобно', 'Так себе', 'Неудобно']],
+    ['Приложение вам помогает?', ['Помогает', 'Немного', 'Нет']]];
+  function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* без памяти — до закрытия */ } }
+  /** личный чат с автором; ?text= подставляет текст там, где Telegram это умеет */
+  function openAuthor(text) {
+    var url = 'https://t.me/' + AUTHOR + (text ? '?text=' + encodeURIComponent(text) : '');
+    if (inTg && tg.openTelegramLink) { tgTry(function () { tg.openTelegramLink(url); }); return; }
+    window.open(url, '_blank');
+  }
+  /** запрос к посреднику: done(ошибка, ответ) */
+  function relay(body, done) {
+    if (!FEEDBACK_URL || !window.fetch) { done('net'); return; }
+    fetch(FEEDBACK_URL + (body ? '' : '?counts=1'), body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {})
+      .then(function (r) { return r.json().then(function (j) { if (!r.ok || !j || !j.ok) { throw new Error('bad'); } done(null, j); }); })
+      .catch(function () { done('net'); });
+  }
+  function fbVoted() { try { var o = JSON.parse(lsGet('fin_votes') || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } }
+  function authorRow(cls) {
+    var b = btn('menu__row menu__row--out ' + (cls || ''));
+    b.id = 'authorBtn';
+    add(b, el('span', '', 'Написать автору'), el('small', '', '@' + AUTHOR), el('i', 'out', '↗')); // стрелка, а не шеврон: касание уводит из приложения
+    b.addEventListener('click', function () { haptic(); openAuthor(''); });
+    return b;
+  }
+  /** лист «Как улучшить приложение»: с посредником — анонимно (голос «Хочу» и своё), без него — честно через личный чат */
+  function openFeedback(back) {
+    var anon = !!FEEDBACK_URL, voted = fbVoted(), counts = {}, busy = false;
+    haptic();
+    swapModal('list', anon, function (m) {
+      var box = el('div', 'pick pick--cat'), foot = el('footer', 'modal__dock'), area = el('textarea', 'field fb__area'), line = el('p', 'anon' + (anon ? '' : ' anon--open'));
+      box.id = 'fbBox';
+      area.id = 'fbText';
+      area.maxLength = 1000;
+      area.rows = 3;
+      area.placeholder = 'Пара слов — этого достаточно';
+      area.setAttribute('aria-label', 'Ваша идея или что не работает');
+      add(line, icon(anon ? 'lock' : 'plane'), el('span', '', nb(anon ? 'Анонимно: автор увидит только текст.' : 'Откроется чат с автором в Telegram — он увидит ваше имя.')));
+      line.id = 'fbAnon';
+      add(box, el('h2', 'pick__title', 'Как улучшить приложение'), line);
+      var list = null;
+      function paintVotes() {
+        if (!list) { return; }
+        clear(list);
+        IDEAS.forEach(function (it) {
+          var li = el('li', 'vote' + (voted[it[0]] ? ' is-on' : '')), name = el('span', 'vote__name', it[1]);
+          li.setAttribute('data-idea', it[0]);
+          name.appendChild(el('small', '', nb(it[2])));
+          li.appendChild(name);
+          if (voted[it[0]]) { // голос засчитан в момент касания: «✓ 17»
+            var mine = el('span', 'vote__mine');
+            mine.setAttribute('aria-label', 'ваш голос' + (counts[it[0]] ? ', всего ' + counts[it[0]] : ''));
+            add(mine, icon('check'), counts[it[0]] ? el('span', '', String(counts[it[0]])) : null);
+            li.appendChild(mine);
+          } else {
+            var b = btn('capsule');
+            b.id = 'vote-' + it[0];
+            b.appendChild(el('span', '', 'Хочу'));
+            b.addEventListener('click', function () {
+              voted[it[0]] = 1;
+              counts[it[0]] = (counts[it[0]] || 0) + 1;
+              lsSet('fin_votes', JSON.stringify(voted));
+              haptic('ok');
+              paintVotes();
+              paintFoot();
+              relay({ t: 'vote', id: it[0] }, function (err, j) {
+                if (err) { delete voted[it[0]]; counts[it[0]] = Math.max(0, (counts[it[0]] || 1) - 1); lsSet('fin_votes', JSON.stringify(voted)); haptic('err'); toast('Голос не ушёл. Проверьте связь и повторите.'); }
+                else if (j.votes) { counts = j.votes; }
+                paintVotes();
+                paintFoot();
+              });
+            });
+            li.appendChild(b);
+          }
+          list.appendChild(li);
+        });
+      }
+      if (anon) {
+        list = el('ul', 'votes');
+        list.id = 'fbVotes';
+        add(box, el('p', 'lbl', 'Уже предлагали — нажмите «Хочу»'), list);
+        paintVotes();
+        relay(null, function (err, j) { if (!err && j.votes) { counts = j.votes; paintVotes(); } }); // счёт голосов; без связи — галочка без числа
+      }
+      var reply = el('p', 'reply');
+      if (anon) {
+        var who = btn('reply__link', 'Напишите автору @' + AUTHOR + ' ↗');
+        who.id = 'fbAuthor';
+        who.addEventListener('click', function () { openAuthor(''); });
+        add(reply, document.createTextNode('Нужен ответ? '), who);
+      } else { reply.textContent = nb('Текст скопируется: в чате нажмите на поле и подержите → «Вставить».'); }
+      add(box, el('p', 'lbl lbl--gap', 'Ваша идея или что не работает'), area, reply);
+      // низ: с первой буквы «Отправить идею»; пока пусто — «Голос учтён» после голоса или ничего
+      function paintFoot() {
+        clear(foot);
+        foot.className = 'modal__dock';
+        var has = !!area.value.trim();
+        if (!anon) {
+          var go = btn('btn', 'Открыть чат');
+          go.id = 'fbChat';
+          go.addEventListener('click', function () {
+            var text = area.value.trim();
+            if (text) { copyText(area, text); }
+            haptic('ok');
+            openAuthor(text);
+          });
+          foot.appendChild(go);
+          return;
+        }
+        if (has) {
+          var send = btn('btn' + (busy ? ' btn--off' : ''), busy ? 'Отправляем' : 'Отправить идею');
+          send.id = 'fbSend';
+          send.addEventListener('click', function () {
+            if (busy) { return; }
+            busy = true;
+            paintFoot();
+            relay({ t: 'idea', text: area.value.trim() }, function (err) {
+              busy = false;
+              if (err) { paintFoot(); haptic('err'); toast('Не отправилось. Проверьте связь и повторите.'); return; }
+              haptic('ok');
+              fbSent();
+            });
+          });
+          foot.appendChild(send);
+        } else if (Object.keys(voted).length) {
+          foot.className = 'modal__dock modal__dock--note';
+          var note = el('p', 'voted');
+          note.id = 'fbVoted';
+          add(note, icon('check'), el('span', '', 'Голос учтён'));
+          foot.appendChild(note);
+        } else { foot.className = 'modal__dock is-empty'; }
+      }
+      area.addEventListener('input', paintFoot);
+      paintFoot();
+      add(m, box, foot);
+    }, back);
+  }
+  function fbSent() {
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--cat sent'), mark = el('span', 'sent__mark'), foot = el('footer', 'modal__dock'), ok = btn('btn btn--quiet', 'Готово');
+      box.id = 'fbSent';
+      mark.appendChild(icon('check'));
+      ok.addEventListener('click', function () { closeModal(0); });
+      add(box, mark, el('h2', 'pick__title', 'Отправлено, спасибо'), el('p', 'pick__info pick__info--big', nb('Автор читает каждое сообщение. Что исправлено и добавлено — в описании обновления.')));
+      foot.appendChild(ok);
+      add(m, box, foot);
+    }, null);
+  }
+  /** раз в месяц на главной: вопрос про приложение и три лица; только с посредником и когда записи есть в семи разных днях */
+  function moodCard() {
+    var month = F.monthOf(F.today());
+    if (!FEEDBACK_URL || usedDays() < 7 || lsGet('fin_mood') === month) { return null; }
+    var qi = (+month.slice(5, 7)) % ASKS.length, a = ASKS[qi], row = el('div', 'remind remind--mood'), q = el('span', 'mood__q'), x = btn('remind__x'), faces = el('span', 'mood');
+    row.id = 'moodCard';
+    add(q, el('strong', '', a[0]), el('small', '', 'анонимно, одно касание'));
+    function hide() { lsSet('fin_mood', month); if (row.parentNode) { row.parentNode.removeChild(row); } }
+    x.id = 'moodHide';
+    x.setAttribute('aria-label', 'Не спрашивать в этом месяце');
+    x.appendChild(icon('close'));
+    x.addEventListener('click', function () { haptic(); hide(); });
+    ['good', 'meh', 'bad'].forEach(function (k, v) {
+      var b = btn('mood__btn');
+      b.setAttribute('data-mood', String(v));
+      add(b, icon('face-' + k), el('span', '', a[1][v]));
+      b.addEventListener('click', function () {
+        lsSet('fin_mood', month);
+        haptic('ok');
+        relay({ t: 'mood', q: qi, v: v }, function () { /* оценка — без повторов: не ушла, так не ушла */ });
+        if (v < 2) { hide(); toast('Спасибо!'); return; }
+        // «плохо»: одной строкой «Что мешает?» и «Написать» — лист «Как улучшить приложение»
+        clear(row);
+        row.className = 'remind';
+        var t = el('span'), w = btn('capsule remind__pay'), x2 = btn('remind__x');
+        add(t, el('strong', '', 'Спасибо. Что мешает?'), el('small', '', 'пара слов, анонимно'));
+        w.id = 'moodWrite';
+        w.appendChild(el('span', '', 'Написать'));
+        w.addEventListener('click', function () { hide(); openFeedback(null); });
+        x2.setAttribute('aria-label', 'Закрыть');
+        x2.appendChild(icon('close'));
+        x2.addEventListener('click', hide);
+        add(row, t, w, x2);
+      });
+      faces.appendChild(b);
+    });
+    add(row, q, x, faces);
     return row;
   }
   function homeCard() {
@@ -3768,6 +3969,15 @@
         solo.appendChild(li);
         box.appendChild(solo);
       }
+      // обратная связь — последней группой: анонимно и лично (пункт 17)
+      var ul5 = el('ul', 'menu menu--group'), fbLi = el('li'), auLi = el('li'), fb = btn('menu__row');
+      fb.id = 'fbBtn';
+      add(fb, el('span', '', 'Как улучшить приложение'), el('small', '', 'анонимно'), icon('right'));
+      fb.addEventListener('click', function () { openFeedback(openSettings); });
+      fbLi.appendChild(fb);
+      auLi.appendChild(authorRow());
+      add(ul5, fbLi, auLi);
+      box.appendChild(ul5);
       m.appendChild(box);
     });
   }

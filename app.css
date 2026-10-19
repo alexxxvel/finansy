@@ -864,3 +864,36 @@ html { overflow: hidden; }
 .save-card__num { font: 700 34px/1 var(--font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
 .save-card__num i { margin-left: 1px; font: 600 18px/1 var(--font); font-style: normal; color: var(--muted); }
 .save-card small { overflow: visible; white-space: normal; text-overflow: clip; } /* сравнение с прошлым месяцем не обрезается многоточием: переносится */
+
+/* ---------- обратная связь (пункт 17) ---------- */
+.menu__row--out .out { font: 500 17px/1 var(--font); font-style: normal; color: var(--muted); }
+/* анонимно: замок и строка, без карточки — не похоже на флажок, который можно снять */
+.anon { display: flex; align-items: center; gap: 8px; margin: 4px 0 14px; font: 500 17px/1.35 var(--font); }
+.anon svg { flex: none; width: 20px; height: 20px; }
+.fb__area { display: block; height: auto; min-height: 96px; padding: 14px 16px; resize: none; font: 500 17px/1.35 var(--font); line-height: 1.35; }
+.reply { margin-top: 10px; font: 400 15px/1.35 var(--font); color: var(--muted); }
+.reply__link { display: inline; min-height: 0; padding: 0; font: inherit; color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--tert); }
+.lbl--gap { margin-top: 22px; }
+.votes { margin-top: 6px; border-radius: 18px; background: var(--surface); padding: 0 12px 0 16px; }
+.vote { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 12px; min-height: 64px; border-bottom: 1px solid var(--line); }
+.vote:last-child { border-bottom: 0; }
+.vote__name { display: grid; gap: 2px; min-width: 0; font: 500 17px/1.25 var(--font); letter-spacing: -.015em; }
+.vote__name small { font: 400 15px/1.25 var(--font); color: var(--muted); }
+.vote__mine { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 64px; font: 600 15px/1 var(--font); color: var(--ink); white-space: nowrap; }
+.vote__mine svg { width: 18px; height: 18px; }
+.voted { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 52px; font: 500 17px/1 var(--font); color: var(--muted); }
+.voted svg { width: 18px; height: 18px; }
+.modal__dock.is-empty { display: none; }
+.sent { justify-items: center; text-align: center; padding-top: 18px; }
+.sent__mark { display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 10px; border-radius: 999px; background: var(--ink); color: var(--on-ink); }
+.sent__mark svg { width: 26px; height: 26px; }
+.sent .pick__title { text-align: center; }
+.pick__info--big { font-size: 17px; line-height: 1.4; }
+/* раз в месяц на главной: три лица своей линией, без плиток */
+.remind.remind--mood { grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; padding: 16px; }
+.remind--mood .remind__x { align-self: start; margin-top: -4px; }
+.mood__q { display: grid; gap: 2px; min-width: 0; }
+.mood__q strong { text-wrap: balance; }
+.mood { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mood__btn { display: grid; justify-items: center; gap: 2px; min-height: 64px; padding: 4px 0; font: 500 15px/1.15 var(--font); color: var(--ink); }
+.mood__btn svg { width: 40px; height: 40px; stroke-width: 1.6; }
