@@ -790,3 +790,43 @@ html { overflow: hidden; }
 .strip--way .seg--way { flex: 1; min-width: 0; }
 .strip--way .seg--way button { padding: 0 8px; }
 .strip__gap { flex: 1; }
+
+/* ---------- поиск в «Истории» (пункт 15) ---------- */
+/* поле: как поле заметки на листе ввода — белое, капсулой, лупа серым */
+.findbar { display: flex; align-items: center; gap: 4px; margin: 2px 0 10px; }
+.find { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 0 0 14px; border-radius: 999px; background: var(--surface); }
+.find > svg { flex: none; width: 18px; height: 18px; color: var(--muted); }
+.find__in { flex: 1; min-width: 0; height: 44px; border: 0; padding: 0; background: transparent; color: var(--ink); font: 500 17px/1.2 var(--font); letter-spacing: -.01em; outline: none; -webkit-appearance: none; appearance: none; }
+.find__in::placeholder { color: var(--muted); opacity: 1; }
+.find:focus-within { outline: 2px solid var(--line); outline-offset: 0; }
+.find__x { flex: none; display: grid; place-items: center; width: 44px; height: 44px; color: var(--muted); }
+.find__x svg { width: 14px; height: 14px; padding: 9px; box-sizing: content-box; border-radius: 999px; background: var(--fill); }
+.findbar__cancel { display: none; flex: none; min-height: 44px; padding: 0 2px 0 10px; font: 500 17px/1 var(--font); color: var(--ink); }
+.view.is-find .bar--hist { display: none; }
+.view.is-find .findbar { margin-top: 6px; }
+.view.is-find .findbar__cancel { display: block; }
+.stage.is-finding .dock { display: none; } /* пока открыта клавиатура, вкладки и «Добавить» спрятаны: над ней видны ответ и первые строки */
+/* ответ: крупно, как «Потрачено» на главной */
+.spent--find { padding-top: 6px; }
+.spent--find .spent__label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.spent--find .spent__day { margin-top: 6px; text-align: left; white-space: normal; }
+.found__big { margin-top: 6px; font: 700 28px/1.15 var(--font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.sheet--find { padding-top: 18px; }
+.day--month + .day--month { margin-top: 18px; }
+.day--month h2 { font: 600 17px/1.25 var(--font); letter-spacing: -.015em; color: var(--ink); }
+/* строка найденного в две линии */
+.op--two { min-height: 60px; }
+.op__two { display: grid; gap: 2px; min-width: 0; }
+.op__top { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 400 17px/1.25 var(--font); letter-spacing: -.015em; color: var(--ink); }
+.op__top b { font-weight: 600; }
+.op__date { display: flex; min-width: 0; font: 500 15px/1.2 var(--font); color: var(--muted); }
+.op .op__date .op__cat { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.op .op__date .op__when { display: block; flex: none; white-space: nowrap; }
+.op data.is-hit { font-weight: 600; }
+/* ничего не нашлось: по центру, с подсказкой похожего слова */
+.nofind { display: grid; justify-items: center; gap: 8px; padding: 56px 12px 24px; text-align: center; }
+.nofind > svg { width: 44px; height: 44px; color: var(--tert); }
+.nofind__title { font: 600 22px/1.2 var(--font); letter-spacing: -.02em; }
+.nofind__text { max-width: 30ch; font: 400 15px/1.4 var(--font); color: var(--muted); }
+.nofind__try { margin-top: 6px; }
+.findbody { flex: 1 0 auto; display: flex; flex-direction: column; } /* лист под полем тянется до низа, как в обычной истории */

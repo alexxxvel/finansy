@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '99a523be1a'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'f3a40dd6d0'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -51,6 +51,7 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     close: '<path d="M18 6 6 18M6 6l12 12"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
+    search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
     back: '<path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1ZM17 9l-6 6M11 9l6 6"/>'
   };
 
@@ -190,6 +191,9 @@
       b.addEventListener('click', function () {
         if (st.tab === t[0]) { return; }
         st.tab = t[0];
+        find.on = false; // поиск живёт, пока открыта «История»
+        find.q = '';
+        stage.classList.remove('is-finding');
         haptic();
         paintDock();
         paint(true);
@@ -903,22 +907,201 @@
   }
 
   // ---------- история ----------
+  // ---------- «История» и поиск (пункт 15, решение разработчика 19.10.2026: вариант А — поле всегда сверху, поиск за всё время) ----------
+  var find = { q: '', on: false, input: null };
+  /** для сравнения: строчные и «ё» как «е» — длина строки та же, поэтому место совпадения годится и для выделения */
+  function findNorm(s) { return String(s || '').toLowerCase().replace(/ё/g, 'е'); }
+  /** где совпало (индекс) или -1; короткий запрос (до трёх букв) — только с начала слова: «ма» найдёт «маме», но не «зарплата» */
+  function findAt(text, q) {
+    var t = findNorm(text), i = -1;
+    if (!q || !t) { return -1; }
+    if (q.length >= 3) { return t.indexOf(q); }
+    while ((i = t.indexOf(q, i + 1)) >= 0) { if (i === 0 || !/[a-zа-я0-9]/.test(t.charAt(i - 1))) { return i; } }
+    return -1;
+  }
+  /** записи за всё время: по сумме (запрос — число) или по слову в заметке и названии категории; свежие сверху */
+  function findOps(q) {
+    var amount = /^\d{1,9}([.,]\d{1,2})?$/.test(q) ? F.parseAmount(q) : 0, out = [];
+    Object.keys(st.all).forEach(function (m) {
+      st.all[m].forEach(function (op) {
+        var d = F.dict(op.k, op.c), hit = null, at;
+        if (amount) { if (op.a === amount || F.bynOf(op) === amount) { hit = { amount: true }; } }
+        else if ((at = findAt(op.n, q)) >= 0) { hit = { note: at }; }
+        else if ((at = findAt(d.name, q)) >= 0) { hit = { cat: at }; }
+        if (hit) { out.push({ op: op, d: d, hit: hit }); }
+      });
+    });
+    out.sort(function (x, y) { return x.op.d === y.op.d ? (x.op.id < y.op.id ? 1 : -1) : (x.op.d < y.op.d ? 1 : -1); });
+    return { list: out, amount: amount };
+  }
+  /** найденное жирным; совпала вся строка — выделять нечего; совпадение в середине длинной заметки — кусок вокруг него */
+  function findMark(text, q, at) {
+    var frag = document.createDocumentFragment(), s = String(text);
+    if (at < 0 || findNorm(s).trim() === q) { frag.appendChild(document.createTextNode(s)); return frag; }
+    var start = 0;
+    if (at > 14 && s.length > 26) { var sp = s.lastIndexOf(' ', at - 8); start = sp >= 0 && sp > at - 20 ? sp + 1 : at - 10; } // кусок начинается словом раньше: виден смысл вокруг
+    add(frag, document.createTextNode((start ? '…' : '') + s.slice(start, at)), el('b', '', s.slice(at, at + q.length)), document.createTextNode(s.slice(at + q.length)));
+    return frag;
+  }
+  /** строка найденного в две линии: сверху то, что нашлось, снизу серым категория и дата (сокращается категория, дата — никогда) */
+  function findRow(r, q) {
+    var op = r.op, li = el('li'), b = btn('op op--two'), two = el('div', 'op__two'), top = el('p', 'op__top'), low = el('p', 'op__date'), plus = op.k === 'i' && !F.isMoveOp(op);
+    var noteTop = !!op.n && r.hit.cat === undefined;
+    b.setAttribute('data-id', op.id);
+    top.appendChild(noteTop ? findMark(op.n, q, r.hit.note === undefined ? -1 : r.hit.note) : findMark(r.d.name, q, r.hit.cat === undefined ? -1 : r.hit.cat));
+    if (noteTop) { add(low, el('span', 'op__cat', r.d.name), el('span', 'op__when', F.NB + '·' + F.NB + F.dayLabel(op.d))); }
+    else { add(low, el('span', 'op__when', F.dayLabel(op.d))); if (op.n) { add(low, el('span', 'op__cat', F.NB + '·' + F.NB + op.n)); } }
+    add(two, top, low);
+    add(b, icon(r.d.icon), two, el('data', (plus ? 'is-plus' : '') + (r.hit.amount ? ' is-hit' : ''), (plus ? '+' : '') + F.fmt(F.bynOf(op))), icon('right', 'share__go'));
+    b.addEventListener('click', function () { openEntry(op); });
+    li.appendChild(b);
+    return li;
+  }
+  /** опечатка — самый частый случай: самое похожее слово из заметок и категорий (не дальше одной-двух букв) */
+  function findSuggest(q) {
+    var seen = {}, best = '', bestD = q.length > 5 ? 3 : 2;
+    function lev(a, b) {
+      var prev = [], cur, i, j;
+      for (j = 0; j <= b.length; j++) { prev[j] = j; }
+      for (i = 1; i <= a.length; i++) {
+        cur = [i];
+        for (j = 1; j <= b.length; j++) { cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1)); }
+        prev = cur;
+      }
+      return prev[b.length];
+    }
+    Object.keys(st.all).forEach(function (m) {
+      st.all[m].forEach(function (op) {
+        [op.n, F.dict(op.k, op.c).name].forEach(function (t) {
+          findNorm(t).split(/[^a-zа-я0-9]+/).forEach(function (w) {
+            if (w.length < 3 || seen[w] || w === q) { return; }
+            seen[w] = 1;
+            var d = Math.min(lev(q, w), w.length > q.length ? lev(q, w.slice(0, q.length)) : 9);
+            if (d < bestD) { bestD = d; best = w; }
+          });
+        });
+      });
+    });
+    return best;
+  }
+  function findCount(n, a, b, c) { return n + F.NB + F.plural(n, a, b, c); }
+  /** тело «Истории»: записи месяца по дням или, в режиме поиска, ответ и найденное по месяцам */
+  function paintFindBody(body) {
+    clear(body);
+    if (!find.on) {
+      var sheet = el('div', 'sheet sheet--full'), days = F.byDays(st.ops);
+      if (!days.length) { sheet.appendChild(el('p', 'empty', 'В этом месяце записей нет.')); }
+      else { sheet.appendChild(el('p', 'hint', 'Нажмите на запись, чтобы изменить или удалить её.')); }
+      days.forEach(function (day) {
+        var sec = el('section', 'day'), list = el('ul', 'ops');
+        sec.appendChild(el('h2', '', F.dayLabel(day.date)));
+        day.ops.forEach(function (op) { var li = el('li'); li.appendChild(opRow(op, false)); list.appendChild(li); });
+        sec.appendChild(list);
+        sheet.appendChild(sec);
+      });
+      body.appendChild(sheet);
+      return;
+    }
+    var q = findNorm(find.q).trim(), sheet2 = el('div', 'sheet sheet--full sheet--find');
+    if (!q) {
+      sheet2.appendChild(el('p', 'hint', nb('Ищем в заметках, названиях категорий и суммах за всё время.')));
+      body.appendChild(sheet2);
+      return;
+    }
+    var res = findOps(q), list = res.list;
+    if (!list.length) {
+      var none = el('div', 'nofind'), tip = findSuggest(q);
+      none.id = 'findNone';
+      add(none, icon('search'), el('p', 'nofind__title', 'Ничего не нашлось'), el('p', 'nofind__text', nb('Проверьте слово: ищем в заметках, категориях и суммах за всё время.')));
+      if (tip) {
+        var tryBtn = btn('capsule nofind__try');
+        tryBtn.id = 'findTry';
+        tryBtn.appendChild(el('span', '', 'Может, «' + tip + '»?'));
+        tryBtn.addEventListener('click', function () { find.q = tip; if (find.input) { find.input.value = tip; } haptic(); paintFindBody(body); });
+        none.appendChild(tryBtn);
+      }
+      sheet2.appendChild(none);
+      body.appendChild(sheet2);
+      return;
+    }
+    var spent = 0, n = 0, inc = 0, hero = el('section', 'spent spent--find'), label = el('p', 'spent__label'), line = null;
+    list.forEach(function (r) { if (F.isMoveOp(r.op)) { return; } if (r.op.k === 'e') { spent += F.bynOf(r.op); n++; } else { inc++; } });
+    label.id = 'findLabel';
+    if (res.amount || q.length < 3 || !n) { // по сумме и по короткому куску крупной суммы нет: сложенные случайные совпадения ответом не являются
+      var big = el('p', 'found__big', res.amount ? findCount(list.length, 'запись', 'записи', 'записей') + ' по' + F.NB + F.fmt(res.amount) : findCount(list.length, 'запись', 'записи', 'записей'));
+      big.id = 'findBig';
+      label.textContent = res.amount ? 'Поиск по сумме' : 'Найдено по «' + find.q.trim() + '»';
+      add(hero, label, big);
+      if (!res.amount && n) { line = 'на' + F.NB + F.fmt(spent) + ' · за' + F.NB + 'всё время'; }
+    } else {
+      var sumEl = el('p', sumClass(spent)), node = { whole: el('span'), frac: el('i') };
+      sumEl.id = 'findSum';
+      setSum(node, spent);
+      add(sumEl, node.whole, node.frac, el('abbr', '', 'BYN'));
+      label.textContent = 'Потрачено на «' + find.q.trim() + '»';
+      add(hero, label, sumEl);
+      line = findCount(n, 'трата', 'траты', 'трат') + ' · за' + F.NB + 'всё время' + (inc ? ', ещё ' + findCount(inc, 'доход', 'дохода', 'доходов') + ' не в сумме' : '');
+      setTimeout(function () { if (sumEl.parentNode) { fitSum(sumEl); } }, 0);
+    }
+    if (line) { var ln = el('p', 'spent__day', line); ln.id = 'findLine'; hero.appendChild(ln); }
+    var month = '', ul = null, shown = list.slice(0, 300);
+    sheet2.id = 'findList';
+    shown.forEach(function (r) {
+      var m = F.monthOf(r.op.d);
+      if (m !== month) {
+        month = m;
+        var sec = el('section', 'day day--month');
+        ul = el('ul', 'ops');
+        add(sec, el('h2', '', F.monthLabel(m)), ul);
+        sheet2.appendChild(sec);
+      }
+      ul.appendChild(findRow(r, q));
+    });
+    if (list.length > shown.length) { sheet2.appendChild(el('p', 'hint', nb('Показаны первые 300. Уточните слово, чтобы увидеть остальные.'))); }
+    add(body, hero, sheet2);
+  }
+  function findClose() {
+    find.on = false;
+    find.q = '';
+    if (find.input) { find.input.blur(); }
+    stage.classList.remove('is-finding');
+    paintHistory();
+  }
   function paintHistory() {
     clear(view);
-    var head = monthBar();
-    var sheet = el('div', 'sheet sheet--full');
-    var days = F.byDays(st.ops);
-    if (!days.length) { sheet.appendChild(el('p', 'empty', 'В этом месяце записей нет.')); }
-    else { sheet.appendChild(el('p', 'hint', 'Нажмите на запись, чтобы изменить или удалить её.')); }
-    days.forEach(function (day) {
-      var sec = el('section', 'day');
-      sec.appendChild(el('h2', '', F.dayLabel(day.date)));
-      var list = el('ul', 'ops');
-      day.ops.forEach(function (op) { var li = el('li'); li.appendChild(opRow(op, false)); list.appendChild(li); });
-      sec.appendChild(list);
-      sheet.appendChild(sec);
+    var head = monthBar(), row = el('div', 'findbar'), label = el('label', 'find'), input = el('input', 'find__in'), x = btn('find__x'), cancel = btn('findbar__cancel', 'Отмена'), body = el('div', 'findbody');
+    head.classList.add('bar--hist');
+    input.id = 'findInput';
+    input.type = 'text';
+    input.maxLength = 40;
+    input.placeholder = 'Заметка, категория или сумма';
+    input.value = find.q;
+    input.setAttribute('inputmode', 'search');
+    input.setAttribute('enterkeyhint', 'search');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('aria-label', 'Поиск по записям');
+    x.id = 'findClear';
+    x.setAttribute('aria-label', 'Стереть');
+    x.appendChild(icon('close'));
+    x.hidden = !find.q;
+    cancel.id = 'findCancel';
+    add(label, icon('search'), input, x);
+    add(row, label, cancel);
+    // касание поля — режим поиска: «Октябрь» и шестерёнка уходят, справа «Отмена»; пока открыта клавиатура, вкладки и «Добавить» спрятаны
+    input.addEventListener('focus', function () {
+      stage.classList.add('is-finding');
+      if (!find.on) { find.on = true; view.classList.add('is-find'); paintFindBody(body); }
     });
-    add(view, head, sheet);
+    input.addEventListener('blur', function () { stage.classList.remove('is-finding'); });
+    input.addEventListener('input', function () { find.q = input.value; x.hidden = !input.value; paintFindBody(body); });
+    input.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { input.blur(); } });
+    x.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // поле не теряет фокус: клавиатура не закрывается
+    x.addEventListener('click', function () { input.value = ''; find.q = ''; x.hidden = true; paintFindBody(body); input.focus(); });
+    cancel.addEventListener('click', function () { haptic(); findClose(); });
+    find.input = input;
+    view.classList.toggle('is-find', find.on);
+    add(view, head, row, body);
+    paintFindBody(body);
   }
 
   // ---------- записи одной категории и сравнение с прошлым месяцем ----------
@@ -2328,6 +2511,7 @@
       view.appendChild(box);
       return;
     }
+    if (st.tab !== 'history') { view.classList.remove('is-find'); }
     if (st.tab === 'history') { paintHistory(); } else if (st.tab === 'goals') { paintGoals(); } else if (st.tab === 'stats') { paintStats(); } else { paintMonth(animate); }
     view.scrollTop = 0;
     if (animate && view.animate) { view.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: reduce ? 120 : 180, easing: 'ease-out' }); }
