@@ -1018,3 +1018,36 @@ html { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .live__in, .live__out, .live__gap, .duo__b, .tile, .cal__d, .split__seg, .mcol b, .mcol em { transition-duration: 1ms; }
 }
+
+/* ---------- статистика для автора (24.10.2026, макеты-27): цвет активности — зелёный; лист во всю высоту ---------- */
+.pick--stats .pick__head { display: flex; align-items: center; }
+.stat-only { display: flex; align-items: center; gap: 5px; margin-top: 2px; font: 500 13px/1.2 var(--font); color: var(--gray); }
+.stat-only svg { width: 14px; height: 14px; }
+.stat-hero { padding: 14px 0 0; }
+.stat-hero .spent__sum { font-variant-numeric: tabular-nums; }
+.stat-cap { margin: 12px 0 6px; font: 600 13px/1.2 var(--font); color: var(--f-in-ink); }
+.duo--3 .duo__b { background: var(--f-in-soft); transition: opacity 200ms var(--ease-out); }
+.duo--3 .duo__b small { color: var(--f-in-ink); }
+.duo--3.is-dim .duo__b { opacity: .4; }
+.stat-chart { margin-top: 14px; }
+.stat-new { fill: var(--f-in); opacity: .35; stroke: none; }
+.stat-legend { display: flex; gap: 16px; margin-top: 10px; font: 500 13px/1 var(--font); color: var(--muted); }
+.stat-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.stat-legend .k-line { width: 14px; height: 3px; border-radius: 2px; background: var(--f-in); }
+.stat-legend .k-bar { width: 6px; height: 10px; border-radius: 2px; background: var(--f-in); opacity: .35; }
+.stat-empty { margin-top: 14px; }
+.tiles--stat { padding-bottom: 28px; }
+.tiles--stat .tile { box-shadow: var(--shadow-s); }
+.pick--stats .tile { background: var(--bg); box-shadow: none; }
+.stat-bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; height: 92px; align-items: end; }
+.stat-bar { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 92px; }
+.stat-bar b { display: block; width: 100%; max-width: 46px; border-radius: 6px 6px 2px 2px; background: var(--soft); }
+.stat-bar.is-pick b { background: var(--f-in); }
+.stat-bar em { margin-bottom: 4px; font: 600 13px/1 var(--font); font-style: normal; color: var(--ink); }
+.stat-bar span { margin-top: 6px; font: 500 12px/1 var(--font); color: var(--gray); white-space: nowrap; }
+.stat-funnel { display: grid; gap: 5px; }
+.stat-step { display: grid; grid-template-columns: 1fr 38px; grid-template-rows: auto 6px; column-gap: 6px; font: 500 11px/1.2 var(--font); color: var(--muted); }
+.stat-step span { grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-step em { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; font-style: normal; font-weight: 600; color: var(--ink); }
+.stat-step b { grid-column: 1; height: 6px; border-radius: 3px; background: var(--soft); overflow: hidden; }
+.stat-step b i { display: block; height: 100%; border-radius: 3px; background: var(--ink); }

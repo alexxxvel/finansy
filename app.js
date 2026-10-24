@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'aa356690f5'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'f5f81a0241'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -196,6 +196,7 @@
       b.addEventListener('click', function () {
         if (st.tab === t[0]) { return; }
         st.tab = t[0];
+        if (t[0] !== 'month') { track('tab:' + t[0]); }
         find.on = false; // поиск живёт, пока открыта «История»
         find.q = '';
         stage.classList.remove('is-finding');
@@ -927,6 +928,213 @@
     add(row, text, x);
     return row;
   }
+  // ---------- статистика для автора (решение разработчика 24.10.2026: смотреть в приложении и в Telegram, о каждом новом — сразу) ----------
+  // Приложение шлёт на свой сервер (/api/stats.php) только факты: открыл, сколько записей внёс (числом), какие разделы и функции, телефон и версию.
+  // Ни сумм, ни категорий, ни заметок. Каждый запрос подписан Telegram (initData) — сервер проверяет подпись ключом бота.
+  // Цифры отдаются только автору: сервер сравнивает id из подписи со своей настройкой; в коде приложения id автора нет.
+  var STATS_URL = window.__finStats || ""; // подставляет tools/deploy.py, только если сервер статистики ответил
+  var statQ = {}, statT = 0, statOwner = null, statSent = false;
+  function statInit() { return (inTg && tg.initData) || window.__finInitData || ''; } // вне Telegram подписи нет — ничего не отправляется
+  function statPost(body, done) {
+    body.init = statInit();
+    if (!STATS_URL || !body.init) { if (done) { done(null); } return; }
+    try {
+      fetch(STATS_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true, credentials: 'omit' })
+        .then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { if (done) { done(j); } }, function () { if (done) { done(null); } });
+    } catch (e) { if (done) { done(null); } }
+  }
+  function statFlush() {
+    var list = Object.keys(statQ).map(function (k) { return [k, statQ[k]]; });
+    if (!list.length) { return; }
+    statQ = {};
+    statPost({ t: 'ev', plat: inTg ? String(tg.platform || '') : 'web', ver: VERSION, list: list });
+  }
+  /** событие в очередь: уходит пачкой через пару секунд или когда приложение сворачивают */
+  function track(name, n) {
+    if (!STATS_URL || !statInit()) { return; }
+    statQ[name] = (statQ[name] || 0) + (n || 1);
+    clearTimeout(statT);
+    statT = setTimeout(statFlush, 2500);
+  }
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') { statFlush(); } });
+  /** открытие приложения: само открытие и какими функциями человек пользуется (по тому, что у него заведено) — раз за запуск */
+  function statOpen() {
+    if (statSent) { return; }
+    statSent = true;
+    track('open');
+    var hasOps = Object.keys(st.all).some(function (m) { return (st.all[m] || []).length; });
+    if (hasOps) { track('has:ops'); }
+    if (F.GOALS.length) { track('feat:goal'); }
+    if (F.CREDITS.length) { track('feat:credit'); }
+    if (F.DEBTS && F.DEBTS.length) { track('feat:debt'); }
+    if (st.budget && st.budget.a) { track('feat:budget'); }
+    if (Object.keys(st.limits || {}).length) { track('feat:limit'); }
+    if ((st.pays.list || []).length) { track('feat:pays'); }
+    if (document.documentElement.getAttribute('data-theme') === 'dark') { track('feat:dark'); }
+    if (sizePref() === 'big') { track('feat:big'); }
+    if (location.hash === '#stats') { statIsOwner(function (yes) { if (yes) { openStats(); } }); } // кнопка «Открыть статистику» из сообщения бота
+  }
+  /** автор ли это — спрашиваем сервер (он проверяет подпись); ответ запоминаем до перезапуска */
+  function statIsOwner(done) {
+    if (statOwner !== null) { done(statOwner); return; }
+    statPost({ t: 'me' }, function (j) { statOwner = !!(j && j.owner === true); done(statOwner); });
+  }
+  /** строка «Статистика» в настройках — только у автора; у всех остальных её нет совсем */
+  function statsRow(box, after) {
+    statIsOwner(function (yes) {
+      if (!yes || !box.isConnected || box.querySelector('#statsBtn')) { return; }
+      var solo = el('ul', 'menu menu--solo'), li = el('li'), b = btn('menu__row');
+      b.id = 'statsBtn';
+      add(b, el('span', '', 'Статистика'), el('small', '', 'видно только вам'), icon('right'));
+      b.addEventListener('click', function () { openStats(openSettings); });
+      li.appendChild(b);
+      solo.appendChild(li);
+      box.insertBefore(solo, after);
+    });
+  }
+  var statsRange = 'month';
+  function openStats(back) {
+    haptic();
+    swapModal('stats', true, function (m) {
+      var box = el('div', 'pick pick--stats'), head = el('div', 'pick__head'), only = el('p', 'stat-only'), body = el('div', 'stat-body');
+      add(only, icon('lock'), document.createTextNode('видно только вам'));
+      add(head, el('h2', 'pick__title', 'Статистика'));
+      body.appendChild(el('p', 'pick__info', 'Загружаем цифры…'));
+      add(box, head, only, body);
+      m.appendChild(box);
+      statPost({ t: 'view', range: statsRange }, function (j) {
+        if (!body.isConnected) { return; }
+        clear(body);
+        if (!j || !j.ok) { body.appendChild(el('p', 'pick__info', nb('Не получилось загрузить цифры. Проверьте связь и откройте ещё раз.'))); return; }
+        paintStatsBody(body, j);
+      });
+    }, back || null);
+  }
+  function paintStatsBody(body, j) {
+    var hero = el('section', 'spent spent--sum stat-hero'), lab = el('p', 'spent__label', 'Пользователей'), sum = el('p', 'spent__sum'), num = el('span', '', String(j.total)), line = el('p', 'spent__day');
+    sum.id = 'statTotal';
+    add(sum, num);
+    add(hero, lab, sum, line);
+    function rest() { lab.textContent = 'Пользователей'; num.textContent = String(j.total); line.textContent = nb('+' + j.new7 + ' за неделю · +' + j.new30 + ' за месяц'); }
+    rest();
+    var cap = el('p', 'stat-cap', 'Активных'), duo = el('div', 'duo duo--3');
+    duo.id = 'statActive';
+    [['сегодня', j.active.day], ['за неделю', j.active.week], ['за месяц', j.active.month]].forEach(function (d) { var b = el('div', 'duo__b'); add(b, el('small', '', d[0]), el('b', '', String(d[1]))); duo.appendChild(b); });
+    add(body, hero, cap, duo);
+    if (!j.total) {
+      body.appendChild(el('p', 'pick__info stat-empty', nb('Пока никого. Как только кто-то откроет приложение, здесь появятся цифры, а вам придёт сообщение от бота.')));
+    } else {
+      body.appendChild(statChart(j.series, function (p) {
+        if (!p) { duo.classList.remove('is-dim'); rest(); return; }
+        duo.classList.add('is-dim');
+        lab.textContent = 'Пользователей к' + F.NB + rangeText(p.d, p.d);
+        num.textContent = String(p.total);
+        line.textContent = 'активных ' + p.active + ' · новых ' + p['new'];
+      }));
+    }
+    var range = el('div', 'range');
+    range.id = 'statRange';
+    range.setAttribute('role', 'group');
+    range.setAttribute('aria-label', 'Период');
+    [['week', 'Неделя'], ['month', 'Месяц'], ['all', 'Всё время']].forEach(function (r) {
+      var b = btn('', r[1]);
+      b.setAttribute('data-range', r[0]);
+      b.setAttribute('aria-pressed', String(statsRange === r[0]));
+      b.addEventListener('click', function () {
+        if (statsRange === r[0]) { return; }
+        statsRange = r[0];
+        haptic();
+        [].forEach.call(range.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        statPost({ t: 'view', range: statsRange }, function (k) { if (k && k.ok && body.isConnected) { clear(body); paintStatsBody(body, k); } });
+      });
+      range.appendChild(b);
+    });
+    var ctl = el('div', 'ctl');
+    ctl.appendChild(range);
+    body.appendChild(ctl);
+    if (!j.total) { return; }
+    var tiles = el('div', 'tiles tiles--stat');
+    tiles.id = 'statTiles';
+    function tile(cls, glyph, title, big, sub, mini, wide) {
+      var t = el('div', 'tile ' + cls + (wide ? ' tile--wide' : '')), h = el('h2', 'tile__head'), badge = el('i', 'badge'), b = el('b', 'tile__big');
+      badge.appendChild(tileIcon(glyph));
+      add(h, badge, el('span', '', title));
+      b.appendChild(document.createTextNode(big[0]));
+      if (big[1]) { b.appendChild(document.createTextNode(' ')); b.appendChild(el('small', '', big[1])); }
+      add(t, h, b, sub ? el('span', 'tile__sub', sub) : null);
+      if (mini) { var mm = el('div', 'tile__mini'); mm.appendChild(mini); t.appendChild(mm); }
+      return t;
+    }
+    function steps(list) {
+      var g = el('div', 'stat-funnel');
+      list.forEach(function (r) { var li = el('div', 'stat-step'), bar = el('i'), wrap = el('b'); bar.style.width = Math.max(0, Math.min(100, r[1])) + '%'; wrap.appendChild(bar); add(li, el('span', '', r[0]), wrap, el('em', '', r[1] + F.NB + '%')); g.appendChild(li); });
+      return g;
+    }
+    var ret = j.retention, f = j.funnel, base = f.opened || 1;
+    var bars = el('div', 'stat-bars');
+    ret.forEach(function (r, i) { var c = el('i', 'stat-bar' + (i === 0 ? ' is-pick' : '')), b = el('b'); b.style.height = Math.max(3, r.pct) + '%'; add(c, el('em', '', r.pct + F.NB + '%'), b, el('span', '', ['через день', 'через неделю', 'через месяц'][i])); bars.appendChild(c); });
+    tiles.appendChild(tile('tile--in', 'up', 'Удержание', [ret[0].pct + F.NB + '%', 'вернулись на другой день'], '', bars, true));
+    tiles.appendChild(tile('tile--left', 'note', 'Новички', [Math.round(f.record / base * 100) + F.NB + '%'], f.opened ? 'внесли первую запись' : 'за этот период новых нет',
+      f.opened ? steps([['открыли', 100], ['категории', Math.round(f.cats / base * 100)], ['запись', Math.round(f.record / base * 100)], ['вернулись', Math.round(f.back / base * 100)]]) : null));
+    var pt = 0;
+    j.plats.forEach(function (p) { pt += p.n; });
+    if (j.plats.length) { tiles.appendChild(tile('tile--left', 'cal', 'Телефоны', [j.plats[0].name, Math.round(j.plats[0].n / pt * 100) + F.NB + '%'], '', steps(j.plats.slice(0, 3).map(function (p) { return [p.name, Math.round(p.n / pt * 100)]; })))); }
+    var adds = j.series.slice(-7).map(function (s) { return s.adds; });
+    tiles.appendChild(tile('tile--left', 'chg', 'Записи', [String(j.adds.perActive).replace('.', ','), 'в день'], 'на активного\nвсего сегодня ' + j.adds.today, miniCols(adds)));
+    if (j.tabs.length) { tiles.appendChild(tile('tile--left', 'bag', 'Разделы', [j.tabs[0].name, j.tabs[0].pct + F.NB + '%'], j.tabs.slice(1, 3).map(function (t) { return t.name.toLowerCase() + ' ' + t.pct + F.NB + '%'; }).join('\n') + (j.tabs.length > 1 ? '\n' : '') + 'Главная не в счёт', null)); }
+    if (j.feats.length) { tiles.appendChild(tile('tile--left', 'wallet', 'Функции', [j.feats[0].name, j.feats[0].pct + F.NB + '%'], j.feats.slice(1, 3).map(function (t) { return t.name.toLowerCase() + ' ' + t.pct + F.NB + '%'; }).join(' · ') || 'от активных', null)); }
+    tiles.appendChild(tile('tile--left', 'down', 'Сбои', [String(j.fails.week)], 'за неделю' + (j.fails.ver ? ' · версия ' + j.fails.ver : ''), null));
+    var all = tiles.children.length;
+    if ((all - 1) % 2 === 1) { tiles.lastChild.classList.add('tile--wide'); }
+    body.appendChild(tiles);
+  }
+  /** график автора: активные по дням линией, новые столбиками у оси; ведёшь пальцем — onMove(точка), отпустил — onMove(null) */
+  function statChart(series, onMove) {
+    var n = series.length, w = 350, h = 150, pr = 30, top = 4;
+    series.forEach(function (p) { top = Math.max(top, p.active); });
+    top *= 1.15;
+    var nTop = 1;
+    series.forEach(function (p) { nTop = Math.max(nTop, p['new']); });
+    var wrap = el('div', 'live'), svg = svgEl('svg', { viewBox: '0 0 ' + w + ' ' + h, role: 'img', 'aria-label': 'Активные и новые пользователи по дням' });
+    function x(i) { return (n > 1 ? i / (n - 1) : 0) * (w - pr - 4) + 2; }
+    function y(v) { return h - 2 - v / top * (h - 10); }
+    var step = niceStep(top / 2.2), ax = svgEl('g', { 'class': 'live__ax' });
+    for (var v = step; v < top; v += step) {
+      ax.appendChild(svgEl('line', { x1: 0, x2: w - pr + 2, y1: y(v).toFixed(1), y2: y(v).toFixed(1) }));
+      var tx = svgEl('text', { x: w, y: (y(v) + 4).toFixed(1) });
+      tx.textContent = String(Math.round(v));
+      ax.appendChild(tx);
+    }
+    ax.appendChild(svgEl('line', { 'class': 'live__base', x1: 0, x2: w - pr + 2, y1: h, y2: h }));
+    svg.appendChild(ax);
+    var bw = Math.max(2, Math.min(6, (w - pr) / n * 0.5));
+    series.forEach(function (p, i) { if (p['new']) { var bh = p['new'] / nTop * 34; svg.appendChild(svgEl('rect', { 'class': 'stat-new', x: (x(i) - bw / 2).toFixed(1), y: (h - bh).toFixed(1), width: bw.toFixed(1), height: bh.toFixed(1), rx: 1.5 })); } });
+    svg.appendChild(svgEl('polyline', { 'class': 'live__in', points: series.map(function (p, i) { return x(i).toFixed(1) + ',' + y(p.active).toFixed(1); }).join(' ') }));
+    var hair = svgEl('line', { 'class': 'live__hair', y1: 0, y2: h }), dot = svgEl('circle', { 'class': 'live__dot live__dot--in', r: 5 });
+    function place(i) { hair.setAttribute('x1', x(i).toFixed(1)); hair.setAttribute('x2', x(i).toFixed(1)); dot.setAttribute('cx', x(i).toFixed(1)); dot.setAttribute('cy', y(series[i].active).toFixed(1)); }
+    place(n - 1);
+    add(svg, hair, dot);
+    wrap.appendChild(svg);
+    var cur = -1, down = false;
+    function at(i) { if (i === cur) { return; } cur = i; place(i); onMove(series[i]); haptic(); }
+    function from(e) { var r = svg.getBoundingClientRect(); return Math.max(0, Math.min(n - 1, Math.round(((e.clientX - r.left) / r.width * w - 2) / (w - pr - 4) * (n - 1)))); }
+    function end() { if (!down) { return; } down = false; wrap.classList.remove('is-on'); cur = -1; place(n - 1); onMove(null); }
+    wrap.addEventListener('pointerdown', function (e) { down = true; try { wrap.setPointerCapture(e.pointerId); } catch (z) { /* старый браузер */ } wrap.classList.add('is-on'); cur = -1; at(from(e)); });
+    wrap.addEventListener('pointermove', function (e) { if (down) { at(from(e)); } });
+    wrap.addEventListener('pointerup', end);
+    wrap.addEventListener('pointercancel', end);
+    wrap.addEventListener('lostpointercapture', end);
+    var box = el('div', 'stat-chart'), ticks = el('div', 'live__ticks'), legend = el('div', 'stat-legend'), a = el('span'), b2 = el('span');
+    box.id = 'statChart';
+    [0, Math.round((n - 1) / 2), n - 1].forEach(function (i) { ticks.appendChild(el('span', '', rangeText(series[i].d, series[i].d).replace(/ \d{4}$/, ''))); });
+    add(a, el('i', 'k-line'), document.createTextNode('активные'));
+    add(b2, el('i', 'k-bar'), document.createTextNode('новые'));
+    add(legend, a, b2);
+    add(box, wrap, ticks, legend);
+    box.scrubAt = function (i) { wrap.classList.add('is-on'); cur = -1; at(i); };
+    return box;
+  }
+
   // ---------- обратная связь (пункт 17, решение разработчика 19.10.2026: анонимно через посредника, голос «Хочу», раз в месяц вопрос про приложение, «Написать автору») ----------
   var AUTHOR = 'modo_by';
   /** адрес посредника рядом с приложением (relay/feedback.php → /api/feedback.php на finansy.modo.by, настройка — relay/README.md).
@@ -3147,7 +3355,7 @@
   function reload(animate, done) {
     store.view(st.month, function (err, v) {
       st.loaded = true;
-      if (err) { st.error = explain(err); paint(false); if (done) { done(err); } return; }
+      if (err) { st.error = explain(err); track('fail'); paint(false); if (done) { done(err); } return; }
       st.error = '';
       st.months = v.months;
       st.ops = v.ops;
@@ -3171,6 +3379,7 @@
       paint(animate);
       if (done) { done(null); }
       askGoalStart();
+      statOpen();
     });
   }
 
@@ -3697,6 +3906,7 @@
     store.add(op, function (err) {
       if (!entry || entry !== e) { return; }
       if (err) { e.busy = false; paintEntry(); haptic('err'); toast(explain(err)); return; }
+      if (!F.isMoveOp(op)) { track('add'); }
       haptic('ok');
       e.series++;
       e.done = op;
@@ -3748,6 +3958,7 @@
   }
   function addOp(op) {
     store.add(op, function (err) {
+      if (!err && !F.isMoveOp(op)) { track('add'); }
       afterWrite(err, op.d, function () { // случайную запись можно убрать сразу, не заходя в «Историю»
         toast(F.isGoalOp(op) ? (op.k === 'e' ? 'Отложено на цель' : 'Снято из накоплений') : F.isDebtOp(op) ? (op.k === 'e' ? 'Записано: отдано' : 'Записано: получено') : F.isCreditOp(op) ? 'Платёж внесён' : op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), undone); });
       });
@@ -3928,6 +4139,7 @@
       label();
       store.patchCfg({ cats: on, catsOff: off.length ? off : null, seen: 1 }, function (err) {
         if (err) { f.busy = false; label(); haptic('err'); toast(err === 'too long' ? 'Список не помещается: сократите названия.' : explain(err)); return; }
+        track('step:cats');
         var manual = !!f.manual;
         haptic('ok');
         st.first = null;
@@ -4275,6 +4487,7 @@
       row('notesBtn', 'Перенос из заметок', '', function () { openNotes(openSettings); });
       row('backupBtn', 'Копия данных', '', function () { openBackup(openSettings); });
       add(box, el('h2', '', 'Настройки'), ul, ul2, ul3);
+      statsRow(box, ul); // «Статистика» — только у автора: сервер проверяет подпись Telegram
       if (homeCan() || st.home === 'added') { // строки нет, где значок не ставится (Telegram на компьютере, старая версия)
         var solo = el('ul', 'menu menu--solo'), li = el('li'), hb = btn('menu__row menu__row--icon');
         hb.id = 'homeBtn';
