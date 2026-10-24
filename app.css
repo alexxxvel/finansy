@@ -13,6 +13,9 @@
   --on-ink: #FFFFFF; --on-ink-2: rgba(255,255,255,.72); --axis: rgba(60,60,67,.3); --scrim: rgba(29,29,31,.36);
   --surface-0: rgba(255,255,255,0); --glass: rgba(240,240,244,.72); --glass-hi: rgba(255,255,255,.9);
   --cal0: #F2F2F7; --cal1: #E5E5EA; --cal2: #C7C7CC; --cal3: #6E6E73; --cal4: #3A3A3C;
+  /* «Аналитика» (24.10.2026): системные цвета Apple — доход зелёный, траты оранжевые; -ink — их доступный вариант для мелкого текста */
+  --f-in: #34C759; --f-in-ink: #248A3D; --f-in-soft: #EAF8EE; --f-out: #FF9500; --f-out-ink: #B86200; --f-out-soft: #FFF4E5; --f-left-soft: rgba(29,29,31,.06);
+  --o1: #FFEACC; --o2: #FFC56E; --o3: #FF9500; --o4: #B86200;
   --safe-b: max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px));
   /* размеры листа: уменьшаются на низких экранах (см. в конце файла) */
   --key-h: 52px; --chip-h: 44px; --chip-gap: 16px; --chip-top: 12px; --sum: 68px; --sum-m: 52px; --sum-s: 44px;
@@ -724,6 +727,8 @@ h1.month { margin: 0; cursor: default; }
   --surface-0: rgba(28,28,30,0); --glass: rgba(44,44,46,.72); --glass-hi: rgba(255,255,255,.08);
   --thumb: #545458; --thumb-shadow: none; /* выбранная вкладка и сегмент светлее дорожки, как у Apple */
   --cal0: #2C2C2E; --cal1: #48484A; --cal2: #7C7C80; --cal3: #AEAEB2; --cal4: #F5F5F7; /* «по дням»: больше трат — светлее */
+  --f-in: #30D158; --f-in-ink: #30D158; --f-in-soft: rgba(48,209,88,.16); --f-out: #FF9F0A; --f-out-ink: #FF9F0A; --f-out-soft: rgba(255,159,10,.16); --f-left-soft: rgba(255,255,255,.08);
+  --o1: rgba(255,159,10,.22); --o2: rgba(255,159,10,.45); --o3: rgba(255,159,10,.72); --o4: #FF9F0A;
 }
 /* листы поднимаются над фоном, как в iOS: лист светлее фона, строки в нём ещё светлее */
 :root[data-theme="dark"] .modal { --bg: #1C1C1E; --surface: #2C2C2E; --fill: #3A3A3C; --icon-bg: #3A3A3C; --off-bg: #3A3A3C; --surface-0: rgba(44,44,46,0); --thumb: #636366; }
@@ -897,3 +902,119 @@ html { overflow: hidden; }
 .mood { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .mood__btn { display: grid; justify-items: center; gap: 2px; min-height: 64px; padding: 4px 0; font: 500 15px/1.15 var(--font); color: var(--ink); }
 .mood__btn svg { width: 40px; height: 40px; stroke-width: 1.6; }
+
+/* ---------- «Аналитика» (решение разработчика 24.10.2026, макеты-26 «цвета Apple») ----------
+   Сверху сумма выбранного потока и две мягкие плашки, живой график, ряд периода; ниже плитки (касание — подробный лист).
+   Одно выделение на всё: выбранное — в цвете или белая поднятая поверхность; сегодня — точка под числом; невыбранное гаснет. */
+.spent[data-f="in"] .spent__label { color: var(--f-in-ink); font-weight: 600; }
+.spent[data-f="out"] .spent__label { color: var(--f-out-ink); font-weight: 600; }
+.duo { display: flex; gap: 8px; margin-top: 2px; }
+.duo__b { flex: 1; display: grid; gap: 3px; min-width: 0; min-height: 56px; padding: 9px 14px; border-radius: 16px; text-align: left; background: var(--f-left-soft); transition: transform 240ms var(--spring-snappy); }
+.duo__b:active { transform: scale(.96); }
+.duo__b small { font: 600 13px/1.2 var(--font); color: var(--muted); }
+.duo__b b { font: 600 19px/1.1 var(--font); letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.duo__b[data-k="in"] { background: var(--f-in-soft); }
+.duo__b[data-k="in"] small { color: var(--f-in-ink); }
+.duo__b[data-k="out"] { background: var(--f-out-soft); }
+.duo__b[data-k="out"] small { color: var(--f-out-ink); }
+/* живой график: доход и траты накопленной суммой, остаток — поле между ними; подписи оси справа и мелко, как в «Акциях» */
+#paceChart { margin-top: 14px; }
+.live { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+.live svg { display: block; width: 100%; height: auto; overflow: visible; }
+.live__ax line { stroke: var(--line); stroke-width: 1; }
+.live__ax text { font: 500 11px/1 var(--font); fill: var(--gray); stroke: none; text-anchor: end; }
+.live__ax .live__base { stroke: var(--axis); }
+.live__in, .live__out, .live__prev { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; transition: stroke-width 360ms var(--spring-snappy), opacity 260ms var(--ease-out); }
+.live__in { stroke: var(--f-in); }
+.live__out { stroke: var(--f-out); }
+.live__prev { stroke: var(--quat); }
+.live__gap { stroke: none; transition: opacity 260ms var(--ease-out); }
+.live__gap0 { stop-color: var(--ink); stop-opacity: .2; }
+.live__gap1 { stop-color: var(--ink); stop-opacity: .03; }
+.live[data-f="in"] .live__in, .live[data-f="out"] .live__out { stroke-width: 3; }
+.live[data-f="in"] .live__out, .live[data-f="out"] .live__in { opacity: .4; }
+.live[data-f="in"] .live__gap, .live[data-f="out"] .live__gap { opacity: .45; }
+.live__hair { stroke: var(--ink); stroke-width: 1; opacity: 0; }
+.live.is-on .live__hair { opacity: .3; }
+.live__dot { stroke: var(--surface); stroke-width: 2; }
+.live__dot--in { fill: var(--f-in); }
+.live__dot--out { fill: var(--f-out); }
+.live__ticks { display: flex; justify-content: space-between; margin: 6px 36px 0 0; font: 500 13px/1 var(--font); color: var(--gray); }
+/* один ряд под графиком: тип периода слева, листание справа */
+.ctl { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; margin-top: 14px; }
+.ctl .period--row { margin-left: auto; } /* на узком экране листание уходит на свою строку справа */
+.range { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--fill); }
+.range button { min-height: 36px; padding: 0 13px; border-radius: 999px; font: 600 13px/1 var(--font); color: var(--muted); transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out); }
+.range button[aria-pressed="true"] { background: var(--thumb, var(--surface)); color: var(--ink); box-shadow: var(--thumb-shadow, 0 1px 2px rgba(60,60,80,.12), 0 2px 6px rgba(60,60,80,.08)); }
+.period--row { display: flex; align-items: center; margin: 0 -12px 0 0; }
+.period--row p { min-width: 0; font: 600 15px/1.2 var(--font); text-align: center; white-space: nowrap; }
+.empty--stats { margin-top: 18px; }
+/* плитки 2×2, как в «Здоровье»: первая (блок выбранного потока) — во всю ширину */
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 0 0; padding-bottom: calc(150px + var(--safe-b)); }
+.tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 168px; padding: 13px 14px 12px; border-radius: 22px; background: var(--surface); box-shadow: var(--shadow-s); text-align: left; transition: transform 260ms var(--spring-snappy); }
+.tile:active { transform: scale(.965); }
+.tile--wide { grid-column: span 2; }
+.tile--in { --t-ink: var(--f-in-ink); --t-fill: var(--f-in); --t-soft: var(--f-in-soft); }
+.tile--out { --t-ink: var(--f-out-ink); --t-fill: var(--f-out); --t-soft: var(--f-out-soft); }
+.tile--left { --t-ink: var(--ink); --t-fill: var(--ink); --t-soft: var(--f-left-soft); }
+.tile__head { display: flex; align-items: center; gap: 8px; font: 600 15px/1.3 var(--font) !important; color: var(--t-ink) !important; }
+.tile__head > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile__go { flex: none; width: 15px; height: 15px; color: var(--t-ink); opacity: .7; }
+.badge { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--t-soft, var(--icon-bg)); color: var(--t-ink, var(--ink)); }
+.badge svg { width: 16px; height: 16px; stroke-width: 1.9; }
+.tile__big { margin-top: 2px; font: 600 24px/1.1 var(--font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
+.tile__big small { font: 600 14px/1 var(--font); letter-spacing: 0; color: var(--muted); }
+.tile__sub { font: 500 13px/1.3 var(--font); color: var(--muted); white-space: pre-line; }
+.tile__more { font: 500 12px/1.3 var(--font); color: var(--gray); white-space: pre-line; }
+.tile__mini { margin-top: auto; padding-top: 10px; }
+.split { display: flex; gap: 2px; height: 26px; border-radius: 7px; overflow: hidden; }
+.split--mini { height: 10px; gap: 1.5px; border-radius: 4px; }
+.split__seg, .split i { height: 100%; min-width: 3px; transition: background-color 220ms var(--ease-out); }
+.split__seg.is-off { background: var(--soft) !important; }
+.split + .legend { margin-top: 10px; }
+.legend--pick .legend__row { grid-template-columns: 10px 1fr auto auto 16px; }
+.legend__go { width: 16px; height: 16px; color: var(--tert); opacity: .55; transition: opacity 160ms var(--ease-out), transform 260ms var(--spring-snappy); }
+.legend--pick.has-pick li:not(.is-pick) { opacity: .45; }
+.legend--pick li.is-pick .legend__go { opacity: 1; transform: translateX(2px); }
+.mcols { display: grid; gap: 10px; height: 140px; align-items: end; border-bottom: 1px solid var(--axis); }
+.mcols--mini { height: 46px; gap: 5px; border-bottom: 0; }
+.mcol { position: relative; display: flex; align-items: flex-end; justify-content: center; height: 100%; }
+.mcol b { display: block; width: 100%; max-width: 24px; border-radius: 5px 5px 2px 2px; background: var(--soft); transition: background-color 200ms var(--ease-out); }
+.mcols--mini .mcol b { max-width: 14px; }
+.mcol.is-pick b { background: var(--t-fill, var(--ink)); }
+.mcol.is-neg b { opacity: .5; }
+.mcol em { position: absolute; left: 50%; transform: translate(-50%, 4px); opacity: 0; font: 600 13px/1 var(--font); font-style: normal; white-space: nowrap; font-variant-numeric: tabular-nums; transition: opacity 160ms var(--ease-out), transform 320ms var(--spring-snappy); }
+.mcol.is-pick em { opacity: 1; transform: translate(-50%, 0); }
+.mcols__ticks { display: grid; gap: 10px; margin-top: 6px; font: 500 13px/1 var(--font); color: var(--gray); }
+.mcols__ticks span { text-align: center; }
+.heat { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.heat i { aspect-ratio: 1; border-radius: 3px; background: var(--cal0); }
+.tile--wide .heat { gap: 4px; }
+.tile--wide .heat i { aspect-ratio: auto; height: 24px; border-radius: 6px; }
+.heat .heat__pad { background: transparent; }
+.heat .lvl-1 { background: var(--o1); } .heat .lvl-2 { background: var(--o2); } .heat .lvl-3 { background: var(--o3); } .heat .lvl-4 { background: var(--o4); }
+/* лист плитки: заголовок со значком, вывод, разбор; календарь трат — оранжевыми ступенями, выбранный день поднят */
+.pick--tile .pick__head { display: flex; align-items: center; gap: 10px; }
+.pick--tile .pick__title { color: var(--t-ink); }
+.tile__say { margin-top: 6px; font: 600 24px/1.15 var(--font); letter-spacing: -.03em; font-variant-numeric: tabular-nums; overflow-wrap: break-word; }
+.tile__say small { font: 600 15px/1.2 var(--font); letter-spacing: -.01em; color: var(--muted); }
+.pick--tile .tile__say + * { margin-top: 14px; }
+.pick-line { min-height: 20px; margin-top: 10px; font: 500 15px/1.3 var(--font); color: var(--muted); }
+.pick--tile .cal__d.lvl-1 { background: var(--o1); } .pick--tile .cal__d.lvl-2 { background: var(--o2); } .pick--tile .cal__d.lvl-3 { background: var(--o3); } .pick--tile .cal__d.lvl-4 { background: var(--o4); }
+.pick--tile .cal__d.lvl-3 b, .pick--tile .cal__d.lvl-4 b { color: #FFFFFF; }
+.pick--tile .cal__scale .cal__d.lvl-1 { background: var(--o1); } .pick--tile .cal__scale .cal__d.lvl-2 { background: var(--o2); } .pick--tile .cal__scale .cal__d.lvl-3 { background: var(--o3); } .pick--tile .cal__scale .cal__d.lvl-4 { background: var(--o4); }
+.cal__d { position: relative; transition: transform 260ms var(--spring-snappy), box-shadow 200ms var(--ease-out), background-color 200ms var(--ease-out); }
+.pick--tile .cal__d.is-today { box-shadow: none; }
+.pick--tile .cal__d.is-today::after { content: ""; position: absolute; bottom: 5px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 2px; background: currentColor; color: var(--ink); }
+.pick--tile .cal__d.lvl-3.is-today::after, .pick--tile .cal__d.lvl-4.is-today::after { color: #FFFFFF; }
+.pick--tile .cal__d.is-pick { z-index: 1; transform: scale(1.1); background: var(--surface) !important; box-shadow: 0 1px 2px rgba(60,60,80,.16), 0 6px 16px -4px rgba(40,40,80,.3); }
+.pick--tile .cal__d.is-pick b { color: var(--ink) !important; font-weight: 700; }
+.pick--tile .viz { margin-top: 22px; }
+.pick--tile #vizSave { margin-top: 14px; }
+.pick--tile #vizSave .cats__head h2 { display: none; } /* заголовок листа уже «Сбережения» */
+.pick--tile #vizSave .cats__head { justify-content: flex-start; }
+.pick--tile .pick__title { font: 600 22px/1.2 var(--font); letter-spacing: -.02em; }
+:root[data-theme="dark"] .pick--tile .cal__d.is-pick { background: #3A3A3C !important; }
+@media (prefers-reduced-motion: reduce) {
+  .live__in, .live__out, .live__gap, .duo__b, .tile, .cal__d, .split__seg, .mcol b, .mcol em { transition-duration: 1ms; }
+}

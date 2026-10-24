@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'c6130fe5e2'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'aa356690f5'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -879,6 +879,7 @@
           st.stats.at = it.now ? now : it.m + '-15';
           haptic();
           paint(true);
+          if (ui.open) { openTile('left'); }
         });
         li.appendChild(b);
         ul.appendChild(li);
@@ -914,7 +915,7 @@
       strong.textContent = name + ': траты больше дохода';
       add(text, strong, el('small', '', nb('на ' + F.fmt(-s.saved) + (before ? ' · ' + before : ''))));
     }
-    text.addEventListener('click', function () { st.tab = 'stats'; st.stats.kind = 'month'; st.stats.at = pm + '-15'; haptic(); paintDock(); paint(true); });
+    text.addEventListener('click', function () { st.tab = 'stats'; st.stats.kind = 'month'; st.stats.at = pm + '-15'; haptic(); paintDock(); paint(true); openTile('left'); }); // сразу лист «Сбережения» за тот месяц
     x.id = 'saveCardHide';
     x.setAttribute('aria-label', 'Убрать до следующего месяца');
     x.appendChild(icon('close'));
@@ -2441,12 +2442,23 @@
   }
 
   // ---------- аналитика ----------
-  // цвета категорий в кольце (палитра правил по графикам, проверена validate_palette.js; без синего — он у «Добавить»). Остальные диаграммы графитовые
-  var VIZ_LIGHT = ['#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#4a3aa7'], VIZ_DARK = ['#FF9F0A', '#30D158', '#FFD60A', '#FF375F', '#7D7AFF']; // на чёрном — тёмные системные цвета Apple (индиго светлой палитры на #000 не виден)
-  function vizColors() { var d = document.documentElement.getAttribute('data-theme') === 'dark'; return { list: d ? VIZ_DARK : VIZ_LIGHT, rest: d ? '#636366' : '#C7C7CC' }; }
+  // Решение разработчика 24.10.2026 (макеты-26, «цвета Apple»): сверху сумма выбранного потока (остаток, доход или траты), две мягкие плашки
+  // других потоков, один живой график дохода и трат с полем остатка между ними; под ним в одном ряду тип периода и листание.
+  // Ниже плитки, как в «Здоровье»: касание открывает подробный лист, в листе первое касание выделяет, второе — открывает записи.
+  // Цвет потоков — системные цвета Apple: доход зелёный, траты оранжевые, остаток графитом; синий только у «Добавить».
   var SVGNS = 'http://www.w3.org/2000/svg';
   function svgEl(tag, attrs) { var n = document.createElementNS(SVGNS, tag); Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); }); return n; }
   function whole(minor) { return F.fmtDay(minor); }
+  function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
+  /** яркий цвет потока: заливки, линии, столбики (тёмная тема — тёмные варианты Apple) */
+  function flowHex(f) { var d = isDark(); return f === 'in' ? (d ? '#30D158' : '#34C759') : f === 'out' ? (d ? '#FF9F0A' : '#FF9500') : (d ? '#F5F5F7' : '#1D1D1F'); }
+  /** доли одного потока — его цвет всё прозрачнее: крупная доля в полный цвет, видно и на белом, и на чёрном */
+  function flowTints(f, n) {
+    var hex = flowHex(f), r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16), a = [1, 0.76, 0.58, 0.44, 0.33, 0.27], out = [];
+    for (var i = 0; i < n; i++) { out.push('rgba(' + r + ', ' + g + ', ' + b + ', ' + (a[i] === undefined ? 0.25 : a[i]) + ')'); }
+    return out;
+  }
+  function pctOf(part, all) { var p = all ? part / all * 100 : 0; return p > 0 && p < 1 ? '<1' + F.NB + '%' : Math.round(p) + F.NB + '%'; }
   /** «1–14 сентября», «28 сентября–4 октября», «2025» — подпись отрезка для сравнения */
   function rangeText(a, b) {
     var x = a.split('-'), y = b.split('-'), yr = y[0] === F.today().slice(0, 4) ? '' : F.NB + y[0];
@@ -2457,7 +2469,7 @@
   function prevText(P) {
     var full = F.statsPeriod(P.kind, P.prevFrom, F.today());
     if (P.prevEnd === full.to) { return P.kind === 'week' ? 'на прошлой неделе' : P.kind === 'year' ? 'в' + F.NB + P.prevFrom.slice(0, 4) : F.inMonth(P.prevFrom.slice(0, 7)); }
-    if (P.kind === 'year') { return 'в' + F.NB + P.prevFrom.slice(0, 4) + ' к' + F.NB + rangeText(P.prevEnd, P.prevEnd).replace(/\u00a0\d{4}$/, ''); }
+    if (P.kind === 'year') { return 'в' + F.NB + P.prevFrom.slice(0, 4) + ' к' + F.NB + rangeText(P.prevEnd, P.prevEnd).replace(/ \d{4}$/, ''); }
     return rangeText(P.prevFrom, P.prevEnd);
   }
   function vizBlock(title, note, inner, id) {
@@ -2472,42 +2484,146 @@
     var p = Math.pow(10, Math.floor(Math.log(Math.max(top, 100)) / Math.LN10)), n = top / p;
     return (n >= 5 ? 5 : n >= 2 ? 2 : 1) * p;
   }
-  /** как шли траты: накопленная сумма по дням, текущий период графитом поверх прошлого серым, одна ось */
-  function paceChart(P, cur, prevDays) {
-    var curLen = F.daysBetween(P.from, P.end) + 1, full = F.daysBetween(P.from, P.to) + 1, pf = F.statsPeriod(P.kind, P.prevFrom, F.today()), prevLen = F.daysBetween(pf.from, pf.to) + 1;
-    var now = F.cumulative(cur.days, P.from, curLen), prev = prevDays ? F.cumulative(prevDays, pf.from, prevLen) : [];
-    var n = Math.max(full, prev.length), top = Math.max(1, now[now.length - 1] || 0, prev[prev.length - 1] || 0), step = niceStep(top / 2.5); // две-три линии сетки
-    var w = 350, h = 150, svg = svgEl('svg', { viewBox: '0 0 ' + w + ' ' + h, 'class': 'pace', role: 'img', 'aria-label': 'Накопленные траты по дням' }), g = svgEl('g', { 'class': 'pace__grid' });
-    function x(i) { return (n > 1 ? i / (n - 1) : 0) * (w - 8) + 4; }
-    function y(v) { return h - v / (top * 1.08) * (h - 12); }
+  /** доход по дням отрезка (копейки в BYN): как траты в rangeStats, только записи дохода */
+  function incomeDays(P) {
+    var days = {};
+    F.inRange(st.all, P.from, P.end).forEach(function (op) { if (op.k === 'i') { days[op.d] = (days[op.d] || 0) + F.bynOf(op); } });
+    return days;
+  }
+  /** живой график: доход и траты накопленной суммой по дням, поле между ними — остаток; ведёшь пальцем — onMove(i), отпустил — onEnd().
+      Без дохода (только траты) рядом серым тот же отрезок прошлого периода, как раньше. */
+  function liveChart(P, cur, prevFull, onMove, onEnd) {
+    var n = F.daysBetween(P.from, P.to) + 1, len = F.daysBetween(P.from, P.end) + 1, hasInc = cur.income > 0;
+    var out = F.cumulative(cur.days, P.from, len), inc = hasInc ? F.cumulative(incomeDays(P), P.from, len) : [], prev = [];
+    if (!hasInc && prevFull) { var pf = F.statsPeriod(P.kind, P.prevFrom, F.today()); prev = F.cumulative(prevFull.days, pf.from, F.daysBetween(pf.from, pf.to) + 1); n = Math.max(n, prev.length); }
+    var top = 1;
+    out.concat(inc, prev).forEach(function (v) { top = Math.max(top, v); });
+    var w = 350, h = 170, pr = 36, wrap = el('div', 'live'), svg = svgEl('svg', { viewBox: '0 0 ' + w + ' ' + h, role: 'img', 'aria-label': hasInc ? 'Доход, траты и остаток по дням' : 'Накопленные траты по дням' });
+    function x(i) { return (n > 1 ? i / (n - 1) : 0) * (w - pr - 4) + 2; }
+    function y(v) { return h - 2 - v / (top * 1.08) * (h - 10); }
+    var step = niceStep(top / 2.2), ax = svgEl('g', { 'class': 'live__ax' });
     for (var v = step; v < top * 1.08; v += step) {
-      g.appendChild(svgEl('line', { x1: 0, x2: w, y1: y(v).toFixed(1), y2: y(v).toFixed(1) }));
-      var tx = svgEl('text', { x: 0, y: (y(v) - 6).toFixed(1) });
+      ax.appendChild(svgEl('line', { x1: 0, x2: w - pr + 2, y1: y(v).toFixed(1), y2: y(v).toFixed(1) }));
+      var tx = svgEl('text', { x: w, y: (y(v) + 4).toFixed(1) });
       tx.textContent = whole(v);
-      g.appendChild(tx);
+      ax.appendChild(tx);
     }
-    g.appendChild(svgEl('line', { 'class': 'pace__base', x1: 0, x2: w, y1: h, y2: h }));
-    svg.appendChild(g);
-    function line(list, cls) { return svgEl('polyline', { 'class': cls, points: list.map(function (val, i) { return x(i).toFixed(1) + ',' + y(val).toFixed(1); }).join(' ') }); }
-    if (prev.length) { svg.appendChild(line(prev, 'pace__prev')); }
-    svg.appendChild(line(now, 'pace__now'));
-    var ex = x(now.length - 1), ey = y(now[now.length - 1] || 0);
-    if (P.current) { svg.appendChild(svgEl('line', { 'class': 'pace__today', x1: ex.toFixed(1), x2: ex.toFixed(1), y1: ey.toFixed(1), y2: h })); }
-    if (prev.length && prev.length >= now.length) { svg.appendChild(svgEl('circle', { 'class': 'pace__dot pace__dot--prev', cx: ex.toFixed(1), cy: y(prev[now.length - 1]).toFixed(1), r: 4 })); }
-    svg.appendChild(svgEl('circle', { 'class': 'pace__dot', cx: ex.toFixed(1), cy: ey.toFixed(1), r: 5 }));
-    var ticks = el('div', 'pace__ticks');
-    (P.kind === 'week' ? F.WEEKDAYS_SHORT : ['1', '8', '15', '22', '29']).forEach(function (s) { ticks.appendChild(el('span', '', s)); });
-    var legend = el('div', 'pace__legend'), a = el('span'), b = el('span');
-    add(a, el('i', 'key key--now'), document.createTextNode(P.kind === 'week' ? 'эта неделя ' : F.monthLabel(P.from.slice(0, 7)).split(F.NB)[0].toLowerCase() + ' '), el('b', '', whole(now[now.length - 1] || 0)));
-    legend.appendChild(a);
-    if (prev.length) {
-      add(b, el('i', 'key key--prev'), document.createTextNode(prevText(P) + ' '), el('b', '', whole(prev[Math.min(prev.length, now.length) - 1] || 0)));
-      legend.appendChild(b);
+    ax.appendChild(svgEl('line', { 'class': 'live__base', x1: 0, x2: w - pr + 2, y1: h, y2: h }));
+    svg.appendChild(ax);
+    function points(list) { return list.map(function (val, i) { return x(i).toFixed(1) + ',' + y(val).toFixed(1); }).join(' '); }
+    if (hasInc) { // поле остатка: заливка от линии дохода вниз сходит на нет, как в «Акциях»
+      var defs = svgEl('defs'), lg = svgEl('linearGradient', { id: 'gapFade', x1: 0, y1: 0, x2: 0, y2: 1 }), back = [];
+      add(lg, svgEl('stop', { offset: '0', 'class': 'live__gap0' }), svgEl('stop', { offset: '1', 'class': 'live__gap1' }));
+      defs.appendChild(lg);
+      svg.appendChild(defs);
+      for (var j = len - 1; j >= 0; j--) { back.push(x(j).toFixed(1) + ',' + y(out[j]).toFixed(1)); }
+      svg.appendChild(svgEl('polygon', { 'class': 'live__gap', fill: 'url(#gapFade)', points: points(inc) + ' ' + back.join(' ') }));
     }
+    if (prev.length) { svg.appendChild(svgEl('polyline', { 'class': 'live__prev', points: points(prev) })); }
+    svg.appendChild(svgEl('polyline', { 'class': 'live__out', points: points(out) }));
+    if (hasInc) { svg.appendChild(svgEl('polyline', { 'class': 'live__in', points: points(inc) })); }
+    var hair = svgEl('line', { 'class': 'live__hair', y1: 0, y2: h }), dOut = svgEl('circle', { 'class': 'live__dot live__dot--out', r: 4.5 }), dIn = hasInc ? svgEl('circle', { 'class': 'live__dot live__dot--in', r: 5 }) : null;
+    add(svg, hair, dOut, dIn);
+    function place(i) {
+      hair.setAttribute('x1', x(i).toFixed(1));
+      hair.setAttribute('x2', x(i).toFixed(1));
+      dOut.setAttribute('cx', x(i).toFixed(1));
+      dOut.setAttribute('cy', y(out[i] || 0).toFixed(1));
+      if (dIn) { dIn.setAttribute('cx', x(i).toFixed(1)); dIn.setAttribute('cy', y(inc[i] || 0).toFixed(1)); }
+    }
+    place(len - 1);
+    var ticks = el('div', 'live__ticks');
+    (P.kind === 'week' ? F.WEEKDAYS_SHORT : P.kind === 'year' ? ['янв', 'апр', 'июл', 'окт'] : ['1', '8', '15', '22', '29']).forEach(function (s) { ticks.appendChild(el('span', '', s)); });
+    wrap.appendChild(svg);
+    var cur0 = -1, down = false, sweep = 0;
+    function at(i, quiet) {
+      if (i === cur0) { return; }
+      cur0 = i;
+      place(i);
+      onMove(i, inc[i] || 0, out[i] || 0);
+      if (!quiet) { haptic(); }
+    }
+    function from(e) { var r = svg.getBoundingClientRect(), rel = (e.clientX - r.left) / r.width * w; return Math.max(0, Math.min(len - 1, Math.round((rel - 2) / (w - pr - 4) * (n - 1)))); }
+    function begin() { cancelAnimationFrame(sweep); sweep = 0; wrap.classList.add('is-on'); cur0 = -1; }
+    function release() { wrap.classList.remove('is-on'); cur0 = -1; place(len - 1); onEnd(); }
+    wrap.addEventListener('pointerdown', function (e) { down = true; try { wrap.setPointerCapture(e.pointerId); } catch (z) { /* старый браузер без захвата */ } begin(); at(from(e)); });
+    wrap.addEventListener('pointermove', function (e) { if (down) { at(from(e)); } });
+    function end() { if (!down) { return; } down = false; release(); }
+    wrap.addEventListener('pointerup', end);
+    wrap.addEventListener('pointercancel', end);
+    wrap.addEventListener('lostpointercapture', end);
     var box = el('div');
     box.id = 'paceChart';
-    add(box, svg, ticks, legend);
+    add(box, wrap, ticks);
+    box.focus = function (f) { wrap.setAttribute('data-f', f); };
+    box.scrubAt = function (i) { begin(); at(Math.max(0, Math.min(len - 1, i))); };
+    box.release = release;
+    /** первый раз за открытие приложения график сам проходит пальцем от начала до сегодня: видно, что его можно трогать */
+    box.sweep = function () {
+      if (reduce || len < 3) { return; }
+      var t0 = 0;
+      wrap.classList.add('is-on');
+      cur0 = -1;
+      sweep = requestAnimationFrame(function stepper(t) {
+        if (!t0) { t0 = t; }
+        var k = Math.min(1, (t - t0) / 1300), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+        at(Math.round(e * (len - 1)), true);
+        if (k < 1) { sweep = requestAnimationFrame(stepper); } else { sweep = 0; setTimeout(function () { if (!down && wrap.isConnected) { release(); } }, 350); }
+      });
+    };
+    box.len = len;
     return box;
+  }
+  /** полоса долей и строки под ней: первое касание выделяет (остальное гаснет в серый, у строки стрелка), второе — открывает записи */
+  function sharesBlock(parts, id, onOpen, onPick) {
+    var total = 0, wrap = el('div'), strip = el('div', 'split'), segs = [], ul = el('ul', 'legend legend--pick'), rows = [], sel = -1;
+    parts.forEach(function (p) { total += p.sum; });
+    ul.id = id;
+    parts.forEach(function (p, i) {
+      var s = btn('split__seg');
+      s.style.flex = p.sum + ' 1 0';
+      s.style.background = p.color;
+      s.setAttribute('aria-label', p.name + ': ' + F.fmt(p.sum));
+      s.addEventListener('click', function () { pick(i); });
+      segs.push(s);
+      strip.appendChild(s);
+      var li = el('li'), b = btn('legend__row'), key = el('i', 'key');
+      key.style.background = p.color;
+      if (p.id) { b.setAttribute('data-cat', p.id); }
+      add(b, key, el('span', '', p.name), el('small', '', pctOf(p.sum, total)), el('data', '', F.fmt(p.sum)), icon('right', 'legend__go'));
+      b.addEventListener('click', function () { pick(i); });
+      li.appendChild(b);
+      ul.appendChild(li);
+      rows.push(li);
+    });
+    function show(i) {
+      sel = i;
+      ul.classList.toggle('has-pick', i >= 0);
+      segs.forEach(function (s, k) { s.style.background = i < 0 || k === i ? parts[k].color : ''; s.classList.toggle('is-off', i >= 0 && k !== i); });
+      rows.forEach(function (li, k) { li.classList.toggle('is-pick', k === i); });
+      if (onPick) { onPick(i >= 0 ? parts[i] : null, total); }
+    }
+    function pick(i) { haptic(); if (sel === i) { onOpen(parts[i]); return; } show(i); }
+    add(wrap, strip, ul);
+    return wrap;
+  }
+  function miniShares(parts) { var s = el('div', 'split split--mini'); parts.forEach(function (p) { var i = el('i'); i.style.flex = p.sum + ' 1 0'; i.style.background = p.color; s.appendChild(i); }); return s; }
+  /** куда ушло: пять крупных категорий и «Остальное», оттенками оранжевого (крупная доля — полный цвет) */
+  function spendParts(cur) {
+    var rows = F.catRows(cur.cats), top = rows.slice(0, 5), restSum = 0, tones = flowTints('out', 6);
+    rows.slice(5).forEach(function (r) { restSum += r.sum; });
+    var parts = top.map(function (r, i) { return { id: r.id, name: r.name, sum: r.sum, color: tones[i] }; });
+    if (restSum) { parts.push({ id: '', name: 'Остальное', sum: restSum, color: tones[5], rest: rows.slice(5) }); }
+    return parts;
+  }
+  /** откуда пришло: источники дохода отрезка, оттенками зелёного */
+  function incomeParts(P) {
+    var map = {}, ops = F.inRange(st.all, P.from, P.end).filter(function (op) { return op.k === 'i'; });
+    ops.forEach(function (op) { map[op.c] = (map[op.c] || 0) + F.bynOf(op); });
+    var list = Object.keys(map).map(function (k) { return { id: k, name: F.dict('i', k).name, sum: map[k] }; }).sort(function (a, b) { return b.sum - a.sum; });
+    var tones = flowTints('in', list.length);
+    list.forEach(function (p, i) { p.color = tones[i]; p.ops = ops.filter(function (op) { return op.c === p.id; }); });
+    return list;
   }
   function factRows(P, cur) {
     var ul = el('ul', 'legend legend--facts'), days = F.daysBetween(P.from, P.end) + 1;
@@ -2533,53 +2649,21 @@
     });
     return ul;
   }
-  /** куда ушло: кольцо из пяти крупных категорий и «Остального»; цвет даётся пятёрке по их порядку в списке человека, а не по величине */
-  function donutBlock(cur, P) {
-    var rows = F.catRows(cur.cats), top = rows.slice(0, 5), restSum = 0, total = cur.spent || 1;
-    rows.slice(5).forEach(function (r) { restSum += r.sum; });
-    var order = top.slice().sort(function (a, b) { var x = F.CATS.indexOf(F.find(F.CATS, a.id)), y = F.CATS.indexOf(F.find(F.CATS, b.id)); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y); });
-    var vc = vizColors();
-    order.forEach(function (r, i) { r.color = vc.list[i]; });
-    var parts = top.concat(restSum ? [{ id: '', name: 'Остальное', sum: restSum, color: vc.rest, rest: rows.slice(5) }] : []);
-    var box = el('div', 'donut'), svg = svgEl('svg', { viewBox: '0 0 180 180', role: 'img', 'aria-label': 'Доли категорий' }), r = 70, c = 2 * Math.PI * r, off = 0;
-    parts.forEach(function (p) {
-      var len = p.sum / total * c, arc = svgEl('circle', { r: r, cx: 90, cy: 90, fill: 'none', stroke: p.color, 'stroke-width': 24, 'stroke-dasharray': Math.max(0.1, len - (parts.length > 1 ? 2.5 : 0)).toFixed(2) + ' ' + c.toFixed(2), 'stroke-dashoffset': (-off).toFixed(2), transform: 'rotate(-90 90 90)' });
-      if (p.id) { arc.addEventListener('click', function () { openStatCat(p.id, P, p.color); }); }
-      svg.appendChild(arc);
-      off += len;
-    });
-    var mid = el('p', 'donut__mid');
-    var span = F.daysBetween(P.from, P.end) + 1;
-    add(mid, el('b', '', whole(cur.spent)), el('span', '', 'BYN ' + (P.kind === 'year' ? (P.current ? 'с января' : 'за год') : 'за' + F.NB + span + F.NB + F.plural(span, 'день', 'дня', 'дней'))));
-    add(box, svg, mid);
-    var ul = el('ul', 'legend');
-    ul.id = 'statsLegend';
-    parts.forEach(function (p) {
-      var li = el('li'), b = btn('legend__row'), key = el('i', 'key');
-      key.style.background = p.color;
-      if (p.id) { b.setAttribute('data-cat', p.id); }
-      add(b, key, el('span', '', p.name), el('small', '', Math.round(p.sum / total * 100) + '%'), el('data', '', F.fmt(p.sum)));
-      b.addEventListener('click', function () { if (p.id) { openStatCat(p.id, P, p.color); } else { openRest(p.rest, P); } });
-      li.appendChild(b);
-      ul.appendChild(li);
-    });
-    var wrap = el('div');
-    add(wrap, box, ul);
-    return wrap;
-  }
-  /** календарь месяца: оттенок по сумме дня (одна краска), сегодня обведён; нажатие — записи дня */
-  function calendarBlock(P, cur) {
-    var wrap = el('div', 'cal'), head = el('div', 'cal__head'), grid = el('div', 'cal__grid'), n = F.lastDay(P.from.slice(0, 7)), top = 1, today = F.today();
+  /** календарь месяца: оттенок оранжевого по сумме дня, сегодня — точка под числом; первое касание выделяет день и пишет его строку, второе — записи дня */
+  function calendarBlock(P, cur, onPick) {
+    var wrap = el('div', 'cal'), head = el('div', 'cal__head'), grid = el('div', 'cal__grid'), n = F.lastDay(P.from.slice(0, 7)), top = 1, today = F.today(), cells = {}, sel = '';
     F.WEEKDAYS_SHORT.forEach(function (d) { head.appendChild(el('span', '', d)); });
     Object.keys(cur.days).forEach(function (d) { top = Math.max(top, cur.days[d]); });
     for (var i = 0; i < F.dow(P.from); i++) { grid.appendChild(el('i', 'cal__pad')); }
+    function show(d) { sel = d; Object.keys(cells).forEach(function (k) { cells[k].classList.toggle('is-pick', k === d); }); onPick(d); }
     for (var day = 1; day <= n; day++) {
       var date = P.from.slice(0, 8) + (day < 10 ? '0' : '') + day, v = cur.days[date] || 0, future = date > today;
       var lvl = v ? 1 + Math.min(3, Math.floor(v / top * 4)) : 0, b = btn('cal__d' + (future ? ' is-future' : ' lvl-' + lvl) + (date === today ? ' is-today' : ''));
       b.setAttribute('data-date', date);
       b.setAttribute('aria-label', F.dayLabel(date) + (v ? ': ' + F.fmt(v) : ': трат нет'));
       b.appendChild(el('b', '', String(day)));
-      if (v) { (function (d) { b.addEventListener('click', function () { openStatDay(d); }); })(date); } else { b.disabled = true; }
+      cells[date] = b;
+      if (v) { (function (d) { b.addEventListener('click', function () { haptic(); if (sel === d) { openStatDay(d, function () { openTile('days'); }); return; } show(d); }); })(date); } else { b.disabled = true; }
       grid.appendChild(b);
     }
     var scale = el('div', 'cal__scale');
@@ -2588,6 +2672,7 @@
     scale.appendChild(el('span', '', 'больше'));
     add(wrap, head, grid, scale);
     wrap.id = 'statsCalendar';
+    wrap.pick = show;
     return wrap;
   }
   /** столбики: по дням недели (неделя) или средняя по дням недели (за всё время); выделен самый большой, над ним сумма */
@@ -2643,29 +2728,91 @@
       var li = el('li'), b = btn('op op--bare op--two'), name = el('span', '', it.n);
       name.appendChild(el('small', '', F.dict('e', it.cat).name + ' · ' + it.count + F.NB + F.plural(it.count, 'раз', 'раза', 'раз')));
       add(b, name, el('data', '', F.fmt(it.sum)), icon('right', 'share__go'));
-      b.addEventListener('click', function () { openStatNote(it.key, P); });
+      b.addEventListener('click', function () { openStatNote(it.key, P, function () { openTile('notes'); }); });
       li.appendChild(b);
       ul.appendChild(li);
     });
     return ul;
   }
+  /** доход по месяцам: до шести месяцев по выбранный, только месяцы с доходом; касание — сумма месяца строкой ниже */
+  function incomeMonths(P, now) {
+    var list = [], m = F.monthOf(P.end);
+    for (var i = 0; i < 6; i++) { var s = F.savingsOf(st.all, m, m === F.monthOf(now) ? now : null); if (s.income > 0) { list.unshift({ m: m, v: s.income, now: m === F.monthOf(now) }); } m = F.prevMonth(m); }
+    return list;
+  }
+  function monthCols(list, id, onPick) {
+    var top = 1, plot = el('div', 'mcols'), ticks = el('div', 'mcols__ticks'), cols = [];
+    list.forEach(function (it) { top = Math.max(top, it.v); });
+    var tpl = 'repeat(' + list.length + ', minmax(0, 1fr))';
+    plot.style.gridTemplateColumns = tpl;
+    ticks.style.gridTemplateColumns = tpl;
+    function show(i) { cols.forEach(function (c, k) { c.classList.toggle('is-pick', k === i); }); if (onPick) { onPick(list[i]); } }
+    list.forEach(function (it, i) {
+      var c = btn('mcol'), b = el('b'), em = el('em', '', whole(it.v));
+      b.style.height = Math.max(3, it.v / top * 82).toFixed(1) + '%';
+      em.style.bottom = 'calc(' + Math.max(3, it.v / top * 82).toFixed(1) + '% + 5px)';
+      add(c, b, em);
+      c.setAttribute('aria-label', F.monthLabel(it.m) + ': ' + F.fmt(it.v));
+      c.addEventListener('click', function () { haptic(); show(i); });
+      plot.appendChild(c);
+      cols.push(c);
+      ticks.appendChild(el('span', '', F.monthLabel(it.m).slice(0, 3).toLowerCase()));
+    });
+    var box = el('div');
+    box.id = id;
+    add(box, plot, ticks);
+    show(list.length - 1);
+    return box;
+  }
+  function miniCols(values) {
+    var top = 1, plot = el('div', 'mcols mcols--mini');
+    values.forEach(function (v) { top = Math.max(top, Math.abs(v)); });
+    plot.style.gridTemplateColumns = 'repeat(' + values.length + ', minmax(0, 1fr))';
+    values.forEach(function (v, i) { var c = el('i', 'mcol' + (i === values.length - 1 ? ' is-pick' : '') + (v < 0 ? ' is-neg' : '')), b = el('b'); b.style.height = Math.max(4, Math.abs(v) / top * 100).toFixed(1) + '%'; c.appendChild(b); plot.appendChild(c); });
+    return plot;
+  }
+  function miniHeat(P, cur) {
+    var g = el('div', 'heat'), n = F.lastDay(P.from.slice(0, 7)), top = 1, today = F.today();
+    Object.keys(cur.days).forEach(function (d) { top = Math.max(top, cur.days[d]); });
+    for (var i = 0; i < F.dow(P.from); i++) { g.appendChild(el('i', 'heat__pad')); }
+    for (var day = 1; day <= n; day++) {
+      var date = P.from.slice(0, 8) + (day < 10 ? '0' : '') + day, v = cur.days[date] || 0;
+      g.appendChild(el('i', date > today ? 'heat__fut' : v ? 'lvl-' + (1 + Math.min(3, Math.floor(v / top * 4))) : ''));
+    }
+    return g;
+  }
+  /** самый дорогой день отрезка */
+  function maxDay(cur) { var best = '', v = 0; Object.keys(cur.days).forEach(function (d) { if (cur.days[d] > v) { v = cur.days[d]; best = d; } }); return best ? { d: best, v: v } : null; }
+
+  var FLOW = { left: { word: 'Осталось', name: 'Остаток' }, 'in': { word: 'Получено', name: 'Доход' }, out: { word: 'Потрачено', name: 'Траты' } };
+  /** плитки в порядке выбранного потока: блок этого потока первым (он и шире) */
+  var TILE_ORDER = { left: ['left', 'where', 'from', 'days', 'months', 'notes', 'changes'], 'in': ['months', 'from', 'left', 'where', 'days', 'notes', 'changes'], out: ['days', 'where', 'changes', 'notes', 'left', 'from', 'months'] };
+  var statsCtx = null; // данные открытой «Аналитики»: из них строятся плитки и их листы
+
   function paintStats() {
     var S0 = st.stats, now = F.today();
     if (!S0.at) { S0.at = now; }
     var P = F.statsPeriod(S0.kind, S0.at, now), first = F.firstDate(st.all), head = el('div', 'bar'), title = el('h1', 'month', 'Аналитика');
     title.id = 'statsTitle';
     add(head, title, gearBtn());
-    var seg = el('div', 'seg tabseg');
-    seg.setAttribute('role', 'group');
-    seg.setAttribute('aria-label', 'Период');
+    var cur = F.rangeStats(st.all, P.from, P.end), hasPrev = !!first && first <= P.prevEnd, prev = hasPrev ? F.rangeStats(st.all, P.prevFrom, P.prevEnd) : null;
+    var pf = F.statsPeriod(P.kind, P.prevFrom, now), prevFull = first && first <= pf.to ? F.rangeStats(st.all, pf.from, pf.to) : null;
+    var hasInc = cur.income > 0, focus = hasInc ? (S0.focus || 'left') : 'out', prevOut = prevFull ? F.cumulative(prevFull.days, pf.from, F.daysBetween(pf.from, pf.to) + 1) : null;
+    statsCtx = { P: P, cur: cur, prev: prev, now: now };
+
+    // переключатель периода и листание — одним рядом под графиком
+    var ctl = el('div', 'ctl'), range = el('div', 'range');
+    range.id = 'statsRange';
+    range.setAttribute('role', 'group');
+    range.setAttribute('aria-label', 'Период');
     [['week', 'Неделя'], ['month', 'Месяц'], ['year', 'Год']].forEach(function (k) {
       var b = btn('', k[1]);
       b.setAttribute('data-kind', k[0]);
       b.setAttribute('aria-pressed', String(S0.kind === k[0]));
       b.addEventListener('click', function () { if (S0.kind === k[0]) { return; } S0.kind = k[0]; S0.at = now; haptic(); paint(true); });
-      seg.appendChild(b);
+      range.appendChild(b);
     });
-    var nav = el('div', 'period'), back = btn('period__go'), fwd = btn('period__go'), canBack = !!first && P.from > first, canFwd = !P.current;
+    var nav = el('div', 'period period--row'), back = btn('period__go'), fwd = btn('period__go'), canBack = !!first && P.from > first, canFwd = !P.current;
     back.id = 'periodBack';
     fwd.id = 'periodNext';
     back.setAttribute('aria-label', 'Раньше');
@@ -2679,53 +2826,228 @@
     var label = el('p', '', P.label);
     label.id = 'periodLabel';
     add(nav, back, label, fwd);
+    add(ctl, range, nav);
 
-    var cur = F.rangeStats(st.all, P.from, P.end), hasPrev = !!first && first <= P.prevEnd, prev = hasPrev ? F.rangeStats(st.all, P.prevFrom, P.prevEnd) : null;
-    var hero = el('section', 'spent spent--sum'), sumEl = el('p', sumClass(cur.spent)), node = { whole: el('span'), frac: el('i') }, line;
+    // сумма выбранного потока
+    var hero = el('section', 'spent spent--sum'), lab = el('p', 'spent__label'), sumEl = el('p', sumClass(cur.spent)), node = { whole: el('span'), frac: el('i') };
+    lab.id = 'statsLabel';
     sumEl.id = 'statsSum';
-    setSum(node, cur.spent);
     add(sumEl, node.whole, node.frac, el('abbr', '', 'BYN'));
-    if (!cur.spent && !cur.income) { line = 'Записей за этот период нет.'; }
-    else if (prev && prev.spent) {
-      var d = cur.spent - prev.spent;
-      line = d ? 'на' + F.NB + F.fmt(Math.abs(d)) + (d > 0 ? ' больше' : ' меньше') + ', чем ' + prevText(P) : 'столько же, сколько ' + prevText(P);
-    } else if (first) { line = 'Сравнить пока не с чем: записи начались ' + rangeText(first, first) + '.'; }
-    var cmp = el('p', 'spent__day', line ? nb(line) : '');
+    var cmp = el('p', 'spent__day');
     cmp.id = 'statsCompare';
-    add(hero, el('p', 'spent__label', 'Потрачено'), sumEl, cmp);
-    var sheet = el('div', 'sheet sheet--stats');
+    add(hero, lab, sumEl, cmp);
+    function value(f, inc, out) { return f === 'in' ? inc : f === 'out' ? out : inc - out; }
+    /** строка под суммой: с чем сравнить (траты и доход — с тем же отрезком прошлого периода), у остатка — доля дохода */
+    function compareText(f, i) {
+      if (!cur.spent && !cur.income) { return 'Записей за этот период нет.'; }
+      if (f === 'left') { var inc = i === null ? cur.income : chart.incAt(i), lft = inc - (i === null ? cur.spent : chart.outAt(i)); return lft >= 0 ? pctOf(lft, inc) + ' дохода осталось' : 'траты больше дохода'; }
+      var key = f === 'in' ? 'income' : 'spent', now0 = i === null ? cur[key] : (f === 'in' ? chart.incAt(i) : chart.outAt(i));
+      if (i === null) {
+        if (prev && prev[key]) { var d = now0 - prev[key]; return d ? 'на' + F.NB + F.fmt(Math.abs(d)) + (d > 0 ? ' больше' : ' меньше') + ', чем ' + prevText(P) : 'столько же, сколько ' + prevText(P); }
+        return first ? 'Сравнить пока не с чем: записи начались ' + rangeText(first, first) + '.' : '';
+      }
+      if (f === 'out' && prevOut) { var j = Math.min(i, prevOut.length - 1); return (P.kind === 'week' ? 'на прошлой неделе' : P.kind === 'year' ? 'в' + F.NB + P.prevFrom.slice(0, 4) : F.inMonth(P.prevFrom.slice(0, 7))) + ' к этому дню — ' + F.fmt(prevOut[j] || 0); }
+      return '';
+    }
+    function paintHero(i) {
+      var inc = i === null ? cur.income : chart.incAt(i), out = i === null ? cur.spent : chart.outAt(i), v = value(focus, inc, out);
+      lab.textContent = FLOW[focus].word + (i === null ? '' : ' к' + F.NB + rangeText(F.shiftDay(P.from, i), F.shiftDay(P.from, i)).replace(/ \d{4}$/, ''));
+      hero.setAttribute('data-f', focus);
+      if (i === null) { tweenSum(node, hero.shown === undefined ? v : hero.shown, v); } else { setSum(node, v); }
+      hero.shown = v;
+      sumEl.className = sumClass(v);
+      cmp.textContent = nb(compareText(focus, i));
+      chips.forEach(function (c) { var w = value(c.k, inc, out); c.val.textContent = (c.k === 'left' && w > 0 ? '+' : '') + whole(w); });
+    }
+
+    // две другие величины мягкими плашками; касание делает величину главной
+    var duo = el('div', 'duo'), chips = [];
+    duo.id = 'statsDuo';
+    function fillChips() {
+      clear(duo);
+      chips = [];
+      ['left', 'in', 'out'].filter(function (k) { return k !== focus; }).forEach(function (k) {
+        var b = btn('duo__b'), s = el('small', '', FLOW[k].name), val = el('b');
+        b.setAttribute('data-k', k);
+        add(b, s, val);
+        b.addEventListener('click', function () {
+          haptic();
+          focus = k;
+          S0.focus = k;
+          chart.focus(k);
+          fillChips();
+          paintHero(null);
+          if (!reduce && hero.animate) { hero.animate([{ transform: 'translateY(6px)', opacity: 0.5 }, { transform: 'none', opacity: 1 }], { duration: 360, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }); }
+          orderTiles(true);
+        });
+        duo.appendChild(b);
+        chips.push({ k: k, val: val });
+      });
+    }
+
     clear(view);
-    add(view, head, seg, nav, hero, sheet);
-    fitSum(sumEl);
-    if (!cur.spent) {
-      sheet.appendChild(el('p', 'empty', nb(cur.income ? 'Трат за этот период нет, только доходы.' : 'Трат за этот период нет. Нажмите «Добавить» внизу, чтобы внести первую.')));
+    add(view, head, hero);
+    if (!cur.spent && !cur.income) {
+      lab.textContent = 'Потрачено';
+      setSum(node, 0);
+      cmp.textContent = nb('Записей за этот период нет.');
+      add(view, ctl);
+      var empty = el('p', 'empty empty--stats', nb('Нажмите «Добавить» внизу, чтобы внести первую запись.'));
+      view.appendChild(empty);
       return;
     }
-    if (P.kind === 'year') { sheet.appendChild(vizBlock('Доходы и траты', cur.income ? 'осталось ' + whole(cur.income - cur.spent) : '', pairsBlock(cur), 'vizPairs')); }
-    else {
-      var pf = F.statsPeriod(P.kind, P.prevFrom, now), prevFull = first && first <= pf.to ? F.rangeStats(st.all, pf.from, pf.to) : null;
-      sheet.appendChild(vizBlock('Как шли траты', prevFull ? (P.kind === 'week' ? 'к прошлой неделе' : 'к' + F.NB + rangeText(P.prevEnd, P.prevEnd)) : '', paceChart(P, cur, prevFull ? prevFull.days : null), 'vizPace'));
-      if (P.kind === 'month') { var saveBlock = savingsBlock(P, now); if (saveBlock) { sheet.appendChild(saveBlock); } } // сбережения — сразу после «Как шли траты»
+    var chart = liveChart(P, cur, prevFull, function (i) { paintHero(i); }, function () { paintHero(null); });
+    var incCum = hasInc ? F.cumulative(incomeDays(P), P.from, chart.len) : [], outCum = F.cumulative(cur.days, P.from, chart.len);
+    chart.incAt = function (i) { return incCum[i] || 0; };
+    chart.outAt = function (i) { return outCum[i] || 0; };
+    chart.focus(focus);
+    if (hasInc) { fillChips(); add(view, duo); }
+    add(view, chart, ctl);
+    hero.shown = value(focus, cur.income, cur.spent);
+    paintHero(null);
+    fitSum(sumEl);
+
+    var tiles = el('div', 'tiles'), made = {};
+    tiles.id = 'statsTiles';
+    view.appendChild(tiles);
+    tileDefs(P, cur, prev, now).forEach(function (d) { made[d.key] = tileEl(d); });
+    function orderTiles(anim) {
+      var firstPos = {}, keys = TILE_ORDER[focus].filter(function (k) { return made[k]; });
+      if (anim && !reduce) { keys.forEach(function (k) { var r = made[k].getBoundingClientRect(); firstPos[k] = [r.left, r.top]; }); }
+      keys.forEach(function (k, i) { made[k].classList.toggle('tile--wide', i === 0 || (i === keys.length - 1 && (keys.length - 1) % 2 === 1)); tiles.appendChild(made[k]); });
+      if (anim && !reduce) { // плитки переезжают на новые места, а не перескакивают
+        keys.forEach(function (k) {
+          var t = made[k], r = t.getBoundingClientRect(), dx = firstPos[k][0] - r.left, dy = firstPos[k][1] - r.top;
+          if ((dx || dy) && t.animate) { t.animate([{ transform: 'translate(' + dx + 'px, ' + dy + 'px)' }, { transform: 'none' }], { duration: 520, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }); }
+        });
+      }
     }
-    sheet.appendChild(vizBlock('Коротко', rangeText(P.from, P.end), factRows(P, cur), 'vizFacts'));
-    if (prev) {
-      var ch = F.catChanges(cur.cats, prev.cats, 6);
-      if (ch.length) { sheet.appendChild(vizBlock('Что изменилось', 'сравнение: ' + prevText(P), changesList(ch), 'vizChanges')); }
+    orderTiles(false);
+    statsCtx.chart = chart;
+    if (!st.swept && !navigator.webdriver) { st.swept = true; setTimeout(function () { if (chart.isConnected) { chart.sweep(); } }, 700); }
+  }
+
+  /** плитки, у которых есть данные за отрезок: заголовок со значком, вывод крупно, подпись, маленькая картинка внизу */
+  function tileDefs(P, cur, prev, now) {
+    var list = [], hasInc = cur.income > 0;
+    if (cur.spent) {
+      var sp = spendParts(cur);
+      list.push({ key: 'where', flow: 'out', title: 'Куда ушло', badge: 'bag', big: sp[0].name, sub: pctOf(sp[0].sum, cur.spent) + ' трат',
+        more: sp.length > 1 ? sp.slice(1, 3).map(function (p) { return p.name + F.NB + pctOf(p.sum, cur.spent); }).join('\n') : '', mini: function () { return miniShares(sp); } });
+      var md = maxDay(cur);
+      list.push({ key: 'days', flow: 'out', title: P.kind === 'year' ? 'По месяцам' : 'По дням', badge: 'cal', big: whole(md.v) + ' <small>BYN</small>', sub: 'самый дорогой день\n' + rangeText(md.d, md.d),
+        mini: function () { return P.kind === 'month' ? miniHeat(P, cur) : miniCols(P.kind === 'week' ? [0, 1, 2, 3, 4, 5, 6].map(function (i) { return cur.days[F.shiftDay(P.from, i)] || 0; }) : Object.keys(cur.months).sort().map(function (m) { return cur.months[m].spent; })); } });
+      var tn = F.topNotes(cur.notes, 1);
+      if (tn.length) { list.push({ key: 'notes', flow: 'out', title: 'Чаще всего', badge: 'note', big: tn[0].n, sub: tn[0].count + F.NB + F.plural(tn[0].count, 'раз', 'раза', 'раз') + ' · ' + whole(tn[0].sum) + F.NB + 'BYN' }); }
+      if (prev) {
+        var ch = F.catChanges(cur.cats, prev.cats, 6);
+        if (ch.length) { list.push({ key: 'changes', flow: 'out', title: 'Что изменилось', badge: 'chg', big: ch[0].name, sub: (ch[0].d > 0 ? '+' : '−') + whole(Math.abs(ch[0].d)) + F.NB + 'BYN, чем ' + prevText(P) }); }
+      }
     }
-    sheet.appendChild(vizBlock('Куда ушло', rangeText(P.from, P.end), donutBlock(cur, P), 'vizWhere'));
-    if (P.kind === 'month') { sheet.appendChild(vizBlock('По дням', rangeText(P.from, P.end), calendarBlock(P, cur), 'vizDays')); }
-    if (P.kind === 'week') {
-      var wv = [];
-      for (var i = 0; i < 7; i++) { wv.push(cur.days[F.shiftDay(P.from, i)] || 0); }
-      sheet.appendChild(vizBlock('По дням', '', barsBlock(wv, F.WEEKDAYS_SHORT, 'statsWeekDays', function (i) { openStatDay(F.shiftDay(P.from, i)); }), 'vizDays'));
+    if (hasInc) {
+      var ip = incomeParts(P);
+      list.push({ key: 'from', flow: 'in', title: 'Откуда', badge: 'down', big: ip[0].name, sub: pctOf(ip[0].sum, cur.income) + ' дохода',
+        more: ip.length > 1 ? ip.slice(1, 3).map(function (p) { return p.name + F.NB + pctOf(p.sum, cur.income); }).join('\n') : '', mini: function () { return miniShares(ip); } });
+      var im = incomeMonths(P, now);
+      if (im.length >= 2) {
+        var closed = im.filter(function (it) { return !it.now; }), avg = 0;
+        closed.forEach(function (it) { avg += it.v; });
+        list.push({ key: 'months', flow: 'in', title: 'Доход', badge: 'up', big: whole(closed.length ? avg / closed.length : im[im.length - 1].v), sub: 'в среднем за месяц', mini: function () { return miniCols(im.map(function (it) { return it.v; })); } });
+      }
+      if (P.kind === 'month') {
+        var sv = [], mm = F.monthOf(P.from), sum = 0, cnt = 0, minus = '';
+        for (var i = 0; i < 6; i++) { var s = F.savingsOf(st.all, mm, mm === F.monthOf(now) ? now : null); if (s.pct !== null) { sv.unshift(s.saved); if (mm !== F.monthOf(now)) { sum += s.pct; cnt++; } if (s.saved < 0 && !minus) { minus = F.monthLabel(mm).toLowerCase() + ' в минусе'; } } mm = F.prevMonth(mm); }
+        var sNow = F.savingsOf(st.all, F.monthOf(P.from), F.monthOf(P.from) === F.monthOf(now) ? now : null);
+        list.push({ key: 'left', flow: 'left', title: 'Сбережения', badge: 'wallet', big: cnt ? Math.round(sum / cnt) + F.NB + '%' : sNow.pct + F.NB + '%', sub: cnt ? 'в среднем от дохода' + (minus ? '\n' + minus : '') : 'от дохода, пока', mini: sv.length >= 2 ? function () { return miniCols(sv); } : null });
+      }
     }
-    var wd = P.kind === 'week' ? null : F.weekdayAvg(st.all, now);
-    if (wd && wd.weeks >= 4) { sheet.appendChild(vizBlock('Когда тратите', 'в среднем, с ' + rangeText(wd.first, wd.first), barsBlock(wd.avg, F.WEEKDAYS_SHORT, 'statsWeekdays', null), 'vizWhen')); }
-    if (F.topNotes(cur.notes, 1).length) {
-      var nbx = el('div');
-      add(nbx, notesBlock(cur, P), el('p', 'pick__info pick__info--after', nb('Нажмите на строку, чтобы увидеть эти записи. Пишите заметки к тратам, и разбор станет точнее.')));
-      sheet.appendChild(vizBlock('На что чаще всего', 'по заметкам', nbx, 'vizNotes'));
-    }
+    return list;
+  }
+  var TILE_ICONS = {
+    bag: '<path d="M6 8.5h12l-1.1 11H7.1z"/><path d="M9 8.5a3 3 0 0 1 6 0"/>',
+    down: '<path d="M12 4v9.5"/><path d="m8.5 10 3.5 3.5 3.5-3.5"/><path d="M5 15.5V19h14v-3.5"/>',
+    wallet: '<path d="M5 8.5V7.5A2.5 2.5 0 0 1 7.5 5H17v3.5"/><rect x="4" y="8.5" width="16" height="10.5" rx="2.5"/><path d="M16.2 13.8h.01" stroke-width="2.6"/>',
+    cal: '<rect x="4" y="5.5" width="16" height="14" rx="3"/><path d="M4 10h16M9 3.5v4M15 3.5v4"/>',
+    up: '<path d="m4 16 5-5 4 3 7-7"/><path d="M15 7h5v5"/>',
+    note: '<path d="M6 4.5h12a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V6A1.5 1.5 0 0 1 6 4.5z"/><path d="M8.5 9.5h7M8.5 13h7M8.5 16.5h4"/>',
+    chg: '<path d="M7 18V9M12 18V5M17 18v-6"/>'
+  };
+  function tileIcon(name) { // значки плиток — только из набора выше, поэтому innerHTML безопасен
+    var s = document.createElementNS(SVGNS, 'svg');
+    s.setAttribute('viewBox', '0 0 24 24');
+    s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = TILE_ICONS[name];
+    return s;
+  }
+  function tileEl(d) {
+    var t = btn('tile tile--' + d.flow), h = el('h2', 'tile__head'), badge = el('i', 'badge'), big = el('b', 'tile__big');
+    t.id = 'tile-' + d.key;
+    t.setAttribute('data-block', d.key);
+    badge.appendChild(tileIcon(d.badge));
+    add(h, badge, el('span', '', d.title), icon('right', 'tile__go'));
+    big.innerHTML = d.big.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/&lt;small>/g, '<small>').replace(/&lt;\/small>/g, '</small>'); // текст из данных (название категории, заметка) — только как текст; разрешён лишь свой <small>
+    add(t, h, big, el('span', 'tile__sub', d.sub), d.more ? el('span', 'tile__more', d.more) : null);
+    if (d.mini) { var m = el('div', 'tile__mini'); m.appendChild(d.mini()); t.appendChild(m); }
+    t.addEventListener('click', function () { openTile(d.key); });
+    return t;
+  }
+  /** подробный лист плитки: заголовок со значком, вывод, сам разбор */
+  function openTile(key) {
+    var c = statsCtx;
+    if (!c) { return; }
+    var P = c.P, cur = c.cur, prev = c.prev, now = c.now, flow = { where: 'out', days: 'out', notes: 'out', changes: 'out', from: 'in', months: 'in', left: 'left' }[key];
+    var again = function () { openTile(key); };
+    haptic();
+    swapModal('list', false, function (m) {
+      var box = el('div', 'pick pick--tile tile--' + flow), head = el('div', 'pick__head'), badge = el('i', 'badge'), say = el('p', 'tile__say'), line = el('p', 'pick-line');
+      badge.appendChild(tileIcon({ where: 'bag', days: 'cal', notes: 'note', changes: 'chg', from: 'down', months: 'up', left: 'wallet' }[key]));
+      say.id = 'tileSay';
+      line.id = 'tileLine';
+      var titles = { where: 'Куда ушло', days: P.kind === 'year' ? 'По месяцам' : 'По дням', notes: 'На что чаще всего', changes: 'Что изменилось', from: 'Откуда пришло', months: 'Доход по месяцам', left: 'Сбережения' };
+      add(head, badge, el('h2', 'pick__title', titles[key]));
+      add(box, head);
+      if (key === 'where') {
+        var sp = spendParts(cur);
+        say.appendChild(document.createTextNode(sp[0].name + ' '));
+        say.appendChild(el('small', '', pctOf(sp[0].sum, cur.spent) + ' трат · ' + rangeText(P.from, P.end)));
+        add(box, say, sharesBlock(sp, 'statsLegend', function (p) { if (p.id) { openStatCat(p.id, P, p.color, again); } else { openRest(p.rest, P, again); } }, function (p, total) {
+          clear(say);
+          say.appendChild(document.createTextNode((p || sp[0]).name + ' '));
+          say.appendChild(el('small', '', p ? F.fmt(p.sum) + ' BYN · ' + pctOf(p.sum, total) : pctOf(sp[0].sum, cur.spent) + ' трат · ' + rangeText(P.from, P.end)));
+        }));
+      } else if (key === 'from') {
+        var ip = incomeParts(P);
+        say.appendChild(document.createTextNode(ip[0].name + ' '));
+        say.appendChild(el('small', '', pctOf(ip[0].sum, cur.income) + ' дохода · ' + rangeText(P.from, P.end)));
+        add(box, say, sharesBlock(ip, 'statsSources', function (p) { openOpsSheet(p.name, p.sum, p.ops.length + F.NB + F.plural(p.ops.length, 'поступление', 'поступления', 'поступлений') + '.', p.ops, null, p.color, again); }, function (p, total) {
+          clear(say);
+          say.appendChild(document.createTextNode((p || ip[0]).name + ' '));
+          say.appendChild(el('small', '', p ? F.fmt(p.sum) + ' BYN · ' + pctOf(p.sum, total) : pctOf(ip[0].sum, cur.income) + ' дохода · ' + rangeText(P.from, P.end)));
+        }));
+      } else if (key === 'days') {
+        var md = maxDay(cur);
+        say.appendChild(document.createTextNode(rangeText(md.d, md.d) + ' '));
+        say.appendChild(el('small', '', 'самый дорогой день · ' + whole(md.v) + F.NB + 'BYN'));
+        box.appendChild(say);
+        if (P.kind === 'month') { var cal = calendarBlock(P, cur, function (d) { var v = cur.days[d] || 0, cnt = F.inRange(st.all, d, d).filter(function (op) { return op.k === 'e'; }).length; line.textContent = nb(F.dayLabel(d) + ' · ' + F.fmt(v) + ' BYN · ' + cnt + F.NB + F.plural(cnt, 'трата', 'траты', 'трат')); }); add(box, cal, line); cal.pick(md.d); }
+        else if (P.kind === 'week') { var wv = []; for (var i = 0; i < 7; i++) { wv.push(cur.days[F.shiftDay(P.from, i)] || 0); } box.appendChild(barsBlock(wv, F.WEEKDAYS_SHORT, 'statsWeekDays', function (i) { openStatDay(F.shiftDay(P.from, i), again); })); }
+        else { box.appendChild(pairsBlock(cur)); }
+        box.appendChild(vizBlock('Коротко', rangeText(P.from, P.end), factRows(P, cur), 'vizFacts'));
+        var wd = P.kind === 'week' ? null : F.weekdayAvg(st.all, now);
+        if (wd && wd.weeks >= 4) { box.appendChild(vizBlock('Когда тратите', 'в среднем, с ' + rangeText(wd.first, wd.first), barsBlock(wd.avg, F.WEEKDAYS_SHORT, 'statsWeekdays', null), 'vizWhen')); }
+      } else if (key === 'notes') {
+        add(box, notesBlock(cur, P), el('p', 'pick__info pick__info--after', nb('Нажмите на строку, чтобы увидеть эти записи. Пишите заметки к тратам, и разбор станет точнее.')));
+      } else if (key === 'changes') {
+        add(box, el('p', 'pick__info', nb('Сравнение: ' + prevText(P) + '.')), changesList(F.catChanges(cur.cats, prev.cats, 6)));
+      } else if (key === 'months') {
+        var im = incomeMonths(P, now);
+        add(box, monthCols(im, 'statsIncomeMonths', function (it) { line.textContent = nb(F.monthLabel(it.m) + (it.now ? ', пока' : '') + ' · ' + F.fmt(it.v) + ' BYN'); }), line);
+      } else if (key === 'left') {
+        var sb = savingsBlock(P, now);
+        if (sb) { box.appendChild(sb); }
+      }
+      m.appendChild(box);
+    });
   }
   /** лист записей: заголовок, сумма, подпись, группы по заметкам (если есть) и сами записи с правкой */
   function openOpsSheet(title, sum, info, ops, groups, color, back) {
@@ -2762,7 +3084,7 @@
     }, back || null);
   }
   function periodOps(P) { return F.inRange(st.all, P.from, P.end).filter(function (op) { return op.k === 'e'; }); }
-  function openStatCat(id, P, color) {
+  function openStatCat(id, P, color, back) {
     var ops = periodOps(P).filter(function (op) { return op.c === id; }), sum = 0, notes = {}, plain = { n: 'без заметки', title: 'Без заметки', count: 0, sum: 0, plain: true, ops: [] };
     ops.forEach(function (op) {
       var b = F.bynOf(op);
@@ -2780,24 +3102,24 @@
       var was = F.rangeStats(st.all, P.prevFrom, P.prevEnd).cats[id] || 0, d = sum - was;
       cmp = !was ? ', ' + prevText(P) + ' таких трат не было' : d ? ', на' + F.NB + F.fmt(Math.abs(d)) + (d > 0 ? ' больше' : ' меньше') + ', чем ' + prevText(P) : ', столько же, сколько ' + prevText(P);
     }
-    openOpsSheet(F.dict('e', id).name, sum, ops.length + ' ' + F.plural(ops.length, 'запись', 'записи', 'записей') + ', ' + Math.round(sum / all * 100) + '% трат' + cmp + (groups.length ? '. По заметкам:' : '.'), ops, groups.length ? groups : null, color || null);
+    openOpsSheet(F.dict('e', id).name, sum, ops.length + ' ' + F.plural(ops.length, 'запись', 'записи', 'записей') + ', ' + Math.round(sum / all * 100) + '% трат' + cmp + (groups.length ? '. По заметкам:' : '.'), ops, groups.length ? groups : null, color || null, back || null);
   }
-  function openRest(rows, P) {
+  function openRest(rows, P, back) {
     var ids = {};
     rows.forEach(function (r) { ids[r.id] = 1; });
     var ops = periodOps(P).filter(function (op) { return ids[op.c]; }), sum = 0;
     ops.forEach(function (op) { sum += F.bynOf(op); });
-    openOpsSheet('Остальное', sum, rows.map(function (r) { return r.name; }).join(', ') + '.', ops, rows.map(function (r) { var mine = ops.filter(function (op) { return op.c === r.id; }); return { n: r.name, count: mine.length, sum: r.sum, ops: mine }; }), VIZ_REST);
+    openOpsSheet('Остальное', sum, rows.map(function (r) { return r.name; }).join(', ') + '.', ops, rows.map(function (r) { var mine = ops.filter(function (op) { return op.c === r.id; }); return { n: r.name, count: mine.length, sum: r.sum, ops: mine }; }), flowTints('out', 6)[5], back || null);
   }
-  function openStatDay(date) {
+  function openStatDay(date, back) {
     var ops = F.inRange(st.all, date, date).filter(function (op) { return op.k === 'e'; }), sum = 0;
     ops.forEach(function (op) { sum += F.bynOf(op); });
-    openOpsSheet(F.dayLabel(date), sum, ops.length + ' ' + F.plural(ops.length, 'трата', 'траты', 'трат') + '.', ops, null);
+    openOpsSheet(F.dayLabel(date), sum, ops.length + ' ' + F.plural(ops.length, 'трата', 'траты', 'трат') + '.', ops, null, null, back || null);
   }
-  function openStatNote(key, P) {
+  function openStatNote(key, P, back) {
     var ops = periodOps(P).filter(function (op) { return (op.n || '').toLowerCase() === key; }), sum = 0;
     ops.forEach(function (op) { sum += F.bynOf(op); });
-    openOpsSheet(ops.length ? ops[0].n : key, sum, ops.length + F.NB + F.plural(ops.length, 'раз', 'раза', 'раз') + ' за ' + rangeText(P.from, P.end) + '.', ops, null);
+    openOpsSheet(ops.length ? ops[0].n : key, sum, ops.length + F.NB + F.plural(ops.length, 'раз', 'раза', 'раз') + ' за ' + rangeText(P.from, P.end) + '.', ops, null, null, back || null);
   }
 
   function paint(animate) {
