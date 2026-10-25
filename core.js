@@ -127,6 +127,38 @@
     var next = packed ? packed.map(function (c) { return { id: c[0], name: c[1], icon: c[2], wide: c[1].length > 11 }; }) : base;
     target.splice.apply(target, [0, target.length].concat(next));
   }
+  // ---------- цвета (стиль «Цветное», решение разработчика 25.10.2026): системные цвета iOS 26, у каждой категории свой постоянный ----------
+  // зелёный — только доходы, красный не даётся никому (перерасход и удаление); девять стартовых категорий все разные, похожие по смыслу — одного цвета;
+  // мятный, бирюзовый и голубой близки, поэтому среди встроенных их не больше двух рядом (замечание арт-директора 25.10.2026)
+  var COLORS = ['orange', 'yellow', 'green', 'mint', 'teal', 'cyan', 'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'];
+  var CAT_COLOR = { food: 'orange', cafe: 'brown', trans: 'blue', auto: 'indigo', home: 'yellow', link: 'cyan', health: 'pink', beauty: 'purple', cloth: 'mint',
+    house: 'yellow', family: 'indigo', gifts: 'pink', fun: 'yellow', subs: 'pink', study: 'indigo', pets: 'brown', work: 'gray', credit: 'gray', docs: 'gray', other: 'gray',
+    care: 'purple', shop: 'brown', pay: 'green', free: 'mint', gift: 'teal', oth: 'gray' };
+  // из чего выбирать: траты — без зелёного и красного, доходы — зелёная гамма, цели — по очереди
+  var PICK_COLORS = { e: ['orange', 'yellow', 'mint', 'teal', 'cyan', 'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'], i: ['green', 'mint', 'teal', 'cyan', 'blue', 'gray'],
+    g: ['purple', 'teal', 'orange', 'pink', 'indigo', 'yellow', 'mint', 'cyan', 'brown', 'blue'] }; // синий последним: первая цель не сливается с синей кнопкой «Отложить»
+  var USER_COLORS = {};
+  /** свои цвета из настроек: { id категории или «g_» + id цели: имя цвета }, до 80 штук; чужое и лишнее отбрасывается */
+  function validColors(o) {
+    if (!o || typeof o !== 'object' || typeof o.length === 'number') { return null; }
+    var out = {}, n = 0;
+    Object.keys(o).forEach(function (k) { if (n < 80 && /^[a-z0-9_]{1,14}$/.test(k) && COLORS.indexOf(o[k]) >= 0) { out[k] = o[k]; n++; } });
+    return n ? out : null;
+  }
+  function hashPick(id, pool) { var h = 0; for (var i = 0; i < id.length; i++) { h = (h * 31 + id.charCodeAt(i)) % 9973; } return pool[h % pool.length]; }
+  /** цвет категории, источника или цели: свой выбор → встроенный → у цели по очереди → у своей категории по её id (одинаково на всех телефонах) */
+  function colorOf(kind, id) {
+    id = String(id || '');
+    if (Object.prototype.hasOwnProperty.call(USER_COLORS, id)) { return USER_COLORS[id]; }
+    if (id.indexOf('g_') === 0) {
+      for (var n = 0; n < GOALS.length; n++) { if ('g_' + GOALS[n].id === id) { return PICK_COLORS.g[n % PICK_COLORS.g.length]; } }
+      return 'gray';
+    }
+    if (id.indexOf('k_') === 0 || id.indexOf('d_') === 0 || !id) { return 'gray'; }
+    if (Object.prototype.hasOwnProperty.call(CAT_COLOR, id)) { return CAT_COLOR[id]; }
+    return hashPick(id, PICK_COLORS[kind === 'i' ? 'i' : 'e'].slice(0, -1));
+  }
+
   // ---------- цели: накопления считаются отдельно от остатка ----------
   // Цель: id, название, сколько накопить (копейки её валюты), валюта, сколько уже было накоплено на старте.
   // Запись «Отложить» хранится как трата с категорией «g_<id цели>», «Снять» — как доход с такой же категорией:
@@ -495,6 +527,7 @@
     setList(SRCS, BASE_SRCS, cfg ? validList(cfg.srcs) : null);
     setList(OFF.e, [], cfg ? validList(cfg.catsOff) : null);
     setList(OFF.i, [], cfg ? validList(cfg.srcsOff) : null);
+    USER_COLORS = (cfg && validColors(cfg.colors)) || {};
   }
   /** категория записи по id: из списка или из скрытых. Записи с категорией, которой нет нигде (список сменили), не теряются: они «без категории» */
   function dict(kind, id) {
@@ -860,7 +893,7 @@
     toByn: toByn, bynOf: bynOf, find: find, makeOp: makeOp, validOp: validOp, pack: pack, unpack: unpack, cleanNote: cleanNote, utf8len: utf8len, parseBackup: parseBackup,
     plural: plural, summarize: summarize, byDays: byDays, dayLabel: dayLabel, monthLabel: monthLabel,
     prevMonth: prevMonth, inMonth: inMonth, daysLeft: daysLeft, perDay: perDay, fmtDay: fmtDay, frequent: frequent, validGoal: validGoal, parseAmount: parseAmount, balance: balance, table: table,
-    validList: validList, useCfg: useCfg, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId,
+    validList: validList, useCfg: useCfg, validColors: validColors, colorOf: colorOf, COLORS: COLORS, PICK_COLORS: PICK_COLORS, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId,
     GOALS: GOALS, GOALS_MAX: GOALS_MAX, validGoals: validGoals, packGoals: packGoals, isGoalOp: isGoalOp, goalOf: goalOf, goalAmount: goalAmount, goalByn: goalByn, goalState: goalState, goalForecast: goalForecast,
     parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX,
     WEEKDAYS_SHORT: WEEKDAYS_SHORT, MONTHS_GEN: MONTHS_GEN, dow: dow, daysBetween: daysBetween, lastDay: lastDay, statsPeriod: statsPeriod, periodShift: periodShift, inRange: inRange, rangeStats: rangeStats,

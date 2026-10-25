@@ -4,35 +4,35 @@
    Без атрибута data-accent — синий, как до палитры. */
 
 :root { --lg-chroma: 1.5; --lg-press: 1.34; --lg-rim: .55; --lg-rubber: .55; --lg-chromaWarm: rgba(255, 70, 150, .75); --lg-chromaCool: rgba(60, 160, 255, .8);
-  --acc: #007AFF; --acc-text: #0040DD; --acc-soft: rgba(0, 122, 255, .12); }
-:root[data-theme="dark"] { --acc: #0A84FF; --acc-text: #409CFF; --acc-soft: rgba(10, 132, 255, .18); }
+  --acc: #0088FF; --acc-text: #1C68E8; --acc-soft: rgba(0, 136, 255, .12); }
+:root[data-theme="dark"] { --acc: #0091FF; --acc-text: #5CB8FF; --acc-soft: rgba(0, 145, 255, .18); }
 /* палитра: системный цвет (выбранное), доступный для текста (≥ 4,5), цвет кнопки и надпись на ней — из tokens.json Apple-системы */
 :root[data-accent="graphite"] { --accent: #1D1D1F; --on-accent: #FFFFFF; --acc: #1D1D1F; --acc-text: #1D1D1F; --acc-soft: rgba(29, 29, 31, .1); }
-:root[data-accent="blue"] { --accent: #0070EB; --on-accent: #FFFFFF; --acc: #007AFF; --acc-text: #0040DD; --acc-soft: rgba(0, 122, 255, .12); }
-:root[data-accent="indigo"] { --accent: #5856D6; --on-accent: #FFFFFF; --acc: #5856D6; --acc-text: #3634A3; --acc-soft: rgba(88, 86, 214, .12); }
-:root[data-accent="purple"] { --accent: #A944DB; --on-accent: #FFFFFF; --acc: #AF52DE; --acc-text: #8944AB; --acc-soft: rgba(175, 82, 222, .12); }
-:root[data-accent="pink"] { --accent: #E9002C; --on-accent: #FFFFFF; --acc: #FF2D55; --acc-text: #D30F45; --acc-soft: rgba(255, 45, 85, .12); }
-:root[data-accent="red"] { --accent: #EA0C00; --on-accent: #FFFFFF; --acc: #FF3B30; --acc-text: #D70015; --acc-soft: rgba(255, 59, 48, .12); }
-:root[data-accent="orange"] { --accent: #FF9500; --on-accent: #1D1D1F; --acc: #FF9500; --acc-text: #C93400; --acc-soft: rgba(255, 149, 0, .14); }
-:root[data-accent="yellow"] { --accent: #FFCC00; --on-accent: #1D1D1F; --acc: #FFCC00; --acc-text: #B25000; --acc-soft: rgba(255, 204, 0, .18); }
-:root[data-accent="green"] { --accent: #34C759; --on-accent: #1D1D1F; --acc: #34C759; --acc-text: #1F7A35; --acc-soft: rgba(52, 199, 89, .14); }
-:root[data-accent="mint"] { --accent: #00C7BE; --on-accent: #1D1D1F; --acc: #00C7BE; --acc-text: #0C7C77; --acc-soft: rgba(0, 199, 190, .14); }
-:root[data-accent="teal"] { --accent: #30B0C7; --on-accent: #1D1D1F; --acc: #30B0C7; --acc-text: #00798F; --acc-soft: rgba(48, 176, 199, .14); }
-:root[data-accent="cyan"] { --accent: #32ADE6; --on-accent: #1D1D1F; --acc: #32ADE6; --acc-text: #0071A4; --acc-soft: rgba(50, 173, 230, .14); }
-:root[data-accent="brown"] { --accent: #8A7050; --on-accent: #FFFFFF; --acc: #A2845E; --acc-text: #7F6545; --acc-soft: rgba(162, 132, 94, .14); }
+:root[data-accent="blue"] { --accent: #0076DE; --on-accent: #FFFFFF; --acc: #0088FF; --acc-text: #1C68E8; --acc-soft: rgba(0, 136, 255, .12); }
+:root[data-accent="indigo"] { --accent: #6155F5; --on-accent: #FFFFFF; --acc: #6155F5; --acc-text: #564ADE; --acc-soft: rgba(97, 85, 245, .12); }
+:root[data-accent="purple"] { --accent: #C12ED5; --on-accent: #FFFFFF; --acc: #CB30E0; --acc-text: #B02FC2; --acc-soft: rgba(203, 48, 224, .12); }
+:root[data-accent="pink"] { --accent: #E0284B; --on-accent: #FFFFFF; --acc: #FF2D55; --acc-text: #DE114A; --acc-soft: rgba(255, 45, 85, .12); }
+:root[data-accent="red"] { --accent: #E03135; --on-accent: #FFFFFF; --acc: #FF383C; --acc-text: #DD142B; --acc-soft: rgba(255, 56, 60, .12); }
+:root[data-accent="orange"] { --accent: #FF8D28; --on-accent: #1D1D1F; --acc: #FF8D28; --acc-text: #BB4F00; --acc-soft: rgba(255, 141, 40, .12); }
+:root[data-accent="yellow"] { --accent: #FFCC00; --on-accent: #1D1D1F; --acc: #FFCC00; --acc-text: #996500; --acc-soft: rgba(255, 204, 0, .18); }
+:root[data-accent="green"] { --accent: #34C759; --on-accent: #1D1D1F; --acc: #34C759; --acc-text: #008230; --acc-soft: rgba(52, 199, 89, .12); }
+:root[data-accent="mint"] { --accent: #00C8B3; --on-accent: #1D1D1F; --acc: #00C8B3; --acc-text: #007E6F; --acc-soft: rgba(0, 200, 179, .12); }
+:root[data-accent="teal"] { --accent: #00C3D0; --on-accent: #1D1D1F; --acc: #00C3D0; --acc-text: #007B90; --acc-soft: rgba(0, 195, 208, .12); }
+:root[data-accent="cyan"] { --accent: #00C0E8; --on-accent: #1D1D1F; --acc: #00C0E8; --acc-text: #0078A5; --acc-soft: rgba(0, 192, 232, .12); }
+:root[data-accent="brown"] { --accent: #966E52; --on-accent: #FFFFFF; --acc: #AC7F5E; --acc-text: #8E684D; --acc-soft: rgba(172, 127, 94, .12); }
 :root[data-theme="dark"][data-accent="graphite"] { --accent: #F5F5F7; --on-accent: #000000; --acc: #F5F5F7; --acc-text: #F5F5F7; --acc-soft: rgba(245, 245, 247, .14); }
-:root[data-theme="dark"][data-accent="blue"] { --accent: #0A84FF; --on-accent: #000000; --acc: #0A84FF; --acc-text: #409CFF; --acc-soft: rgba(10, 132, 255, .18); }
-:root[data-theme="dark"][data-accent="indigo"] { --accent: #5E5CE6; --on-accent: #FFFFFF; --acc: #5E5CE6; --acc-text: #7D7AFF; --acc-soft: rgba(94, 92, 230, .2); }
-:root[data-theme="dark"][data-accent="purple"] { --accent: #BF5AF2; --on-accent: #000000; --acc: #BF5AF2; --acc-text: #DA8FFF; --acc-soft: rgba(191, 90, 242, .18); }
-:root[data-theme="dark"][data-accent="pink"] { --accent: #FF375F; --on-accent: #000000; --acc: #FF375F; --acc-text: #FF6482; --acc-soft: rgba(255, 55, 95, .18); }
-:root[data-theme="dark"][data-accent="red"] { --accent: #FF453A; --on-accent: #000000; --acc: #FF453A; --acc-text: #FF6961; --acc-soft: rgba(255, 69, 58, .18); }
-:root[data-theme="dark"][data-accent="orange"] { --accent: #FF9F0A; --on-accent: #000000; --acc: #FF9F0A; --acc-text: #FFB340; --acc-soft: rgba(255, 159, 10, .18); }
-:root[data-theme="dark"][data-accent="yellow"] { --accent: #FFD60A; --on-accent: #000000; --acc: #FFD60A; --acc-text: #FFD426; --acc-soft: rgba(255, 214, 10, .18); }
-:root[data-theme="dark"][data-accent="green"] { --accent: #30D158; --on-accent: #000000; --acc: #30D158; --acc-text: #30DB5B; --acc-soft: rgba(48, 209, 88, .18); }
-:root[data-theme="dark"][data-accent="mint"] { --accent: #63E6E2; --on-accent: #000000; --acc: #63E6E2; --acc-text: #66D4CF; --acc-soft: rgba(99, 230, 226, .18); }
-:root[data-theme="dark"][data-accent="teal"] { --accent: #40C8E0; --on-accent: #000000; --acc: #40C8E0; --acc-text: #5DE6FF; --acc-soft: rgba(64, 200, 224, .18); }
-:root[data-theme="dark"][data-accent="cyan"] { --accent: #64D2FF; --on-accent: #000000; --acc: #64D2FF; --acc-text: #70D7FF; --acc-soft: rgba(100, 210, 255, .18); }
-:root[data-theme="dark"][data-accent="brown"] { --accent: #AC8E68; --on-accent: #000000; --acc: #AC8E68; --acc-text: #B59469; --acc-soft: rgba(172, 142, 104, .2); }
+:root[data-theme="dark"][data-accent="blue"] { --accent: #0078D4; --on-accent: #FFFFFF; --acc: #0091FF; --acc-text: #5CB8FF; --acc-soft: rgba(0, 145, 255, .18); }
+:root[data-theme="dark"][data-accent="indigo"] { --accent: #5E6BDB; --on-accent: #FFFFFF; --acc: #6D7CFF; --acc-text: #A7AAFF; --acc-soft: rgba(109, 124, 255, .18); }
+:root[data-theme="dark"][data-accent="purple"] { --accent: #C12ED5; --on-accent: #FFFFFF; --acc: #DB34F2; --acc-text: #EA8DFF; --acc-soft: rgba(219, 52, 242, .18); }
+:root[data-theme="dark"][data-accent="pink"] { --accent: #DE3053; --on-accent: #FFFFFF; --acc: #FF375F; --acc-text: #FF8AC4; --acc-soft: rgba(255, 55, 95, .18); }
+:root[data-theme="dark"][data-accent="red"] { --accent: #DB393B; --on-accent: #FFFFFF; --acc: #FF4245; --acc-text: #FF6165; --acc-soft: rgba(255, 66, 69, .18); }
+:root[data-theme="dark"][data-accent="orange"] { --accent: #FF9230; --on-accent: #000000; --acc: #FF9230; --acc-text: #FFA056; --acc-soft: rgba(255, 146, 48, .18); }
+:root[data-theme="dark"][data-accent="yellow"] { --accent: #FFD600; --on-accent: #000000; --acc: #FFD600; --acc-text: #FEDF43; --acc-soft: rgba(255, 214, 0, .18); }
+:root[data-theme="dark"][data-accent="green"] { --accent: #30D158; --on-accent: #000000; --acc: #30D158; --acc-text: #4AD968; --acc-soft: rgba(48, 209, 88, .18); }
+:root[data-theme="dark"][data-accent="mint"] { --accent: #00DAC3; --on-accent: #000000; --acc: #00DAC3; --acc-text: #54DFCB; --acc-soft: rgba(0, 218, 195, .18); }
+:root[data-theme="dark"][data-accent="teal"] { --accent: #00D2E0; --on-accent: #000000; --acc: #00D2E0; --acc-text: #3BDDEC; --acc-soft: rgba(0, 210, 224, .18); }
+:root[data-theme="dark"][data-accent="cyan"] { --accent: #3CD3FE; --on-accent: #000000; --acc: #3CD3FE; --acc-text: #6DD9FF; --acc-soft: rgba(60, 211, 254, .18); }
+:root[data-theme="dark"][data-accent="brown"] { --accent: #926E52; --on-accent: #FFFFFF; --acc: #B78A66; --acc-text: #DBA679; --acc-soft: rgba(183, 138, 102, .18); }
 
 /* ---------- жидкая линза: общий механизм (панель вкладок, сегменты) ---------- */
 .ios-lq { position: relative; isolation: isolate; display: flex; touch-action: pan-y; }

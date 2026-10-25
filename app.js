@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'b3f15b94ff'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '7c00d7e60b'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -324,6 +324,7 @@
     var name = el('span', '', bare ? F.dayLabel(op.d) : goal ? (op.k === 'e' ? 'Отложено' : 'Снято') : dict.name);
     rowNote(name, [goal && !bare ? dict.name : '', debt ? (op.k === 'e' ? 'отдано' : 'получено') : '', op.u !== 'BYN' ? F.fmtShort(op.a) + F.NB + op.u : '', op.n || ''].filter(Boolean).join(', ')); // сумма в валюте первой: длинную заметку строка обрежет, а её нет
     add(b, bare ? null : icon(dict.icon), name, el('data', op.k === 'i' ? 'is-plus' : '', (op.k === 'i' ? '+' : '') + F.fmt(F.bynOf(op))), icon('right', 'share__go'));
+    if (!bare) { tint(b, op.k, op.c); }
     b.addEventListener('click', function () { openEntry(op); });
     return b;
   }
@@ -331,6 +332,7 @@
   function shareRow(kind, c, share, n) {
     var li = el('li'), b = btn('share');
     b.setAttribute('data-cat', c.id);
+    tint(b, kind, c.id);
     var name = el('span', '', c.name), lim = kind === 'e' ? st.limits[c.id] : 0;
     rowNote(name, c.note);
     if (lim) { // лимит (вариант А, решение разработчика 17.10.2026): тихая строка под названием и кольцо; шкала строки остаётся долей трат
@@ -1717,6 +1719,7 @@
   function goalCard(g, tap) {
     var s = F.goalState(g, st.all), sec = el('section', 'goal'), b = btn('goal__btn'), head = el('span', 'cats__head'), pc = el('span', 'goal__pct', Math.min(100, Math.floor(s.have / g.a * 100)) + '%');
     b.setAttribute('data-goal', g.id);
+    tint(b, 'e', 'g_' + g.id);
     pc.appendChild(icon('right', 'share__go'));
     add(head, el('span', 'goal__title', g.name), pc);
     var line = el('span', 'goal__line'), track = el('i', 'goal__bar'), f = el('b');
@@ -2503,7 +2506,7 @@
     var s = F.goalState(g, st.all), fc = F.goalForecast(g, s);
     haptic();
     swapModal('list', false, function (m) {
-      var box = el('div', 'pick pick--goalview'), top = el('div', 'goal__top'), edit = btn('capsule'), sum = el('p', 'goal__sum'), meter = el('div', 'goal__meter'), track = el('i', 'goal__bar'), f = el('b');
+      var box = tint(el('div', 'pick pick--goalview'), 'e', 'g_' + g.id), top = el('div', 'goal__top'), edit = btn('capsule'), sum = el('p', 'goal__sum'), meter = el('div', 'goal__meter'), track = el('i', 'goal__bar'), f = el('b');
       var foot = el('footer', 'modal__dock modal__dock--duo'), putBtn = btn('btn', 'Отложить'), take = btn('btn btn--quiet', 'Снять');
       edit.id = 'goalEdit';
       edit.appendChild(el('span', '', 'Изменить'));
@@ -2540,7 +2543,7 @@
   }
   /** новая цель или правка: название, сумма, валюта (у существующей цели не меняется), сколько уже накоплено */
   function openGoalEdit(g, back, done) {
-    var u = g ? g.u : 0, busy = false, nameEl = null;
+    var u = g ? g.u : 0, busy = false, nameEl = null, hue = null;
     haptic();
     swapModal('list', false, function (m) {
       var box = el('div', 'pick pick--cat pick--newgoal'), foot = el('footer', 'modal__dock'), go = btn('btn', 'Сохранить цель'), row = el('div', 'field-row'), cur = btn('cur'), curText = el('span');
@@ -2590,7 +2593,7 @@
         var list = F.packGoals(), id = g ? g.id : F.catId(idsOf(list));
         if (g) { list = list.map(function (x) { return x[0] === id ? [id, name, a, u, s0] : x; }); } else { list.push([id, name, a, u, s0]); }
         busy = true;
-        store.patchCfg({ goals: list }, function (err) {
+        store.patchCfg(hue ? { goals: list, colors: colorsWith('g_' + id, hue) } : { goals: list }, function (err) {
           if (err) { busy = false; haptic('err'); toast(explain(err)); return; }
           haptic('ok');
           reload(true, function () {
@@ -2623,7 +2626,8 @@
         });
       }
       texts();
-      add(box, el('h2', 'pick__title', g ? 'Изменить цель' : 'Новая цель'), label('Название', 'goalName'), nameEl, label('Сколько накопить', 'goalSum'), row, startLbl, start, info, del);
+      var hues = colorful() ? huePicker(F.PICK_COLORS.g, g ? F.colorOf('e', 'g_' + g.id) : '', function (n) { hue = n; }) : null; // у новой цели без выбора — следующий по очереди
+      add(box, el('h2', 'pick__title', g ? 'Изменить цель' : 'Новая цель'), label('Название', 'goalName'), nameEl, label('Сколько накопить', 'goalSum'), row, startLbl, start, info, hues ? el('p', 'lbl lbl--hue', 'Цвет') : null, hues, del);
       foot.appendChild(go);
       add(m, box, foot);
     }, back);
@@ -2704,7 +2708,7 @@
   function whole(minor) { return F.fmtDay(minor); }
   function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
   /** яркий цвет потока: заливки, линии, столбики (тёмная тема — тёмные варианты Apple) */
-  function flowHex(f) { var d = isDark(); return f === 'in' ? (d ? '#30D158' : '#34C759') : f === 'out' ? (d ? '#FF9F0A' : '#FF9500') : (d ? '#F5F5F7' : '#1D1D1F'); }
+  function flowHex(f) { var d = isDark(); return f === 'in' ? HUES.green[d ? 1 : 0] : f === 'out' ? HUES.orange[d ? 1 : 0] : (d ? '#F5F5F7' : '#1D1D1F'); }
   /** доли одного потока — его цвет всё прозрачнее: крупная доля в полный цвет, видно и на белом, и на чёрном */
   function flowTints(f, n) {
     var hex = flowHex(f), r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16), a = [1, 0.76, 0.58, 0.44, 0.33, 0.27], out = [];
@@ -2865,8 +2869,9 @@
   function spendParts(cur) {
     var rows = F.catRows(cur.cats), top = rows.slice(0, 5), restSum = 0, tones = flowTints('out', 6);
     rows.slice(5).forEach(function (r) { restSum += r.sum; });
-    var parts = top.map(function (r, i) { return { id: r.id, name: r.name, sum: r.sum, color: tones[i] }; });
-    if (restSum) { parts.push({ id: '', name: 'Остальное', sum: restSum, color: tones[5], rest: rows.slice(5) }); }
+    var hue = colorful(); // «Цветное»: доля — цветом своей категории, тем же, что на главной и в истории; «Остальное» серое
+    var parts = top.map(function (r, i) { return { id: r.id, name: r.name, sum: r.sum, color: hue ? hueHex('e', r.id) : tones[i] }; });
+    if (restSum) { parts.push({ id: '', name: 'Остальное', sum: restSum, color: hue ? HUES.gray[isDark() ? 1 : 0] : tones[5], rest: rows.slice(5) }); }
     return parts;
   }
   /** откуда пришло: источники дохода отрезка, оттенками зелёного */
@@ -2875,7 +2880,7 @@
     ops.forEach(function (op) { map[op.c] = (map[op.c] || 0) + F.bynOf(op); });
     var list = Object.keys(map).map(function (k) { return { id: k, name: F.dict('i', k).name, sum: map[k] }; }).sort(function (a, b) { return b.sum - a.sum; });
     var tones = flowTints('in', list.length);
-    list.forEach(function (p, i) { p.color = tones[i]; p.ops = ops.filter(function (op) { return op.c === p.id; }); });
+    list.forEach(function (p, i) { p.color = colorful() ? hueHex('i', p.id) : tones[i]; p.ops = ops.filter(function (op) { return op.c === p.id; }); });
     return list;
   }
   function factRows(P, cur) {
@@ -3531,6 +3536,7 @@
       stage.style.borderRadius = '';
       stage.style.overflow = '';
       clear(modal);
+      if (ui.repaint) { ui.repaint = false; if (st.loaded) { paint(false); } }
       if (after) { after(); }
     });
   }
@@ -3787,6 +3793,7 @@
       }
       var li = el('li', (c.wide && cols === 3) || c.full ? 'chips__wide' : ''), b = btn('', c.name);
       b.setAttribute('data-cat', c.id);
+      tint(b, entry.kind === 'i' ? 'i' : 'e', c.id);
       b.addEventListener('click', function () {
         if (!entry || entry.busy) { return; }
         entry.cat = entry.cat === c.id ? '' : c.id;
@@ -4102,10 +4109,11 @@
   }
   function idsOf(lists) { var out = {}; lists.forEach(function (c) { out[c[0]] = 1; }); return out; }
   /** списки пишутся одной записью настроек; done(true) — сохранено и экран под листом обновлён */
-  function saveLists(kind, on, off, done) {
+  function saveLists(kind, on, off, done, colors) {
     var patch = {};
     patch[WORDS[kind].key] = on;
     patch[WORDS[kind].key + 'Off'] = off.length ? off : null;
+    if (colors) { patch.colors = colors; } // цвет категории — одной записью со списком
     store.patchCfg(patch, function (err) {
       if (err) { haptic('err'); toast(err === 'too long' ? 'Список не помещается: сократите названия.' : explain(err)); done(false); return; }
       reload(false, function (e) { done(!e); });
@@ -4262,10 +4270,43 @@
     tgTry(function () { if (tg.setBottomBarColor) { tg.setBottomBarColor(THEME_BAR[t]); } });
     if (repaint && st.loaded && !ui.open) { paint(false); }
   }
-  var ACCENTS = [['graphite', 'Графит', '#1D1D1F'], ['blue', 'Синий', '#007AFF'], ['indigo', 'Индиго', '#5856D6'], ['purple', 'Фиолетовый', '#AF52DE'], ['pink', 'Розовый', '#FF2D55'],
-    ['red', 'Красный', '#FF3B30'], ['orange', 'Оранжевый', '#FF9500'], ['yellow', 'Жёлтый', '#FFCC00'], ['green', 'Зелёный', '#34C759'], ['mint', 'Мятный', '#00C7BE'],
-    ['teal', 'Бирюзовый', '#30B0C7'], ['cyan', 'Голубой', '#32ADE6'], ['brown', 'Коричневый', '#A2845E']];
-  function accentPref() { try { var v = localStorage.getItem('fin_accent'); return ACCENTS.some(function (a) { return a[0] === v; }) ? v : 'blue'; } catch (e) { return 'blue'; } }
+  // ---------- стиль «Цветное» (решение разработчика 25.10.2026, вариант А «Плитки», круглые): тема отдельно, стиль отдельно ----------
+  /*HUES*/var HUES = { orange: ['#FF8D28', '#FF9230'], yellow: ['#FFCC00', '#FFD600'], green: ['#34C759', '#30D158'], mint: ['#00C8B3', '#00DAC3'], teal: ['#00C3D0', '#00D2E0'], cyan: ['#00C0E8', '#3CD3FE'], blue: ['#0088FF', '#0091FF'], indigo: ['#6155F5', '#6D7CFF'], purple: ['#CB30E0', '#DB34F2'], pink: ['#FF2D55', '#FF375F'], brown: ['#AC7F5E', '#B78A66'], gray: ['#8E8E93', '#8E8E93'] };/*/HUES*/ // [светлая, тёмная] — системные цвета iOS 26, вписывает tools/hues_css.py из Apple-системы
+  var HUE_NAMES = { orange: 'Оранжевый', yellow: 'Жёлтый', green: 'Зелёный', mint: 'Мятный', teal: 'Бирюзовый', cyan: 'Голубой', blue: 'Синий', indigo: 'Индиго', purple: 'Фиолетовый', pink: 'Розовый', brown: 'Коричневый', gray: 'Серый' };
+  function stylePref() { try { return localStorage.getItem('fin_style') === 'color' ? 'color' : 'plain'; } catch (e) { return 'plain'; } }
+  function colorful() { return document.documentElement.getAttribute('data-style') === 'color'; }
+  function applyStyle() { var root = document.documentElement; if (stylePref() === 'color') { root.setAttribute('data-style', 'color'); } else { root.removeAttribute('data-style'); } applyAccent(); }
+  /** цвет категории, источника или цели на элементе: data-c красит только стиль «Цветное» */
+  function tint(node, kind, id) { if (node) { node.setAttribute('data-c', F.colorOf(kind, id)); } return node; }
+  function hueHex(kind, id) { var h = HUES[F.colorOf(kind, id)] || HUES.gray; return h[isDark() ? 1 : 0]; }
+  /** ряд кружков выбора цвета (лист категории и цели): pick(имя) при касании */
+  function huePicker(names, cur, pick) {
+    var sw = el('div', 'accents accents--hue');
+    sw.id = 'hueList';
+    sw.setAttribute('role', 'group');
+    sw.setAttribute('aria-label', 'Цвет');
+    names.forEach(function (n) {
+      var b = btn(''), dot = el('i'), hex = HUES[n][isDark() ? 1 : 0];
+      dot.style.setProperty('--sw', hex);
+      b.style.setProperty('--sw', hex);
+      b.setAttribute('data-hue-pick', n);
+      b.setAttribute('aria-label', HUE_NAMES[n]);
+      b.setAttribute('aria-pressed', String(n === cur));
+      b.appendChild(dot);
+      b.addEventListener('click', function () { haptic(); [].forEach.call(sw.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); }); pick(n); });
+      sw.appendChild(b);
+    });
+    return sw;
+  }
+  /** свои цвета с одной заменой: для записи в настройки вместе со списком или целями */
+  function colorsWith(id, name) { var out = {}, cur = (st.cfg && st.cfg.colors) || {}; Object.keys(cur).forEach(function (k) { out[k] = cur[k]; }); out[id] = name; return out; }
+  // акцент: 13 цветов iOS 26; в цветном стиле оранжевый, зелёный и красный заняты (траты, доход, перерасход) — кнопки синие, выбор хранится
+  var ACCENTS = [['graphite', 'Графит', '#1D1D1F'], ['blue', 'Синий', '#0088FF'], ['indigo', 'Индиго', '#6155F5'], ['purple', 'Фиолетовый', '#CB30E0'], ['pink', 'Розовый', '#FF2D55'],
+    ['red', 'Красный', '#FF383C'], ['orange', 'Оранжевый', '#FF8D28'], ['yellow', 'Жёлтый', '#FFCC00'], ['green', 'Зелёный', '#34C759'], ['mint', 'Мятный', '#00C8B3'],
+    ['teal', 'Бирюзовый', '#00C3D0'], ['cyan', 'Голубой', '#00C0E8'], ['brown', 'Коричневый', '#AC7F5E']];
+  var BUSY_ACC = ['orange', 'green', 'red'];
+  function accentList() { return stylePref() === 'color' ? ACCENTS.filter(function (a) { return BUSY_ACC.indexOf(a[0]) < 0; }) : ACCENTS; }
+  function accentPref() { try { var v = localStorage.getItem('fin_accent'); return accentList().some(function (a) { return a[0] === v; }) ? v : 'blue'; } catch (e) { return 'blue'; } }
   /** цвет акцента на <html>: без атрибута — синий, как было до палитры */
   function applyAccent() { var a = accentPref(), root = document.documentElement; if (a === 'blue') { root.removeAttribute('data-accent'); } else { root.setAttribute('data-accent', a); } }
   function themeWord(p) { return p === 'light' ? 'светлое' : p === 'dark' ? 'тёмное' : inTg ? 'как в Telegram' : 'как в телефоне'; }
@@ -4285,16 +4326,34 @@
           try { if (o[0] === 'auto') { localStorage.removeItem('fin_theme'); } else { localStorage.setItem('fin_theme', o[0]); } } catch (e) { /* без памяти выбор живёт до закрытия */ }
           haptic('ok');
           applyTheme(false);
+          ui.repaint = true;
           openTheme(back);
         });
         li.appendChild(b);
         ul.appendChild(li);
       });
-      var cap = el('p', 'accents-cap', 'Цвет'), sw = el('div', 'accents');
+      var style = el('ul', 'menu menu--style'), sli = el('li'), sb = btn('menu__row menu__row--switch');
+      sb.id = 'styleBtn';
+      sb.setAttribute('role', 'switch');
+      sb.setAttribute('aria-checked', String(stylePref() === 'color'));
+      add(sb, el('span', '', 'Цветное оформление'), swKnob(sb));
+      sb.addEventListener('click', function () {
+        var v = sb.getAttribute('aria-checked') !== 'true';
+        sb.setAttribute('aria-checked', String(v));
+        try { if (v) { localStorage.setItem('fin_style', 'color'); } else { localStorage.removeItem('fin_style'); } } catch (e) { /* без памяти выбор живёт до закрытия */ }
+        haptic('ok');
+        applyStyle();
+        ui.repaint = true;
+        setTimeout(function () { openTheme(back); }, 260); // ручка доезжает, потом лист пересобирается: в цветном стиле в выборе цвета кнопок меньше кружков
+      });
+      sli.appendChild(sb);
+      style.appendChild(sli);
+      var hint = el('p', 'pick__info pick__info--style', nb(stylePref() === 'color' ? 'У каждой категории и цели свой цвет. Оранжевый, зелёный и красный заняты тратами, доходом и перерасходом, поэтому для кнопок их нет.' : 'Приложение в чёрно-белых тонах, цветные только графики.'));
+      var cap = el('p', 'accents-cap', 'Цвет кнопок'), sw = el('div', 'accents');
       sw.id = 'accentList';
       sw.setAttribute('role', 'group');
       sw.setAttribute('aria-label', 'Цвет');
-      ACCENTS.forEach(function (a) {
+      accentList().forEach(function (a) {
         var b = btn(''), dot = el('i');
         dot.style.setProperty('--sw', a[2]);
         b.style.setProperty('--sw', a[2]);
@@ -4310,7 +4369,7 @@
         });
         sw.appendChild(b);
       });
-      add(box, el('h2', 'pick__title', 'Оформление'), el('p', 'pick__info', 'Выбор хранится на этом телефоне.'), ul, cap, sw);
+      add(box, el('h2', 'pick__title', 'Оформление'), el('p', 'pick__info', 'Выбор хранится на этом телефоне.'), ul, style, hint, cap, sw);
       m.appendChild(box);
     }, back);
   }
@@ -4678,6 +4737,7 @@
   function catRow(kind, c, index, box) {
     var li = el('li', 'rows__li'), b = btn('row'), grip = el('span', 'row__grip');
     b.setAttribute('data-cat', c.id);
+    tint(b, kind, c.id);
     add(b, icon(c.icon), el('span', '', c.name), icon('right', 'row__go'));
     b.addEventListener('click', function () { editCat(kind, c.id); });
     grip.setAttribute('role', 'img');
@@ -4746,7 +4806,7 @@
   // ---------- новая категория и правка ----------
   /** лист с названием и значком. save(название, значок, fail) — сохранить; hide — скрыть (у новой категории его нет); taken — занятые названия */
   function catSheet(kind, item, back, save, hide, taken) {
-    var w = WORDS[kind], cur = item ? (ALIAS[item.icon] || item.icon) : 'box', busy = false, name = null;
+    var w = WORDS[kind], cur = item ? (ALIAS[item.icon] || item.icon) : 'box', busy = false, name = null, hue = null; // hue: выбранный цвет; не трогали — свой по умолчанию
     swapModal('list', false, function (m) {
       var box = el('div', 'pick pick--cat'), foot = el('footer', 'modal__dock'), go = btn('btn'), icons = el('ul', 'icons');
       name = el('input', 'field');
@@ -4789,7 +4849,7 @@
         var n = state();
         if (!n || busy) { haptic('err'); return; }
         busy = true;
-        save(n, cur, function () { busy = false; });
+        save(n, cur, function () { busy = false; }, hue);
       });
       var drop = null;
       if (hide) {
@@ -4797,7 +4857,9 @@
         drop.id = 'catHide';
         drop.addEventListener('click', function () { if (!busy) { hide(); } });
       }
-      add(box, el('h2', 'pick__title', item ? w.edit : w.fresh), l1, name, el('p', 'lbl', 'Значок'), icons, drop, hide ? el('p', 'pick__info pick__info--kept', nb(w.kept)) : null);
+      var hues = colorful() ? huePicker(F.PICK_COLORS[kind === 'i' ? 'i' : 'e'], item ? F.colorOf(kind, item.id) : '', function (n) { hue = n; box.setAttribute('data-c', n); }) : null;
+      if (item) { tint(box, kind, item.id); } // выбранный значок — на круге цвета категории, как будет в списках
+      add(box, el('h2', 'pick__title', item ? w.edit : w.fresh), l1, name, el('p', 'lbl', 'Значок'), icons, hues ? el('p', 'lbl lbl--hue', 'Цвет') : null, hues, drop, hide ? el('p', 'pick__info pick__info--kept', nb(w.kept)) : null);
       foot.appendChild(go);
       add(m, box, foot);
       state();
@@ -4808,9 +4870,10 @@
     var l = listsOf(kind), every = l.on.concat(l.off);
     if (every.length >= F.LIST_MAX) { haptic('err'); toast(WORDS[kind].full); return; }
     haptic();
-    catSheet(kind, null, function () { openCats(kind); }, function (name, ic, fail) {
-      l.on.push([F.catId(idsOf(every)), name, ic]);
-      saveLists(kind, l.on, l.off, function (ok) { if (ok) { openCats(kind, true); } else { l.on.pop(); fail(); } });
+    catSheet(kind, null, function () { openCats(kind); }, function (name, ic, fail, hue) {
+      var id = F.catId(idsOf(every));
+      l.on.push([id, name, ic]);
+      saveLists(kind, l.on, l.off, function (ok) { if (ok) { openCats(kind, true); } else { l.on.pop(); fail(); } }, hue ? colorsWith(id, hue) : null);
     }, null, namesOf(every));
   }
   function editCat(kind, id) {
@@ -4819,9 +4882,9 @@
     if (idx < 0) { return; }
     var was = l.on[idx];
     haptic();
-    catSheet(kind, { name: was[1], icon: was[2] }, function () { openCats(kind); }, function (name, ic, fail) {
+    catSheet(kind, { id: id, name: was[1], icon: was[2] }, function () { openCats(kind); }, function (name, ic, fail, hue) {
       l.on[idx] = [id, name, ic];
-      saveLists(kind, l.on, l.off, function (ok) { if (ok) { openCats(kind); } else { l.on[idx] = was; fail(); } });
+      saveLists(kind, l.on, l.off, function (ok) { if (ok) { openCats(kind); } else { l.on[idx] = was; fail(); } }, hue ? colorsWith(id, hue) : null);
     }, function () {
       if (l.on.length < 2) { haptic('err'); toast(w.last); return; }
       var on = l.on.filter(function (c) { return c[0] !== id; });
@@ -4852,6 +4915,7 @@
           back.appendChild(el('span', '', 'Вернуть'));
           back.setAttribute('data-cat', c[0]);
           back.setAttribute('aria-label', 'Вернуть: ' + c[1]);
+          tint(row, kind, c[0]);
           add(row, icon(c[2]), el('span', '', c[1]), back);
           back.addEventListener('click', function () {
             var now = listsOf(kind), rest = now.off.filter(function (x) { return x[0] !== c[0]; });
@@ -5492,7 +5556,7 @@
     if (bridgeOnly) { fail('Не загрузился Telegram', 'Закройте окно и откройте его ещё раз. Записи в безопасности: без связи с Telegram приложение ничего не меняет.'); return; }
     if (inTg && !(tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage)) { fail('Нужно обновить Telegram', 'Эта версия Telegram не умеет хранить записи приложения. Обновите Telegram и откройте учёт снова.'); return; }
     applyTheme(false); // до первой отрисовки: без вспышки светлого
-    applyAccent();
+    applyStyle(); // и акцент: в цветном стиле часть цветов кнопок занята
     applySize();
     tgTry(function () { tg.onEvent('themeChanged', function () { if (themePref() === 'auto') { applyTheme(true); } }); });
     if (window.matchMedia) { try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { if (!inTg && themePref() === 'auto') { applyTheme(true); } }); } catch (e) { /* старый браузер */ } }

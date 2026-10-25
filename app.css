@@ -7,15 +7,15 @@
 
 :root {
   --bg: #F5F5F7; --surface: #FFFFFF; --ink: #1D1D1F; --muted: #636368; --line: rgba(60,60,67,.14); --fill: #E8E8ED;
-  --accent: #0071E3; --on-accent: #FFFFFF;
+  --accent: #0076DE; --on-accent: #FFFFFF;
   /* оттенки для тёмной темы (пункт 11): в светлой те же значения, что были вписаны в правила */
   --tert: #AEAEB2; --quat: #C7C7CC; --gray: #8E8E93; --placeholder: #86868B; --icon-bg: #F0F0F3; --off-bg: #E3E3E8; --soft: #E5E5EA;
   --on-ink: #FFFFFF; --on-ink-2: rgba(255,255,255,.72); --axis: rgba(60,60,67,.3); --scrim: rgba(29,29,31,.36);
   --surface-0: rgba(255,255,255,0); --glass: rgba(240,240,244,.72); --glass-hi: rgba(255,255,255,.9);
   --cal0: #F2F2F7; --cal1: #E5E5EA; --cal2: #C7C7CC; --cal3: #6E6E73; --cal4: #3A3A3C;
   /* «Аналитика» (24.10.2026): системные цвета Apple — доход зелёный, траты оранжевые; -ink — их доступный вариант для мелкого текста */
-  --f-in: #34C759; --f-in-ink: #248A3D; --f-in-soft: #EAF8EE; --f-out: #FF9500; --f-out-ink: #B86200; --f-out-soft: #FFF4E5; --f-left-soft: rgba(29,29,31,.06);
-  --o1: #FFEACC; --o2: #FFC56E; --o3: #FF9500; --o4: #B86200;
+  --f-in: #34C759; --f-in-ink: #008230; --f-in-soft: #EBF9EE; --f-out: #FF8D28; --f-out-ink: #BB4F00; --f-out-soft: #FFF4EA; --f-left-soft: rgba(29,29,31,.06);
+  --o1: #FFE8D4; --o2: #FFBE84; --o3: #FF8D28; --o4: #BB4F00;
   --safe-b: max(env(safe-area-inset-bottom, 0px), var(--tg-safe-area-inset-bottom, 0px));
   /* размеры листа: уменьшаются на низких экранах (см. в конце файла) */
   --key-h: 52px; --chip-h: 44px; --chip-gap: 16px; --chip-top: 12px; --sum: 68px; --sum-m: 52px; --sum-s: 44px;
@@ -721,14 +721,14 @@ h1.month { margin: 0; cursor: default; }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #000000; --surface: #1C1C1E; --ink: #F5F5F7; --muted: #98989D; --line: rgba(84,84,88,.55); --fill: #2C2C2E;
-  --accent: #0A84FF; --on-accent: #FFFFFF;
+  --accent: #0078D4; --on-accent: #FFFFFF;
   --tert: #636366; --quat: #48484A; --gray: #8E8E93; --placeholder: #6E6E73; --icon-bg: #2C2C2E; --off-bg: #2C2C2E; --soft: #3A3A3C;
   --on-ink: #1C1C1E; --on-ink-2: rgba(28,28,30,.7); --axis: rgba(235,235,245,.22); --scrim: rgba(0,0,0,.75);
   --surface-0: rgba(28,28,30,0); --glass: rgba(44,44,46,.72); --glass-hi: rgba(255,255,255,.08);
   --thumb: #545458; --thumb-shadow: none; /* выбранная вкладка и сегмент светлее дорожки, как у Apple */
   --cal0: #2C2C2E; --cal1: #48484A; --cal2: #7C7C80; --cal3: #AEAEB2; --cal4: #F5F5F7; /* «по дням»: больше трат — светлее */
-  --f-in: #30D158; --f-in-ink: #30D158; --f-in-soft: rgba(48,209,88,.16); --f-out: #FF9F0A; --f-out-ink: #FF9F0A; --f-out-soft: rgba(255,159,10,.16); --f-left-soft: rgba(255,255,255,.08);
-  --o1: rgba(255,159,10,.22); --o2: rgba(255,159,10,.45); --o3: rgba(255,159,10,.72); --o4: #FF9F0A;
+  --f-in: #30D158; --f-in-ink: #4AD968; --f-in-soft: rgba(48, 209, 88, .16); --f-out: #FF9230; --f-out-ink: #FFA056; --f-out-soft: rgba(255, 146, 48, .16); --f-left-soft: rgba(255,255,255,.08);
+  --o1: rgba(255, 146, 48, .22); --o2: rgba(255, 146, 48, .45); --o3: rgba(255, 146, 48, .72); --o4: #FF9230;
 }
 /* листы поднимаются над фоном, как в iOS: лист светлее фона, строки в нём ещё светлее */
 :root[data-theme="dark"] .modal { --bg: #1C1C1E; --surface: #2C2C2E; --fill: #3A3A3C; --icon-bg: #3A3A3C; --off-bg: #3A3A3C; --surface-0: rgba(44,44,46,0); --thumb: #636366; }
@@ -1053,3 +1053,47 @@ html { overflow: hidden; }
 .stat-step b i { display: block; height: 100%; border-radius: 3px; background: var(--ink); }
 /* строка-переключатель в меню настроек (iOS 26, 25.10.2026): подпись слева, тумблер справа */
 .menu__row--switch { grid-template-columns: 1fr auto; padding-right: 12px; }
+/* ---------- стиль «Цветное» (решение разработчика 25.10.2026: вариант А «Плитки», круглые; тема отдельно) ----------
+   Значок категории — белым на круге её цвета, как в «Настройках» iPhone; полоса доли и шкала цели — тем же цветом; доход зелёный.
+   Цвет не единственный признак: значок и название остаются (HIG). */
+/* круг значка — дневной цвет и в тёмной теме, как иконки «Настроек» (ночные светлые варианты съедали белый значок); на жёлтом значок тёмный */
+:root[data-style="color"] .share[data-c] > svg:first-child, :root[data-style="color"] .op[data-c] > svg:first-child, :root[data-style="color"] .row[data-c] > svg:first-child { background: var(--cl); color: #FFFFFF; stroke-width: 2.2; }
+:root[data-style="color"] [data-c="yellow"] > svg:first-child { color: rgba(0, 0, 0, .78); }
+:root[data-style="color"] .share[data-c] i b { background: var(--c); opacity: 1 !important; }
+:root[data-style="color"] [data-c] .goal__bar b { background: var(--c); }
+:root[data-style="color"] .goal__btn[data-c] .goal__title::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px; border-radius: 50%; background: var(--c); vertical-align: 1px; }
+:root[data-style="color"] .op data.is-plus, :root[data-style="color"] .share[data-c="green"] data { color: var(--f-in-ink); }
+:root[data-style="color"] .chips button[data-c][aria-pressed="true"] { background: var(--cb); color: var(--con); }
+.menu--style { margin-top: 22px; }
+.pick__info--style { margin-top: 8px; }
+.accents--hue { margin-top: 0; }
+.lbl--hue { margin-top: 18px; }
+:root[data-style="color"] .pick--cat[data-c] .icons button[aria-pressed="true"] { background: var(--cl); color: #FFFFFF; }
+:root[data-style="color"] .pick--cat[data-c="yellow"] .icons button[aria-pressed="true"] { color: rgba(0, 0, 0, .78); }
+/* HUES:начало — собрано tools/hues_css.py из tokens.json, руками не править */
+/* --c — полоса и точка (в тёмной теме ночной вариант), --cl — круг значка (дневной в обеих темах), --ci — текст цветом (4,5), --cb и --con — выбранная метка и надпись на ней */
+[data-c="orange"] { --c: #FF8D28; --cl: #FF8D28; --ci: #BB4F00; --cb: #FF8D28; --con: #1D1D1F; }
+[data-c="yellow"] { --c: #FFCC00; --cl: #FFCC00; --ci: #996500; --cb: #FFCC00; --con: #1D1D1F; }
+[data-c="green"] { --c: #34C759; --cl: #34C759; --ci: #008230; --cb: #34C759; --con: #1D1D1F; }
+[data-c="mint"] { --c: #00C8B3; --cl: #00C8B3; --ci: #007E6F; --cb: #00C8B3; --con: #1D1D1F; }
+[data-c="teal"] { --c: #00C3D0; --cl: #00C3D0; --ci: #007B90; --cb: #00C3D0; --con: #1D1D1F; }
+[data-c="cyan"] { --c: #00C0E8; --cl: #00C0E8; --ci: #0078A5; --cb: #00C0E8; --con: #1D1D1F; }
+[data-c="blue"] { --c: #0088FF; --cl: #0088FF; --ci: #1C68E8; --cb: #0076DE; --con: #FFFFFF; }
+[data-c="indigo"] { --c: #6155F5; --cl: #6155F5; --ci: #564ADE; --cb: #6155F5; --con: #FFFFFF; }
+[data-c="purple"] { --c: #CB30E0; --cl: #CB30E0; --ci: #B02FC2; --cb: #C12ED5; --con: #FFFFFF; }
+[data-c="pink"] { --c: #FF2D55; --cl: #FF2D55; --ci: #DE114A; --cb: #E0284B; --con: #FFFFFF; }
+[data-c="brown"] { --c: #AC7F5E; --cl: #AC7F5E; --ci: #8E684D; --cb: #966E52; --con: #FFFFFF; }
+[data-c="gray"] { --c: #8E8E93; --cl: #8E8E93; --ci: #6C6C70; --cb: #6C6C70; --con: #FFFFFF; }
+:root[data-theme="dark"] [data-c="orange"] { --c: #FF9230; --ci: #FFA056; --cb: #FF9230; --con: #000000; }
+:root[data-theme="dark"] [data-c="yellow"] { --c: #FFD600; --ci: #FEDF43; --cb: #FFD600; --con: #000000; }
+:root[data-theme="dark"] [data-c="green"] { --c: #30D158; --ci: #4AD968; --cb: #30D158; --con: #000000; }
+:root[data-theme="dark"] [data-c="mint"] { --c: #00DAC3; --ci: #54DFCB; --cb: #00DAC3; --con: #000000; }
+:root[data-theme="dark"] [data-c="teal"] { --c: #00D2E0; --ci: #3BDDEC; --cb: #00D2E0; --con: #000000; }
+:root[data-theme="dark"] [data-c="cyan"] { --c: #3CD3FE; --ci: #6DD9FF; --cb: #3CD3FE; --con: #000000; }
+:root[data-theme="dark"] [data-c="blue"] { --c: #0091FF; --ci: #5CB8FF; --cb: #0078D4; --con: #FFFFFF; }
+:root[data-theme="dark"] [data-c="indigo"] { --c: #6D7CFF; --ci: #A7AAFF; --cb: #5E6BDB; --con: #FFFFFF; }
+:root[data-theme="dark"] [data-c="purple"] { --c: #DB34F2; --ci: #EA8DFF; --cb: #C12ED5; --con: #FFFFFF; }
+:root[data-theme="dark"] [data-c="pink"] { --c: #FF375F; --ci: #FF8AC4; --cb: #DE3053; --con: #FFFFFF; }
+:root[data-theme="dark"] [data-c="brown"] { --c: #B78A66; --ci: #DBA679; --cb: #926E52; --con: #FFFFFF; }
+:root[data-theme="dark"] [data-c="gray"] { --c: #8E8E93; --ci: #AEAEB2; --cb: #8E8E93; --con: #000000; }
+/* HUES:конец */

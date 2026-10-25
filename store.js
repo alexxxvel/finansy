@@ -87,6 +87,7 @@
     });
     if (o.seen) { out.seen = 1; }
     if (F.validGoals(o.goals)) { out.goals = F.validGoals(o.goals); }
+    if (F.validColors(o.colors)) { out.colors = F.validColors(o.colors); } // свои цвета категорий и целей (стиль «Цветное»)
     if (typeof o.goalAsk === 'string' && /^[a-z0-9]{1,10}$/.test(o.goalAsk)) { out.goalAsk = o.goalAsk; } // у прежней цели ещё не спросили, сколько уже накоплено
     return out;
   }
