@@ -1068,6 +1068,9 @@ html { overflow: hidden; }
 .pick__info--style { margin-top: 8px; }
 .accents--hue { margin-top: 0; }
 .lbl--hue { margin-top: 18px; }
+/* шкала «Потрачено» в цветном стиле: отрезки категорий в порядке «Куда ушло», остальное серым, перерасход красным */
+:root[data-style="color"] .spent__fill i[data-c] { background: var(--c); opacity: 1; }
+:root[data-style="color"] .spent__over[data-c] { background: var(--c); }
 :root[data-style="color"] .pick--cat[data-c] .icons button[aria-pressed="true"] { background: var(--cl); color: #FFFFFF; }
 :root[data-style="color"] .pick--cat[data-c="yellow"] .icons button[aria-pressed="true"] { color: rgba(0, 0, 0, .78); }
 /* HUES:начало — собрано tools/hues_css.py из tokens.json, руками не править */
@@ -1083,6 +1086,7 @@ html { overflow: hidden; }
 [data-c="purple"] { --c: #CB30E0; --cl: #CB30E0; --ci: #B02FC2; --cb: #C12ED5; --con: #FFFFFF; }
 [data-c="pink"] { --c: #FF2D55; --cl: #FF2D55; --ci: #DE114A; --cb: #E0284B; --con: #FFFFFF; }
 [data-c="brown"] { --c: #AC7F5E; --cl: #AC7F5E; --ci: #8E684D; --cb: #966E52; --con: #FFFFFF; }
+[data-c="red"] { --c: #FF383C; --cl: #FF383C; --ci: #DD142B; --cb: #E03135; --con: #FFFFFF; }
 [data-c="gray"] { --c: #8E8E93; --cl: #8E8E93; --ci: #6C6C70; --cb: #6C6C70; --con: #FFFFFF; }
 :root[data-theme="dark"] [data-c="orange"] { --c: #FF9230; --ci: #FFA056; --cb: #FF9230; --con: #000000; }
 :root[data-theme="dark"] [data-c="yellow"] { --c: #FFD600; --ci: #FEDF43; --cb: #FFD600; --con: #000000; }
@@ -1095,5 +1099,6 @@ html { overflow: hidden; }
 :root[data-theme="dark"] [data-c="purple"] { --c: #DB34F2; --ci: #EA8DFF; --cb: #C12ED5; --con: #FFFFFF; }
 :root[data-theme="dark"] [data-c="pink"] { --c: #FF375F; --ci: #FF8AC4; --cb: #DE3053; --con: #FFFFFF; }
 :root[data-theme="dark"] [data-c="brown"] { --c: #B78A66; --ci: #DBA679; --cb: #926E52; --con: #FFFFFF; }
+:root[data-theme="dark"] [data-c="red"] { --c: #FF4245; --ci: #FF6165; --cb: #DB393B; --con: #FFFFFF; }
 :root[data-theme="dark"] [data-c="gray"] { --c: #8E8E93; --ci: #AEAEB2; --cb: #8E8E93; --con: #000000; }
 /* HUES:конец */

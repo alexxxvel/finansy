@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '7c00d7e60b'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'fd40c2f693'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -375,14 +375,16 @@
     var bar = el('div', 'spent__bar');
     bar.setAttribute('role', 'img');
     bar.setAttribute('aria-label', avail > 0 ? 'Потрачено ' + Math.round(s.spent / avail * 100) + ' процентов доступного' : 'Доход ещё не внесён');
-    var segs = [];
-    if (s.cats.length <= 3) { segs = s.cats.map(function (c) { return c.sum; }); }
-    else { segs = [s.cats[0].sum, s.cats[1].sum, s.spent - s.cats[0].sum - s.cats[1].sum]; }
+    // строгий стиль: две крупнейшие категории и остальное графитом; «Цветное» (25.10.2026, как «Экранное время»): четыре категории из «Куда ушло» их цветами, остальное серым
+    var segs = [], top = colorful() ? 4 : 2, rest = s.spent;
+    if (s.cats.length <= top + 1) { segs = s.cats.map(function (c) { return { v: c.sum, id: c.id }; }); }
+    else { segs = s.cats.slice(0, top).map(function (c) { rest -= c.sum; return { v: c.sum, id: c.id }; }).concat([{ v: rest, id: '' }]); }
     var fill = el('div', 'spent__fill');
-    segs.forEach(function (v) { var i = el('i'); i.style.width = (v / base * 100).toFixed(2) + '%'; fill.appendChild(i); });
+    segs.forEach(function (g) { var i = el('i'); i.style.width = (g.v / base * 100).toFixed(2) + '%'; tint(i, 'e', g.id); fill.appendChild(i); });
     bar.appendChild(fill);
     if (B && s.spent > B) { // перерасход: за риской конца бюджета — самый тёмный отрезок
       var over = el('i', 'spent__over'), mark = el('b', 'spent__limit');
+      over.setAttribute('data-c', 'red'); // в цветном стиле перерасход красный: красный закреплён за ним
       over.style.left = (B / base * 100).toFixed(2) + '%';
       over.style.width = ((s.spent - B) / base * 100).toFixed(2) + '%';
       mark.style.left = (B / base * 100).toFixed(2) + '%';
@@ -4271,7 +4273,7 @@
     if (repaint && st.loaded && !ui.open) { paint(false); }
   }
   // ---------- стиль «Цветное» (решение разработчика 25.10.2026, вариант А «Плитки», круглые): тема отдельно, стиль отдельно ----------
-  /*HUES*/var HUES = { orange: ['#FF8D28', '#FF9230'], yellow: ['#FFCC00', '#FFD600'], green: ['#34C759', '#30D158'], mint: ['#00C8B3', '#00DAC3'], teal: ['#00C3D0', '#00D2E0'], cyan: ['#00C0E8', '#3CD3FE'], blue: ['#0088FF', '#0091FF'], indigo: ['#6155F5', '#6D7CFF'], purple: ['#CB30E0', '#DB34F2'], pink: ['#FF2D55', '#FF375F'], brown: ['#AC7F5E', '#B78A66'], gray: ['#8E8E93', '#8E8E93'] };/*/HUES*/ // [светлая, тёмная] — системные цвета iOS 26, вписывает tools/hues_css.py из Apple-системы
+  /*HUES*/var HUES = { orange: ['#FF8D28', '#FF9230'], yellow: ['#FFCC00', '#FFD600'], green: ['#34C759', '#30D158'], mint: ['#00C8B3', '#00DAC3'], teal: ['#00C3D0', '#00D2E0'], cyan: ['#00C0E8', '#3CD3FE'], blue: ['#0088FF', '#0091FF'], indigo: ['#6155F5', '#6D7CFF'], purple: ['#CB30E0', '#DB34F2'], pink: ['#FF2D55', '#FF375F'], brown: ['#AC7F5E', '#B78A66'], red: ['#FF383C', '#FF4245'], gray: ['#8E8E93', '#8E8E93'] };/*/HUES*/ // [светлая, тёмная] — системные цвета iOS 26, вписывает tools/hues_css.py из Apple-системы
   var HUE_NAMES = { orange: 'Оранжевый', yellow: 'Жёлтый', green: 'Зелёный', mint: 'Мятный', teal: 'Бирюзовый', cyan: 'Голубой', blue: 'Синий', indigo: 'Индиго', purple: 'Фиолетовый', pink: 'Розовый', brown: 'Коричневый', gray: 'Серый' };
   function stylePref() { try { return localStorage.getItem('fin_style') === 'color' ? 'color' : 'plain'; } catch (e) { return 'plain'; } }
   function colorful() { return document.documentElement.getAttribute('data-style') === 'color'; }

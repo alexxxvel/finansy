@@ -132,7 +132,7 @@
   // мятный, бирюзовый и голубой близки, поэтому среди встроенных их не больше двух рядом (замечание арт-директора 25.10.2026)
   var COLORS = ['orange', 'yellow', 'green', 'mint', 'teal', 'cyan', 'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'];
   var CAT_COLOR = { food: 'orange', cafe: 'brown', trans: 'blue', auto: 'indigo', home: 'yellow', link: 'cyan', health: 'pink', beauty: 'purple', cloth: 'mint',
-    house: 'yellow', family: 'indigo', gifts: 'pink', fun: 'yellow', subs: 'pink', study: 'indigo', pets: 'brown', work: 'gray', credit: 'gray', docs: 'gray', other: 'gray',
+    house: 'yellow', family: 'indigo', gifts: 'pink', fun: 'yellow', subs: 'blue', study: 'indigo', pets: 'brown', work: 'gray', credit: 'gray', docs: 'gray', other: 'gray',
     care: 'purple', shop: 'brown', pay: 'green', free: 'mint', gift: 'teal', oth: 'gray' };
   // из чего выбирать: траты — без зелёного и красного, доходы — зелёная гамма, цели — по очереди
   var PICK_COLORS = { e: ['orange', 'yellow', 'mint', 'teal', 'cyan', 'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'], i: ['green', 'mint', 'teal', 'cyan', 'blue', 'gray'],
