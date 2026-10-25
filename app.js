@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'f5f81a0241'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'b3f15b94ff'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -57,8 +57,44 @@
     'face-meh': '<circle cx="12" cy="12" r="9.25"/><path d="M8.75 9.75v.5M15.25 9.75v.5"/><path d="M8.75 15h6.5"/>',
     'face-bad': '<circle cx="12" cy="12" r="9.25"/><path d="M8.75 9.75v.5M15.25 9.75v.5"/><path d="M8.25 16.25c.9-1.5 2.2-2.25 3.75-2.25s2.85.75 3.75 2.25"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+    'tab-month': '<path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z"/>',
+    'tab-history': '<path d="M8 6.5h11M8 12h11M8 17.5h11"/><path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" stroke-width="2.6"/>',
+    'tab-goals': '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".6" stroke-width="2.4"/>',
+    'tab-stats': '<path d="M5 19V11M10 19V5M15 19v-6M20 19V8"/>',
     back: '<path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1ZM17 9l-6 6M11 9l6 6"/>'
   };
+
+  // ---------- слой iOS 26 (ios.js): линза над рядом кнопок, ручка тумблера ----------
+  /** ряд кнопок (.seg, .range) → сегменты с жидкой линзой; касание обрабатывают сами кнопки, а бросок линзы — нажимает выбранную */
+  function lq(seg) {
+    if (!seg || seg.classList.contains('ios-lq')) { return seg; }
+    var items = el('div', 'ios-lq__items');
+    [].slice.call(seg.children).forEach(function (b) { items.appendChild(b); });
+    add(seg, items, el('span', 'ios-lq__lens'));
+    seg.classList.add('ios-seg', 'ios-lq');
+    liquidOn(seg);
+    return seg;
+  }
+  function liquidOn(row) {
+    row.addEventListener('liquid:change', function (e) {
+      var b = row.querySelector('.ios-lq__items:not(.ios-lq__items--lens)').children[e.detail.index];
+      if (e.detail.drag && b) { b.click(); } // касание кнопки и так нажимает её; линзу дотянули пальцем — нажимаем за человека
+    });
+    (function wait(n) { // линзе нужна раскладка: включаем, когда ряд на странице
+      if (!window.IOS26) { return; }
+      if (row.isConnected && row.offsetWidth) { window.IOS26.liquid(row); } else if (n < 60) { requestAnimationFrame(function () { wait(n + 1); }); }
+    })(0);
+  }
+  /** ручка тумблера iOS 26 в строку-переключатель (строка нажимается целиком, как раньше) */
+  function swKnob(row) {
+    var sw = el('i', 'ios-switch'); // <i>: декоративная часть строки, текст строки — в её <span>
+    sw.appendChild(el('i', 'ios-switch__knob'));
+    (function wait(n) {
+      if (!window.IOS26) { return; }
+      if (row.isConnected && sw.offsetWidth) { window.IOS26.knob(row); } else if (n < 60) { requestAnimationFrame(function () { wait(n + 1); }); }
+    })(0);
+    return sw;
+  }
 
   // ---------- мелкие помощники ----------
   function el(tag, cls, text) {
@@ -80,12 +116,13 @@
   function clear(n) { while (n.firstChild) { n.removeChild(n.firstChild); } }
   function haptic(kind) {
     try {
-      if (!inTg || !tg.HapticFeedback) { return; }
+      if (!inTg || !tg.HapticFeedback || hapticOff()) { return; }
       if (kind === 'ok') { tg.HapticFeedback.notificationOccurred('success'); }
       else if (kind === 'err') { tg.HapticFeedback.notificationOccurred('error'); }
       else { tg.HapticFeedback.selectionChanged(); }
     } catch (e) { /* вибрации нет — работаем без неё */ }
   }
+  function hapticOff() { try { return localStorage.getItem('fin_haptic') === 'off'; } catch (e) { return false; } }
   function tgTry(fn) { try { if (inTg) { fn(); } } catch (e) { /* старый Telegram: метода нет */ } }
   /** короткий предлог не остаётся в конце строки: после него неразрывный пробел */
   function nb(s) { return String(s).replace(/(^|[\s«(])(в|на|за|из|к|с|у|о|и|а|не|по|до|от|под)\s/gi, '$1$2' + F.NB); }
@@ -187,11 +224,16 @@
   function paintDock() {
     clear(dock);
     dock.className = 'dock dock--stack';
-    var tabs = el('nav', 'tabs tabs--4');
+    // панель вкладок iOS 26 (25.10.2026): значки и подписи, под выбранной — линза; её можно тянуть пальцем между вкладками (ios.js)
+    var tabs = el('nav', 'tabs tabs--4 ios-tabbar ios-lq'), items = el('div', 'ios-lq__items');
     tabs.setAttribute('aria-label', 'Разделы');
+    items.setAttribute('role', 'tablist');
     [['month', 'Главная'], ['history', 'История'], ['goals', 'Цели'], ['stats', 'Аналитика']].forEach(function (t) {
-      var b = btn('', t[1]);
+      var b = btn('');
+      add(b, icon('tab-' + t[0]), el('span', '', t[1]));
       b.setAttribute('data-tab', t[0]);
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', String(st.tab === t[0]));
       if (st.tab === t[0]) { b.setAttribute('aria-current', 'page'); }
       b.addEventListener('click', function () {
         if (st.tab === t[0]) { return; }
@@ -204,8 +246,10 @@
         paintDock();
         paint(true);
       });
-      tabs.appendChild(b);
+      items.appendChild(b);
     });
+    add(tabs, items, el('span', 'ios-lq__lens'));
+    liquidOn(tabs);
     var a = btn('btn btn--add');
     a.id = 'addBtn';
     addText = document.createTextNode(addLabel());
@@ -1049,6 +1093,7 @@
       });
       range.appendChild(b);
     });
+    lq(range);
     var ctl = el('div', 'ctl');
     ctl.appendChild(range);
     body.appendChild(ctl);
@@ -1720,6 +1765,7 @@
     var seg = el('div', 'seg tabseg');
     seg.setAttribute('role', 'group');
     seg.setAttribute('aria-label', 'Раздел');
+    setTimeout(function () { lq(seg); }, 0);
     [['goals', 'Цели'], ['credits', 'Кредиты'], ['debts', 'Долги']].forEach(function (s) {
       var b = btn('', s[1]);
       b.setAttribute('data-sect', s[0]);
@@ -2386,8 +2432,7 @@
         sw = btn('switch-row');
         sw.id = 'creditRemind';
         sw.setAttribute('role', 'switch');
-        var knob = el('i', 'switch');
-        add(sw, el('span', '', 'Напоминать на главной'), knob);
+        add(sw, el('span', '', 'Напоминать на главной'), swKnob(sw));
         var swInfo = el('p', 'pick__info pick__info--switch'), swBusy = false, kState = F.creditState(k, st.all, F.monthOf(F.today()));
         swInfo.id = 'creditRemindInfo';
         var paint1 = function () {
@@ -3020,6 +3065,7 @@
       b.addEventListener('click', function () { if (S0.kind === k[0]) { return; } S0.kind = k[0]; S0.at = now; haptic(); paint(true); });
       range.appendChild(b);
     });
+    lq(range);
     var nav = el('div', 'period period--row'), back = btn('period__go'), fwd = btn('period__go'), canBack = !!first && P.from > first, canFwd = !P.current;
     back.id = 'periodBack';
     fwd.id = 'periodNext';
@@ -3389,7 +3435,11 @@
     var p = ui.h ? 1 - Math.max(0, Math.min(1, y / ui.h)) : 0;
     modal.style.transform = 'translate3d(0,' + y.toFixed(1) + 'px,0)';
     scrim.style.opacity = p.toFixed(3);
-    if (!reduce) { stage.style.transform = p > 0.001 ? 'scale(' + (1 - 0.04 * p).toFixed(4) + ')' : ''; }
+    if (!reduce) {
+      stage.style.transform = p > 0.001 ? 'translate3d(0,' + (10 * p).toFixed(1) + 'px,0) scale(' + (1 - 0.06 * p).toFixed(4) + ')' : '';
+      stage.style.borderRadius = p > 0.001 ? (22 * p).toFixed(1) + 'px' : '';
+      stage.style.overflow = p > 0.001 ? 'hidden' : '';
+    }
   }
   /** пружина как в SwiftUI: response — отзывчивость в секундах, damping 1 — без отскока. Стартует с текущего места и скорости */
   function springTo(target, velocity, damping, response, done) {
@@ -3411,17 +3461,25 @@
     ui.kind = kind;
     ui.back = back || null;
     clear(modal);
-    modal.className = 'modal' + (full ? ' modal--full' : '') + ' modal--' + kind + (back && !inTg ? ' modal--back' : '');
+    var round = kind === 'list' || kind === 'stats'; // листы-меню и разборы: круглая кнопка слева и заголовок по центру (iOS 26)
+    modal.className = 'modal' + (full ? ' modal--full' : '') + ' modal--' + kind + (back && !inTg ? ' modal--back' : '') + (round ? ' modal--round' : '');
     var grab = el('div', 'grab');
     grab.appendChild(el('i'));
     modal.appendChild(grab);
     if (back && !inTg) { // вне Telegram его кнопки «Назад» нет: своя стрелка в углу листа
-      var b = btn('modal__back');
+      var b = btn(round ? 'modal__round' : 'modal__back');
       b.id = 'backBtn';
       b.setAttribute('aria-label', 'Назад');
       b.appendChild(icon('left'));
       b.addEventListener('click', goBack);
       modal.appendChild(b);
+    } else if (round) {
+      var x = btn('modal__round');
+      x.id = 'closeBtn';
+      x.setAttribute('aria-label', 'Закрыть');
+      x.appendChild(icon('close'));
+      x.addEventListener('click', function () { closeModal(0); });
+      modal.appendChild(x);
     }
     build(modal);
     return grab;
@@ -3470,6 +3528,8 @@
       modal.style.display = 'none';
       scrim.style.display = 'none';
       stage.style.transform = '';
+      stage.style.borderRadius = '';
+      stage.style.overflow = '';
       clear(modal);
       if (after) { after(); }
     });
@@ -3548,6 +3608,7 @@
         seg.appendChild(b);
         return b;
       });
+      if (entry.segBtns.length) { lq(seg); }
 
       var way = null;
       if (debt && entry.fresh) { // новый долг: «Дать / Получить» в строке вместо заметки — лист той же высоты, что обычный, и помещается на 320×568
@@ -3561,6 +3622,7 @@
           way.appendChild(b);
           return b;
         });
+        lq(way);
       }
       var strip = el('div', 'strip' + (way ? ' strip--way' : ''));
       // заметка: обычное поле телефона. Стоит вверху листа, поэтому клавиатура телефона его не закрывает
@@ -4200,6 +4262,12 @@
     tgTry(function () { if (tg.setBottomBarColor) { tg.setBottomBarColor(THEME_BAR[t]); } });
     if (repaint && st.loaded && !ui.open) { paint(false); }
   }
+  var ACCENTS = [['graphite', 'Графит', '#1D1D1F'], ['blue', 'Синий', '#007AFF'], ['indigo', 'Индиго', '#5856D6'], ['purple', 'Фиолетовый', '#AF52DE'], ['pink', 'Розовый', '#FF2D55'],
+    ['red', 'Красный', '#FF3B30'], ['orange', 'Оранжевый', '#FF9500'], ['yellow', 'Жёлтый', '#FFCC00'], ['green', 'Зелёный', '#34C759'], ['mint', 'Мятный', '#00C7BE'],
+    ['teal', 'Бирюзовый', '#30B0C7'], ['cyan', 'Голубой', '#32ADE6'], ['brown', 'Коричневый', '#A2845E']];
+  function accentPref() { try { var v = localStorage.getItem('fin_accent'); return ACCENTS.some(function (a) { return a[0] === v; }) ? v : 'blue'; } catch (e) { return 'blue'; } }
+  /** цвет акцента на <html>: без атрибута — синий, как было до палитры */
+  function applyAccent() { var a = accentPref(), root = document.documentElement; if (a === 'blue') { root.removeAttribute('data-accent'); } else { root.setAttribute('data-accent', a); } }
   function themeWord(p) { return p === 'light' ? 'светлое' : p === 'dark' ? 'тёмное' : inTg ? 'как в Telegram' : 'как в телефоне'; }
   /** лист «Оформление»: три строки, выбранная с галочкой; меняется сразу */
   function openTheme(back) {
@@ -4222,7 +4290,27 @@
         li.appendChild(b);
         ul.appendChild(li);
       });
-      add(box, el('h2', 'pick__title', 'Оформление'), el('p', 'pick__info', 'Выбор хранится на этом телефоне.'), ul);
+      var cap = el('p', 'accents-cap', 'Цвет'), sw = el('div', 'accents');
+      sw.id = 'accentList';
+      sw.setAttribute('role', 'group');
+      sw.setAttribute('aria-label', 'Цвет');
+      ACCENTS.forEach(function (a) {
+        var b = btn(''), dot = el('i');
+        dot.style.setProperty('--sw', a[2]);
+        b.style.setProperty('--sw', a[2]);
+        b.setAttribute('data-accent-pick', a[0]);
+        b.setAttribute('aria-label', a[1]);
+        b.setAttribute('aria-pressed', String(accentPref() === a[0]));
+        b.appendChild(dot);
+        b.addEventListener('click', function () {
+          try { if (a[0] === 'blue') { localStorage.removeItem('fin_accent'); } else { localStorage.setItem('fin_accent', a[0]); } } catch (e) { /* без памяти выбор живёт до закрытия */ }
+          haptic('ok');
+          applyAccent();
+          [].forEach.call(sw.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        });
+        sw.appendChild(b);
+      });
+      add(box, el('h2', 'pick__title', 'Оформление'), el('p', 'pick__info', 'Выбор хранится на этом телефоне.'), ul, cap, sw);
       m.appendChild(box);
     }, back);
   }
@@ -4281,7 +4369,7 @@
         b.setAttribute('data-share', key);
         b.setAttribute('aria-checked', String(parts[key]));
         text.appendChild(el('small', '', sub));
-        add(b, text, el('i', 'switch'));
+        add(b, text, swKnob(b));
         b.addEventListener('click', function () { parts[key] = !parts[key]; b.setAttribute('aria-checked', String(parts[key])); haptic(); state(); });
         li.appendChild(b);
         ul.appendChild(li);
@@ -4480,7 +4568,28 @@
       row('paysBtn', 'Платежи месяца', (st.pays.list || []).length ? String(st.pays.list.length) : 'нет', function () { openPays(openSettings); });
       cur = ul2;
       row('themeBtn', 'Оформление', themeWord(themePref()), function () { openTheme(openSettings); });
-      row('sizeBtn', 'Размер текста', sizePref() === 'big' ? 'крупный' : 'обычный', function () { openSize(openSettings); });
+      function swRow(id, name, on, fn) { // строка-переключатель iOS 26: нажимается целиком, ручка — стекло
+        var li = el('li'), b = btn('menu__row menu__row--switch');
+        b.id = id;
+        b.setAttribute('role', 'switch');
+        b.setAttribute('aria-checked', String(on));
+        add(b, el('span', '', name), swKnob(b));
+        b.addEventListener('click', function () { var v = b.getAttribute('aria-checked') !== 'true'; b.setAttribute('aria-checked', String(v)); fn(v); });
+        li.appendChild(b);
+        cur.appendChild(li);
+      }
+      swRow('sizeBtn', 'Крупный текст', sizePref() === 'big', function (v) {
+        try { if (v) { localStorage.setItem('fin_size', 'big'); } else { localStorage.removeItem('fin_size'); } } catch (e) { /* без памяти выбор живёт до закрытия */ }
+        haptic('ok');
+        applySize();
+        fit();
+      });
+      if (inTg && tg.HapticFeedback) {
+        swRow('hapticBtn', 'Вибрация при касании', !hapticOff(), function (v) {
+          try { if (v) { localStorage.removeItem('fin_haptic'); } else { localStorage.setItem('fin_haptic', 'off'); } } catch (e) { /* без памяти выбор живёт до закрытия */ }
+          haptic('ok');
+        });
+      }
       cur = ul3;
       row('shareBtn', 'Поделиться настройкой', 'близкому', function () { openShare(openSettings); });
       row('pasteBtn', 'Вставить настройку', 'по коду', function () { openImport(openSettings, null); });
@@ -5383,6 +5492,7 @@
     if (bridgeOnly) { fail('Не загрузился Telegram', 'Закройте окно и откройте его ещё раз. Записи в безопасности: без связи с Telegram приложение ничего не меняет.'); return; }
     if (inTg && !(tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage)) { fail('Нужно обновить Telegram', 'Эта версия Telegram не умеет хранить записи приложения. Обновите Telegram и откройте учёт снова.'); return; }
     applyTheme(false); // до первой отрисовки: без вспышки светлого
+    applyAccent();
     applySize();
     tgTry(function () { tg.onEvent('themeChanged', function () { if (themePref() === 'auto') { applyTheme(true); } }); });
     if (window.matchMedia) { try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { if (!inTg && themePref() === 'auto') { applyTheme(true); } }); } catch (e) { /* старый браузер */ } }

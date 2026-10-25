@@ -1,0 +1,114 @@
+/* Учёт финансов: слой iOS 26 из Apple-системы студии (_дизайн-система-apple/web/ios.css, одобрен 24.10.2026; в приложение — 25.10.2026, «бери всё»).
+   Жидкое стекло: панель вкладок с линзой (как в Telegram на iOS 26), сегменты с линзой, ручка тумблера-стекло; цвет акцента из 13 системных цветов iOS.
+   Переменные приложения: --accent и --on-accent — главная кнопка (как было), --acc — системный цвет (выбранное, тумблер), --acc-text — для текста, --acc-soft — мягкая заливка.
+   Без атрибута data-accent — синий, как до палитры. */
+
+:root { --lg-chroma: 1.5; --lg-press: 1.34; --lg-rim: .55; --lg-rubber: .55; --lg-chromaWarm: rgba(255, 70, 150, .75); --lg-chromaCool: rgba(60, 160, 255, .8);
+  --acc: #007AFF; --acc-text: #0040DD; --acc-soft: rgba(0, 122, 255, .12); }
+:root[data-theme="dark"] { --acc: #0A84FF; --acc-text: #409CFF; --acc-soft: rgba(10, 132, 255, .18); }
+/* палитра: системный цвет (выбранное), доступный для текста (≥ 4,5), цвет кнопки и надпись на ней — из tokens.json Apple-системы */
+:root[data-accent="graphite"] { --accent: #1D1D1F; --on-accent: #FFFFFF; --acc: #1D1D1F; --acc-text: #1D1D1F; --acc-soft: rgba(29, 29, 31, .1); }
+:root[data-accent="blue"] { --accent: #0070EB; --on-accent: #FFFFFF; --acc: #007AFF; --acc-text: #0040DD; --acc-soft: rgba(0, 122, 255, .12); }
+:root[data-accent="indigo"] { --accent: #5856D6; --on-accent: #FFFFFF; --acc: #5856D6; --acc-text: #3634A3; --acc-soft: rgba(88, 86, 214, .12); }
+:root[data-accent="purple"] { --accent: #A944DB; --on-accent: #FFFFFF; --acc: #AF52DE; --acc-text: #8944AB; --acc-soft: rgba(175, 82, 222, .12); }
+:root[data-accent="pink"] { --accent: #E9002C; --on-accent: #FFFFFF; --acc: #FF2D55; --acc-text: #D30F45; --acc-soft: rgba(255, 45, 85, .12); }
+:root[data-accent="red"] { --accent: #EA0C00; --on-accent: #FFFFFF; --acc: #FF3B30; --acc-text: #D70015; --acc-soft: rgba(255, 59, 48, .12); }
+:root[data-accent="orange"] { --accent: #FF9500; --on-accent: #1D1D1F; --acc: #FF9500; --acc-text: #C93400; --acc-soft: rgba(255, 149, 0, .14); }
+:root[data-accent="yellow"] { --accent: #FFCC00; --on-accent: #1D1D1F; --acc: #FFCC00; --acc-text: #B25000; --acc-soft: rgba(255, 204, 0, .18); }
+:root[data-accent="green"] { --accent: #34C759; --on-accent: #1D1D1F; --acc: #34C759; --acc-text: #1F7A35; --acc-soft: rgba(52, 199, 89, .14); }
+:root[data-accent="mint"] { --accent: #00C7BE; --on-accent: #1D1D1F; --acc: #00C7BE; --acc-text: #0C7C77; --acc-soft: rgba(0, 199, 190, .14); }
+:root[data-accent="teal"] { --accent: #30B0C7; --on-accent: #1D1D1F; --acc: #30B0C7; --acc-text: #00798F; --acc-soft: rgba(48, 176, 199, .14); }
+:root[data-accent="cyan"] { --accent: #32ADE6; --on-accent: #1D1D1F; --acc: #32ADE6; --acc-text: #0071A4; --acc-soft: rgba(50, 173, 230, .14); }
+:root[data-accent="brown"] { --accent: #8A7050; --on-accent: #FFFFFF; --acc: #A2845E; --acc-text: #7F6545; --acc-soft: rgba(162, 132, 94, .14); }
+:root[data-theme="dark"][data-accent="graphite"] { --accent: #F5F5F7; --on-accent: #000000; --acc: #F5F5F7; --acc-text: #F5F5F7; --acc-soft: rgba(245, 245, 247, .14); }
+:root[data-theme="dark"][data-accent="blue"] { --accent: #0A84FF; --on-accent: #000000; --acc: #0A84FF; --acc-text: #409CFF; --acc-soft: rgba(10, 132, 255, .18); }
+:root[data-theme="dark"][data-accent="indigo"] { --accent: #5E5CE6; --on-accent: #FFFFFF; --acc: #5E5CE6; --acc-text: #7D7AFF; --acc-soft: rgba(94, 92, 230, .2); }
+:root[data-theme="dark"][data-accent="purple"] { --accent: #BF5AF2; --on-accent: #000000; --acc: #BF5AF2; --acc-text: #DA8FFF; --acc-soft: rgba(191, 90, 242, .18); }
+:root[data-theme="dark"][data-accent="pink"] { --accent: #FF375F; --on-accent: #000000; --acc: #FF375F; --acc-text: #FF6482; --acc-soft: rgba(255, 55, 95, .18); }
+:root[data-theme="dark"][data-accent="red"] { --accent: #FF453A; --on-accent: #000000; --acc: #FF453A; --acc-text: #FF6961; --acc-soft: rgba(255, 69, 58, .18); }
+:root[data-theme="dark"][data-accent="orange"] { --accent: #FF9F0A; --on-accent: #000000; --acc: #FF9F0A; --acc-text: #FFB340; --acc-soft: rgba(255, 159, 10, .18); }
+:root[data-theme="dark"][data-accent="yellow"] { --accent: #FFD60A; --on-accent: #000000; --acc: #FFD60A; --acc-text: #FFD426; --acc-soft: rgba(255, 214, 10, .18); }
+:root[data-theme="dark"][data-accent="green"] { --accent: #30D158; --on-accent: #000000; --acc: #30D158; --acc-text: #30DB5B; --acc-soft: rgba(48, 209, 88, .18); }
+:root[data-theme="dark"][data-accent="mint"] { --accent: #63E6E2; --on-accent: #000000; --acc: #63E6E2; --acc-text: #66D4CF; --acc-soft: rgba(99, 230, 226, .18); }
+:root[data-theme="dark"][data-accent="teal"] { --accent: #40C8E0; --on-accent: #000000; --acc: #40C8E0; --acc-text: #5DE6FF; --acc-soft: rgba(64, 200, 224, .18); }
+:root[data-theme="dark"][data-accent="cyan"] { --accent: #64D2FF; --on-accent: #000000; --acc: #64D2FF; --acc-text: #70D7FF; --acc-soft: rgba(100, 210, 255, .18); }
+:root[data-theme="dark"][data-accent="brown"] { --accent: #AC8E68; --on-accent: #000000; --acc: #AC8E68; --acc-text: #B59469; --acc-soft: rgba(172, 142, 104, .2); }
+
+/* ---------- жидкая линза: общий механизм (панель вкладок, сегменты) ---------- */
+.ios-lq { position: relative; isolation: isolate; display: flex; touch-action: pan-y; }
+.ios-lq__items { position: relative; z-index: 1; display: flex; flex: 1; min-width: 0; }
+.ios-lq__items > button, .ios-lq__items--lens > span { flex: 1 1 0; min-width: 0; }
+.ios-lq.is-live .ios-lq__items:not(.ios-lq__items--lens) {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(var(--l, 0) * 1px), transparent calc(var(--l, 0) * 1px), transparent calc(var(--r, 0) * 1px), #000 calc(var(--r, 0) * 1px));
+  mask-image: linear-gradient(to right, #000 calc(var(--l, 0) * 1px), transparent calc(var(--l, 0) * 1px), transparent calc(var(--r, 0) * 1px), #000 calc(var(--r, 0) * 1px)); }
+.ios-lq__items--lens { position: absolute; z-index: 3; pointer-events: none; color: var(--acc-text); will-change: transform, clip-path; }
+.ios-lq__lens { position: absolute; z-index: 2; left: 0; top: 0; bottom: 0; border-radius: 999px; pointer-events: none; will-change: transform;
+  background: color-mix(in srgb, var(--gray) calc((1 - var(--press, 0)) * 20%), rgba(255, 255, 255, calc(.04 * var(--press, 0))));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, calc(var(--lg-rim) + .3 * var(--press, 0))), inset 0 0 0 1px rgba(255, 255, 255, calc(.85 * var(--press, 0))), inset 0 10px 16px -10px rgba(255, 255, 255, calc(.95 * var(--press, 0))), inset 0 -10px 18px -10px rgba(0, 0, 0, calc(.14 * var(--press, 0))), 0 calc(6px + 10px * var(--press, 0)) calc(18px + 20px * var(--press, 0)) -10px rgba(0, 0, 0, calc(.18 + .12 * var(--press, 0))); }
+/* радужная кромка преломления — видна, пока линзу держат (как у Telegram на iOS 26) */
+.ios-lq__lens::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: calc(var(--lg-chroma) * 1px);
+  background: conic-gradient(from 200deg, var(--lg-chromaWarm), rgba(255, 255, 255, 0) 18%, var(--lg-chromaCool) 34%, rgba(255, 255, 255, 0) 52%, var(--lg-chromaCool) 68%, var(--lg-chromaWarm));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: calc(var(--press, 0) * .85); }
+.ios-lq__lens::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(90% 70% at 30% 0%, rgba(255, 255, 255, calc(.5 * var(--press, 0) + .15)), rgba(255, 255, 255, 0) 60%); }
+
+/* ---------- панель вкладок iOS 26: стеклянная, со значками; список уходит под неё ---------- */
+.tabs.ios-tabbar { display: flex; grid-template-columns: none; height: 62px; padding: 4px; border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.7); backdrop-filter: blur(22px) saturate(1.7);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 0 0 .5px var(--line), 0 16px 38px -14px rgba(0, 0, 0, .18); }
+.tabs.ios-tabbar .ios-lq__items > button, .tabs.ios-tabbar .ios-lq__items--lens > span { display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 54px; padding: 0 2px; border-radius: 999px; background: none; box-shadow: none; color: var(--ink); font: 600 11px/1.1 var(--font); letter-spacing: .01em; white-space: nowrap; }
+.tabs.ios-tabbar .ios-lq__items > button[aria-selected="true"] { color: var(--acc-text); }
+.tabs.ios-tabbar .ios-lq__items--lens > button { color: var(--acc-text); } /* под линзой — в цвете акцента, как в iOS 26 */
+.tabs.ios-tabbar svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.9; }
+.tabs.ios-tabbar .ios-lq__lens { top: 4px; bottom: 4px; }
+:root[data-theme="dark"] .tabs.ios-tabbar { background: color-mix(in srgb, var(--surface) 70%, transparent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 0 0 .5px var(--line), 0 14px 34px -14px rgba(0, 0, 0, .6); }
+:root[data-theme="dark"] .tabs .ios-lq__lens { background: rgba(255, 255, 255, calc(.14 - .04 * var(--press, 0))); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 0 0 1px rgba(255, 255, 255, calc(.5 * var(--press, 0))); } /* тёмная: светлое стекло на 8–14 %, без затемнения */
+:root[data-theme="dark"] .tabs .ios-lq__lens::before { opacity: var(--press, 0); } /* блик только у нажатой линзы */
+
+/* ---------- сегменты с линзой: бегунок не преломляет фон (как в iOS 26), в покое плотный, при касании полупрозрачный и крупнее ---------- */
+.seg.ios-seg { display: flex; grid-auto-flow: unset; padding: 2px; } /* высоту кнопок задаёт app.css (на низких экранах она меньше) */
+.ios-seg .ios-lq__items--lens > span { display: flex; align-items: center; justify-content: center; font: 600 15px/1 var(--font); letter-spacing: -.01em; }
+.ios-seg .ios-lq__items > button, .ios-seg .ios-lq__items--lens > span { padding: 0 10px; border-radius: 999px; background: none; box-shadow: none; white-space: nowrap; }
+.ios-seg .ios-lq__items > button[aria-pressed="true"] { color: var(--ink); }
+.ios-seg .ios-lq__lens { top: 2px; bottom: 2px; background: var(--thumb, var(--surface)); opacity: calc(1 - .4 * var(--press, 0));
+  box-shadow: 0 1px 2px rgba(60, 60, 80, .1), 0 2px 6px rgba(60, 60, 80, .08), inset 0 0 0 1px rgba(255, 255, 255, calc(.6 * var(--press, 0))); }
+.ios-seg .ios-lq__lens::after { display: none; }
+.ios-seg .ios-lq__items--lens { color: var(--ink); }
+.range.ios-seg { padding: 3px; }
+.range.ios-seg .ios-lq__items > button, .range.ios-seg .ios-lq__items--lens > span { min-height: 36px; padding: 0 13px; font: 600 13px/1 var(--font); }
+
+/* ---------- ручка тумблера iOS 26: дорожка в цвете акцента, ручка на касание — стекло, растёт и вытягивается ---------- */
+.ios-switch { position: relative; flex: none; display: block; width: 52px; height: 31px; border-radius: 999px; background: var(--fill); transition: background-color 260ms var(--ease-out); }
+[aria-checked="true"] > .ios-switch { background: var(--acc); }
+.ios-switch__knob { position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 999px; background: #FFFFFF; pointer-events: none; will-change: transform;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, .16), 0 1px 3px rgba(0, 0, 0, .08); transition: background-color 180ms var(--ease-out), box-shadow 180ms var(--ease-out); }
+.ios-switch.is-pressed .ios-switch__knob { width: 33px; background: rgba(255, 255, 255, .55); -webkit-backdrop-filter: blur(1.5px) saturate(1.8); backdrop-filter: blur(1.5px) saturate(1.8);
+  box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .14), inset 0 1px 0 #FFFFFF, 0 6px 16px -4px rgba(0, 0, 0, .22); }
+
+/* ---------- кнопки iOS 26: второстепенные — мягкие в цвете акцента, опасные — красные ---------- */
+.btn--quiet { background: var(--acc-soft); color: var(--acc-text); }
+.btn--del { background: rgba(255, 59, 48, .12); color: #D70015; }
+:root[data-theme="dark"] .btn--del { background: rgba(255, 69, 58, .18); color: #FF6961; }
+
+/* ---------- лист iOS 26: круглая кнопка слева (× закрыть, ‹ назад), заголовок по центру; фон отъезжает стопкой ---------- */
+.modal__round { position: absolute; z-index: 2; top: 10px; left: 12px; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; background: var(--fill); color: var(--ink); transition: transform 140ms var(--ease-out); }
+.modal__round:active { transform: scale(.92); }
+.modal__round svg { width: 20px; height: 20px; stroke-width: 2.2; }
+.modal--round .pick > h2:first-child, .modal--round .pick > .pick__title:first-child, .modal--round .pick__head { padding: 0 48px; text-align: center; }
+.modal--round .pick > h2:first-child, .modal--round .pick > .pick__title:first-child, .modal--round .pick__head .pick__title { font: 600 17px/22px var(--font); letter-spacing: -.015em; color: var(--ink); }
+.modal--round .modal__round { top: 17px; } /* одна ось с заголовком: строка 22 px начинается на 28 px от верха листа, центр — 39 px */
+.modal--round .pick__head { justify-content: center; }
+.stage { transition: border-radius 300ms var(--ease-out); }
+
+/* ---------- выбор цвета акцента в «Оформлении» ---------- */
+.accents { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px 6px; margin-top: 10px; padding: 14px 12px; border-radius: 18px; background: var(--surface); }
+.accents button { justify-self: center; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; }
+.accents button i { display: block; width: 28px; height: 28px; border-radius: 999px; background: var(--sw); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); transition: transform 260ms var(--spring-snappy, ease-out); }
+.accents button[aria-pressed="true"] { box-shadow: 0 0 0 2.5px var(--sw); }
+.accents button[aria-pressed="true"] i { transform: scale(.78); }
+:root[data-theme="dark"] .accents [data-accent-pick="graphite"] i { background: #F5F5F7 !important; } /* графит в тёмной — светлый, как его цвет в тёмной теме */
+:root[data-theme="dark"] .accents [data-accent-pick="graphite"][aria-pressed="true"] { box-shadow: 0 0 0 2.5px #F5F5F7; }
+.accents-cap { margin-top: 22px; font: 600 15px/1.3 var(--font); color: var(--muted); }
+
+@media (prefers-reduced-motion: reduce) { .ios-lq__lens::after { display: none; } .stage { transition: none; } }
+@media (prefers-reduced-transparency: reduce) { .tabs.ios-tabbar { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--surface); } }
