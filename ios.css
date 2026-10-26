@@ -112,3 +112,113 @@
 
 @media (prefers-reduced-motion: reduce) { .ios-lq__lens::after { display: none; } .stage { transition: none; } }
 @media (prefers-reduced-transparency: reduce) { .tabs.ios-tabbar { -webkit-backdrop-filter: none; backdrop-filter: none; background: var(--surface); } }
+
+/* перенесено из _дизайн-система-apple/web/ios.css 26.10.2026 — правки делать там и переносить сюда же */
+/* ---------- знакомство с приложением (онбординг, 26.10.2026; референс — экраны Anything, рефы\находки\экраны-и-подача-2026-10-26) ----------
+   Лист: иллюстрация сверху (слои парят на разной глубине), заголовок в две строки снизу слева; общий низ — точки-капсулы и одна главная кнопка во всю ширину. */
+.ios-onboard { --ob-tint: 255 255 255; --ob-a: 255 255 255; --ob-b: 255 255 255; --ob-f: 0; position: relative; display: flex; flex-direction: column; height: 100%; overflow: hidden; overflow: clip;   /* clip: фокус и прокрутка к кнопке соседнего листа не сдвигают ленту */
+  color: var(--c-ink); outline: none;
+  background: radial-gradient(120% 56% at 50% 16%, rgb(var(--ob-a) / calc(.46 * (1 - var(--ob-f)))), rgb(var(--ob-a) / calc(.1 * (1 - var(--ob-f)))) 46%, transparent 74%),
+    radial-gradient(120% 56% at 50% 16%, rgb(var(--ob-b) / calc(.46 * var(--ob-f))), rgb(var(--ob-b) / calc(.1 * var(--ob-f))) 46%, transparent 74%), var(--c-bg); }   /* к низу экрана свет гаснет: без каймы у углов */
+/* свет главы: источник сверху за иллюстрацией, у каждого листа свой цвет; при перелистывании один гаснет, другой загорается */
+.ios-onboard.is-done { display: none; }
+.ios-onboard { --ob-glass: rgb(255 255 255 / .1); --ob-glass-edge: inset 0 1px 0 rgb(255 255 255 / .22), inset 0 0 0 .5px rgb(255 255 255 / .12); --ob-fill: rgb(255 255 255 / .08); }
+:root[data-theme="light"] .ios-onboard, [data-scheme="light"] .ios-onboard { --ob-glass: rgb(255 255 255 / .72); --ob-glass-edge: inset 0 1px 0 #FFFFFF, 0 0 0 .5px rgb(0 0 0 / .08), 0 6px 16px -8px rgb(0 0 0 / .18); --ob-fill: rgb(0 0 0 / .045); }   /* светлая тема: стекло белое, заливки — доля чёрного (26.10.2026, светлые онбординги по milo) */
+.ios-onboard__skip { position: absolute; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 3; min-height: 44px; padding: 0 16px; border: 0; border-radius: var(--r-pill);
+  background: var(--ob-glass); -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); box-shadow: var(--ob-glass-edge);
+  color: var(--c-ink); font: 500 15px/1 var(--font); cursor: pointer; -webkit-tap-highlight-color: transparent; }   /* стеклянная капсула над светом главы */
+.ios-onboard__track { display: flex; flex: 1; min-height: 0; touch-action: pan-y; user-select: none; -webkit-user-select: none; will-change: transform; }
+.ios-onboard__page { display: flex; flex: 0 0 100%; flex-direction: column; min-width: 0; padding: 64px 24px 4px; }
+.ios-onboard__art { position: relative; display: grid; flex: 1; min-height: 0; place-items: center; perspective: 900px; }
+.ios-onboard__art > * { grid-area: 1 / 1; min-width: 0; }   /* карусель и длинные ряды не раздвигают лист */
+.ios-onboard__copy { display: grid; gap: 8px; padding-top: 16px; }
+.ios-onboard__title { margin: 0; max-width: 16ch; font: 700 32px/1.08 var(--font); letter-spacing: -.025em; text-wrap: balance; }
+.ios-onboard__title span { display: block; color: var(--c-secondary); }   /* заголовок в два тона: мысль и пояснение */
+.ios-onboard__text { margin: 0; max-width: 30ch; color: var(--c-secondary); font: 400 16px/1.4 var(--font); }
+.ios-onboard__foot { display: grid; gap: 22px; padding: 18px 24px calc(18px + env(safe-area-inset-bottom)); }
+.ios-onboard__dots { display: flex; gap: 6px; height: 8px; }
+.ios-onboard__dots span { width: 8px; height: 8px; border-radius: 4px; background: var(--c-ink); opacity: .35; }
+.ios-onboard__next { width: 100%; }
+.ios-onboard [data-in] { opacity: 0; transform: translateY(18px) scale(.97);
+  transition: opacity 420ms var(--ease-out) calc(var(--in-i, 0) * 80ms + 60ms), transform var(--spring-smooth-ms) var(--spring-smooth) calc(var(--in-i, 0) * 80ms + 60ms); }
+.ios-onboard .is-current [data-in] { opacity: 1; transform: none; }
+.ios-onboard [data-step] { transition: opacity 360ms var(--ease-out), transform var(--spring-bouncy-ms) var(--spring-bouncy), background-color 240ms var(--ease-out), color 240ms var(--ease-out); }
+.ios-onboard__page--splash .ios-onboard__art { place-items: center; }
+@media (prefers-reduced-motion: reduce) {
+  .ios-onboard [data-in] { transform: none; transition: opacity 200ms linear; }
+}
+
+/* ---------- онбординг: листы-вопросы (26.10.2026; подборка онбордингов — рефы\находки\онбординги-2026-10-26) ----------
+   Полоса из делений и «назад» сверху, выбор списком, плитками, каруселью, утверждения смахиванием, награда в конце. Цвет выбранного — свет листа (--ob-tint). */
+.ios-onboard__top { position: absolute; top: max(10px, env(safe-area-inset-top)); right: 12px; left: 12px; z-index: 3; display: flex; gap: 12px; align-items: center; min-height: 44px; pointer-events: none; }
+.ios-onboard__top > * { pointer-events: auto; }
+.ios-onboard__top .ios-onboard__skip { position: static; margin-left: auto; }
+.ios-onboard__back[hidden] { display: none; }
+.ios-onboard__back { display: grid; flex: none; width: 44px; height: 44px; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--c-ink); cursor: pointer;
+  background: var(--ob-glass); -webkit-backdrop-filter: blur(20px) saturate(160%); backdrop-filter: blur(20px) saturate(160%); box-shadow: var(--ob-glass-edge); }
+.ios-onboard__back svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.ios-onboard__progress { display: flex; flex: 1; gap: 6px; max-width: 200px; transition: opacity 240ms var(--ease-out); }
+.ios-onboard__progress.is-off { opacity: 0; }
+.ios-onboard__progress i { flex: 1; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--c-ink) 16%, transparent); overflow: hidden; }
+.ios-onboard__progress i::after { content: ""; display: block; height: 100%; border-radius: inherit; background: var(--c-ink); transform: scaleX(0); transform-origin: left; transition: transform 520ms var(--ease-out); }
+.ios-onboard__progress i.is-on::after { transform: scaleX(1); }
+.ios-onboard__page--ask { justify-content: flex-start; padding-top: 72px; }
+.ios-onboard__page--ask .ios-onboard__copy { order: -1; padding: 0 0 20px; }
+.ios-onboard__page--ask .ios-onboard__art { place-items: center stretch; }   /* содержимое вопроса — по центру между заголовком и кнопкой */
+.ios-onboard__hint { margin: 0; color: var(--c-secondary); font-size: 15px; }
+.ios-onboard__next:disabled { opacity: .35; cursor: default; }
+.ios-onboard:has(.ios-onboard__progress) .ios-onboard__dots { display: none; }   /* на листах-вопросах прогресс показывает полоса сверху, точки не дублируют */
+
+/* выбор списком и плитками */
+.ios-choice { display: grid; gap: 8px; align-content: start; }
+.ios-choice > button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; min-height: 56px; padding: 10px 14px; border: 0; border-radius: 18px; text-align: left;
+  background: var(--ob-fill); color: var(--c-ink); font: 500 16px/1.25 var(--font); cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background-color 200ms var(--ease-out), transform 120ms var(--ease-out); }
+.ios-choice > button:active { transform: scale(.98); }
+.ios-choice > button > svg:first-child { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
+.ios-choice > button::after { content: ""; display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c-ink) 30%, transparent);
+  color: #000000; font: 800 14px/1 var(--font); transition: background-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out); }
+.ios-choice > button[aria-pressed="true"] { background: color-mix(in srgb, var(--brand) 26%, transparent); }   /* выбранное — заливка одним цветом приложения, без рамки */
+.ios-choice > button[aria-pressed="true"]::after { content: "\2713"; background-color: var(--brand); color: var(--brand-ink); box-shadow: none; }   /* галочка символом: картинка в стилях не пройдёт строгую CSP сайта */
+.ios-choice--grid { grid-template-columns: 1fr 1fr; }
+.ios-choice--grid > button { grid-template-columns: 1fr auto; grid-template-rows: auto 1fr; align-items: start; min-height: 108px; padding: 14px; }
+.ios-choice--grid > button > svg:first-child { grid-row: 2; align-self: end; width: 34px; height: 34px; }
+.ios-choice--grid > button > span { grid-column: 1; grid-row: 1; }
+.ios-choice--grid > button::after { grid-column: 2; grid-row: 1; }
+.ios-choice.is-full, .ios-swipe.is-full { animation: ios-shake 360ms var(--ease-out); }
+@keyframes ios-shake { 20% { transform: translateX(-6px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+
+/* выбор каруселью: центральная карточка крупнее и выбрана */
+.ios-pick { display: flex; gap: 12px; margin: 0 -24px; padding: 8px 24px 16px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+.ios-pick::-webkit-scrollbar { display: none; }
+.ios-pick > [data-value] { display: grid; flex: 0 0 62%; gap: 10px; align-content: space-between; min-height: 260px; padding: 20px; border: 0; border-radius: 28px; scroll-snap-align: center; text-align: left;
+  background: var(--ob-fill); color: var(--c-ink); font: inherit; cursor: pointer; transform-origin: center bottom; }
+.ios-pick > [aria-pressed="true"] { background: color-mix(in srgb, var(--brand) 22%, var(--ob-fill)); box-shadow: 0 30px 50px -30px color-mix(in srgb, var(--brand) 60%, transparent); }
+
+/* утверждения: стопка карточек, смахнуть «да» вправо, «нет» влево */
+.ios-swipe { --swipe: 0; position: relative; display: grid; min-height: 280px; touch-action: pan-y; user-select: none; }
+.ios-swipe::before { content: ""; position: absolute; inset: -20% -24px; z-index: -1; border-radius: 40px;
+  background: radial-gradient(70% 80% at 105% 50%, rgb(48 209 88 / calc(max(var(--swipe), 0) * .6)), transparent 72%), radial-gradient(70% 80% at -5% 50%, rgb(255 69 58 / calc(max(var(--swipe) * -1, 0) * .6)), transparent 72%); }
+.ios-swipe__card { grid-area: 1 / 1; display: grid; align-content: center; padding: 28px 24px; border-radius: 28px; background: var(--c-surface); cursor: grab;
+  box-shadow: 0 0 0 .5px var(--c-separator), 0 30px 50px -30px rgb(0 0 0 / .8); font-size: 24px; font-weight: 600; line-height: 1.22; letter-spacing: -.015em; text-wrap: balance; touch-action: none; }
+.ios-swipe__card.is-under1 { translate: 0 -12px; scale: .95; opacity: .7; color: transparent; }
+.ios-swipe__card.is-under2 { translate: 0 -22px; scale: .9; opacity: .4; color: transparent; }
+.ios-swipe__card:not(.is-top):not(.is-under1):not(.is-under2):not(.is-gone) { opacity: 0; }   /* видно три карточки, текст только у верхней */
+.ios-swipe__card.is-gone { pointer-events: none; }
+.ios-swipe-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+.ios-swipe-btns button { min-height: 48px; border: 0; border-radius: 24px; background: var(--ob-glass); color: var(--c-ink); font: 600 16px/1 var(--font); cursor: pointer; box-shadow: var(--ob-glass-edge); }
+
+/* награда в конце: объёмный значок с бликом, который проходит один раз */
+.ios-reward { position: relative; display: grid; width: 184px; aspect-ratio: 1; place-items: center; border-radius: 50%; overflow: hidden;
+  background: radial-gradient(circle at 34% 28%, #FFF1CF 0%, #F2C46B 22%, #C98A2E 52%, #8A5512 78%, #D9A04A 100%);
+  box-shadow: inset 0 0 0 7px rgb(255 236 190 / .55), inset 0 0 0 9px rgb(110 64 10 / .55), inset 0 0 0 14px rgb(255 225 160 / .35), inset 0 -14px 26px rgb(70 38 0 / .45),
+    inset 0 6px 10px rgb(255 255 255 / .45), 0 40px 70px -28px color-mix(in srgb, var(--brand) 80%, transparent); transform: rotateX(12deg) rotateY(-16deg); }   /* медаль: обод из колец, выпуклость светом сверху */
+.ios-reward::after { content: ""; position: absolute; inset: -40%; background: linear-gradient(115deg, transparent 42%, rgb(255 255 255 / .55) 50%, transparent 58%); transform: translateX(-70%); }
+.ios-reward.is-on::after { transform: translateX(70%); transition: transform 1100ms var(--ease-out) 200ms; }
+.ios-reward svg { width: 44%; height: 44%; fill: none; stroke: #7A4A0C; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round;
+  filter: drop-shadow(0 1.5px 0 rgb(255 240 200 / .8)) drop-shadow(0 -1px 0 rgb(80 45 0 / .5)); }   /* знак выбит: светлая кромка снизу, тень сверху */
+
+@media (prefers-reduced-motion: reduce) {
+  .ios-choice.is-full, .ios-swipe.is-full { animation: none; }
+  .ios-onboard__progress i::after, .ios-reward.is-on::after { transition: none; }
+}

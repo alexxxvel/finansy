@@ -138,6 +138,11 @@
   var PICK_COLORS = { e: ['orange', 'yellow', 'mint', 'teal', 'cyan', 'blue', 'indigo', 'purple', 'pink', 'brown', 'gray'], i: ['green', 'mint', 'teal', 'cyan', 'blue', 'gray'],
     g: ['purple', 'teal', 'orange', 'pink', 'indigo', 'yellow', 'mint', 'cyan', 'brown', 'blue'] }; // синий последним: первая цель не сливается с синей кнопкой «Отложить»
   var USER_COLORS = {};
+  /** напоминания в чате (cfg.ntf): включены, час вечернего (19–22), конец и начало месяца, неделя, «давно не заходил», платежи */
+  function validNtf(o) {
+    if (!o || typeof o !== 'object' || typeof o.length === 'number') { return null; }
+    return { on: o.on ? 1 : 0, h: [19, 20, 21, 22].indexOf(o.h) >= 0 ? o.h : 21, m: o.m === 0 ? 0 : 1, w: o.w ? 1 : 0, i: o.i === 0 ? 0 : 1, p: o.p === 0 ? 0 : 1 };
+  }
   /** свои цвета из настроек: { id категории или «g_» + id цели: имя цвета }, до 80 штук; чужое и лишнее отбрасывается */
   function validColors(o) {
     if (!o || typeof o !== 'object' || typeof o.length === 'number') { return null; }
@@ -893,7 +898,7 @@
     toByn: toByn, bynOf: bynOf, find: find, makeOp: makeOp, validOp: validOp, pack: pack, unpack: unpack, cleanNote: cleanNote, utf8len: utf8len, parseBackup: parseBackup,
     plural: plural, summarize: summarize, byDays: byDays, dayLabel: dayLabel, monthLabel: monthLabel,
     prevMonth: prevMonth, inMonth: inMonth, daysLeft: daysLeft, perDay: perDay, fmtDay: fmtDay, frequent: frequent, validGoal: validGoal, parseAmount: parseAmount, balance: balance, table: table,
-    validList: validList, useCfg: useCfg, validColors: validColors, colorOf: colorOf, COLORS: COLORS, PICK_COLORS: PICK_COLORS, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId,
+    validList: validList, useCfg: useCfg, validColors: validColors, colorOf: colorOf, validNtf: validNtf, COLORS: COLORS, PICK_COLORS: PICK_COLORS, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId,
     GOALS: GOALS, GOALS_MAX: GOALS_MAX, validGoals: validGoals, packGoals: packGoals, isGoalOp: isGoalOp, goalOf: goalOf, goalAmount: goalAmount, goalByn: goalByn, goalState: goalState, goalForecast: goalForecast,
     parseNotes: parseNotes, guessCat: guessCat, noteId: noteId, period: period, monthsSpan: monthsSpan, NOTES_MAX: NOTES_MAX,
     WEEKDAYS_SHORT: WEEKDAYS_SHORT, MONTHS_GEN: MONTHS_GEN, dow: dow, daysBetween: daysBetween, lastDay: lastDay, statsPeriod: statsPeriod, periodShift: periodShift, inRange: inRange, rangeStats: rangeStats,

@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '1870cf496a'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'ab57d8a8a2'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -57,6 +57,7 @@
     'face-meh': '<circle cx="12" cy="12" r="9.25"/><path d="M8.75 9.75v.5M15.25 9.75v.5"/><path d="M8.75 15h6.5"/>',
     'face-bad': '<circle cx="12" cy="12" r="9.25"/><path d="M8.75 9.75v.5M15.25 9.75v.5"/><path d="M8.25 16.25c.9-1.5 2.2-2.25 3.75-2.25s2.85.75 3.75 2.25"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+    bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
     'tab-month': '<path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z"/>',
     'tab-history': '<path d="M8 6.5h11M8 12h11M8 17.5h11"/><path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" stroke-width="2.6"/>',
     'tab-goals': '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".6" stroke-width="2.4"/>',
@@ -437,7 +438,8 @@
       if (!(st.pays.list || []).length) { F.CREDITS.forEach(function (k) { if (remindDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } }); }
       if (!spent.querySelector('.remind')) { var saveNode = saveCard(); if (saveNode) { spent.appendChild(saveNode); } } // итог прошлого месяца — после платежей и кредитов
       if (!spent.querySelector('.remind')) { var homeNode = homeCard(); if (homeNode) { spent.appendChild(homeNode); } } // больше одной карточки сразу не бывает
-      if (!spent.querySelector('.remind')) { var moodNode = moodCard(); if (moodNode) { spent.appendChild(moodNode); } } // вопрос про приложение — последним
+      if (!spent.querySelector('.remind')) { var moodNode = moodCard(); if (moodNode) { spent.appendChild(moodNode); } } // вопрос про приложение — раз в месяц
+      if (!spent.querySelector('.remind')) { var bhNode = budgetHintCard(); if (bhNode) { spent.appendChild(bhNode); } } // бюджет — с 5-го дня, один раз; после вопроса месяца, чтобы обе не толкались
     }
 
     var sheet = el('div', 'sheet');
@@ -980,6 +982,44 @@
   // Приложение шлёт на свой сервер (/api/stats.php) только факты: открыл, сколько записей внёс (числом), какие разделы и функции, телефон и версию.
   // Ни сумм, ни категорий, ни заметок. Каждый запрос подписан Telegram (initData) — сервер проверяет подпись ключом бота.
   // Цифры отдаются только автору: сервер сравнивает id из подписи со своей настройкой; в коде приложения id автора нет.
+  // ---------- напоминания в чате (решение разработчика 26.10.2026): сервер relay/notify.php знает только даты и выбор, без сумм ----------
+  var NOTIFY_URL = window.__finNotify || ""; // подставляет tools/deploy.py, только если сервер напоминаний ответил
+  var ntfT = 0;
+  function ntf() { return F.validNtf(st.cfg && st.cfg.ntf) || { on: 1, h: 21, m: 1, w: 0, i: 1, p: 1 }; } // по умолчанию включены у всех (слово разработчика 26.10.2026)
+  function ntfCan() { return !!NOTIFY_URL && !!statInit(); }
+  /** отправить серверу выбор и «был сегодня»; force — даже если выключено (чтобы выключение дошло) */
+  function ntfSync(force) {
+    var n = ntf(), logged = '';
+    if (!ntfCan() || (!n.on && !force)) { return; }
+    try { logged = localStorage.getItem('fin_logged') || ''; } catch (e) { logged = ''; }
+    var days = (st.pays.list || []).map(function (p) { return p[4]; }).filter(function (d) { return d > 0; });
+    var body = { t: 'set', init: statInit(), on: n.on, hour: n.h, mon: n.m, week: n.w, idle: n.i, pays: n.p, payDays: days, tz: -new Date().getTimezoneOffset(), seen: F.today(), logged: logged };
+    try { fetch(NOTIFY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), keepalive: true, credentials: 'omit' }).then(null, function () {}); } catch (e) { /* без сети — в следующий раз */ }
+  }
+  function ntfLogged() {
+    try { localStorage.setItem('fin_logged', F.today()); } catch (e) { /* без памяти — сервер узнает при следующем открытии */ }
+    clearTimeout(ntfT);
+    ntfT = setTimeout(function () { ntfSync(false); }, 1500);
+  }
+  /** сохранить выбор в настройках (облако Telegram — тот же на всех телефонах) и сразу сообщить серверу */
+  function ntfSave(next, done) {
+    store.patchCfg({ ntf: next }, function (err) {
+      if (err) { haptic('err'); toast(explain(err)); if (done) { done(false); } return; }
+      st.cfg.ntf = next;
+      ui.repaint = true; // лист закроется — главная перерисуется: карточка-приглашение уходит, строка в настройках обновляется
+      ntfSync(true);
+      if (done) { done(true); }
+    });
+  }
+  /** включение: Telegram сам спрашивает, можно ли боту писать (requestWriteAccess); без разрешения не включаем */
+  function ntfEnable(done) {
+    function on() { var n = ntf(); n.on = 1; ntfSave(n, done); }
+    if (inTg && tg.requestWriteAccess && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9')) {
+      try { tg.requestWriteAccess(function (ok) { if (ok) { on(); } else { haptic('err'); toast('Без разрешения бот не сможет присылать напоминания'); if (done) { done(false); } } }); return; } catch (e) { /* старый Telegram — пробуем без вопроса */ }
+    }
+    on();
+  }
+
   var STATS_URL = window.__finStats || ""; // подставляет tools/deploy.py, только если сервер статистики ответил
   var statQ = {}, statT = 0, statOwner = null, statSent = false;
   function statInit() { return (inTg && tg.initData) || window.__finInitData || ''; } // вне Telegram подписи нет — ничего не отправляется
@@ -999,6 +1039,7 @@
   }
   /** событие в очередь: уходит пачкой через пару секунд или когда приложение сворачивают */
   function track(name, n) {
+    if (name === 'add') { ntfLogged(); } // для напоминаний: «сегодня уже записывал» (только дата, без сумм)
     if (!STATS_URL || !statInit()) { return; }
     statQ[name] = (statQ[name] || 0) + (n || 1);
     clearTimeout(statT);
@@ -4611,6 +4652,104 @@
     if (d) { openImport(null, d); }
   }
 
+  // ---------- лист «Уведомления в чате» ----------
+  function openNotify(back) {
+    haptic();
+    swapModal('list', false, function (m) {
+      var n = ntf(), box = el('div', 'pick'), main = el('ul', 'menu'), more = el('ul', 'menu menu--group');
+      function sw(ul, id, name, small, on, fn) {
+        var li = el('li'), b = btn('menu__row menu__row--switch'), t = el('span', '', name);
+        b.id = id;
+        b.setAttribute('role', 'switch');
+        b.setAttribute('aria-checked', String(!!on));
+        if (small) { t.appendChild(el('small', '', small)); }
+        add(b, t, swKnob(b));
+        b.addEventListener('click', function () { var v = b.getAttribute('aria-checked') !== 'true'; b.setAttribute('aria-checked', String(v)); haptic(); fn(v, b); });
+        li.appendChild(b);
+        ul.appendChild(li);
+        return b;
+      }
+      sw(main, 'ntfOn', 'Напоминать', '', n.on, function (v, b) {
+        if (v) { ntfEnable(function (ok) { if (!ok) { b.setAttribute('aria-checked', 'false'); } openNotify(back); }); return; }
+        var x = ntf(); x.on = 0; ntfSave(x, function () { openNotify(back); });
+      });
+      var hours = el('div', 'range range--ntf');
+      hours.id = 'ntfHour';
+      hours.setAttribute('role', 'group');
+      hours.setAttribute('aria-label', 'Вечером в');
+      [19, 20, 21, 22].forEach(function (h) {
+        var b = btn('', h + ':00');
+        b.setAttribute('data-hour', String(h));
+        b.setAttribute('aria-pressed', String(n.h === h));
+        b.addEventListener('click', function () { if (ntf().h === h) { return; } var x = ntf(); x.h = h; haptic(); ntfSave(x, function () { openNotify(back); }); });
+        hours.appendChild(b);
+      });
+      var li = el('li', 'menu__row menu__row--ntf');
+      add(li, el('span', '', 'Время'), hours);
+      main.appendChild(li);
+      function flag(id, key, name, small) {
+        sw(more, id, name, small, n[key], function (v) { var x = ntf(); x[key] = v ? 1 : 0; ntfSave(x); });
+      }
+      flag('ntfMonth', 'm', 'Конец и начало месяца', 'проверить записи, итоги');
+      flag('ntfWeek', 'w', 'Итог недели', 'по воскресеньям, вечером');
+      flag('ntfIdle', 'i', 'Если давно не заходил', 'не чаще раза в неделю');
+      flag('ntfPays', 'p', 'Обязательные платежи', 'в день платежа, утром');
+      add(box, el('h2', 'pick__title', 'Уведомления в чате'), el('p', 'pick__info', nb('Приходят от бота «Финансы» не чаще раза в день и не ночью. Напоминание записать траты — только если вы давно не заглядывали. Суммы в сообщениях не показываются: бот их не знает.')), main);
+      if (n.on) { box.appendChild(more); }
+      m.appendChild(box);
+    }, back);
+  }
+  /** подсказка про бюджет на 5-й день, один раз: бюджета нет — приложению не от чего считать «сколько можно в день» */
+  function budgetHintOff() { try { return localStorage.getItem('fin_bhoff') === '1'; } catch (e) { return false; } }
+  function budgetHintCard() {
+    if (budgetOn() || budgetHintOff() || usedDays() < 5 || (st.budget && st.budget.off)) { return null; }
+    var row = el('div', 'remind remind--home remind--text'), text = el('span'), go = btn('capsule remind__pay'), x = btn('remind__x');
+    row.id = 'budgetHint';
+    text.appendChild(el('strong', '', 'Задайте бюджет месяца'));
+    text.appendChild(el('small', '', 'покажу, сколько можно тратить в день'));
+    go.id = 'budgetHintGo';
+    go.appendChild(el('span', '', 'Задать'));
+    go.addEventListener('click', function () { try { localStorage.setItem('fin_bhoff', '1'); } catch (e) { /* без памяти */ } openBudget(null); });
+    x.id = 'budgetHintHide';
+    x.setAttribute('aria-label', 'Не надо');
+    x.appendChild(icon('close'));
+    x.addEventListener('click', function () {
+      try { localStorage.setItem('fin_bhoff', '1'); } catch (e) { /* без памяти */ }
+      haptic('ok');
+      if (row.parentNode) { row.parentNode.removeChild(row); }
+    });
+    add(row, text, go, x);
+    return row;
+  }
+  /** переход из сообщения бота: кнопка открывает нужное место (?go=…), один раз за запуск */
+  function goRoute() {
+    if (goRoute.done) { return; }
+    goRoute.done = true;
+    var m = /[?&]go=([a-z]+)/.exec(location.search), go = m ? m[1] : '';
+    if (!go || !st.loaded || st.error || firstRun()) { return; }
+    if (go === 'add') { openEntry(null); return; }
+    if (go === 'pays') { openPays(null); return; }
+    if (go === 'notify') { openNotify(null); return; }
+    if (go === 'history' || go === 'month' || go === 'week') {
+      st.tab = go === 'history' ? 'history' : 'stats';
+      if (go === 'month') { st.stats.kind = 'month'; st.stats.at = F.prevMonth(F.monthOf(F.today())) + '-15'; }
+      if (go === 'week') { st.stats.kind = 'week'; st.stats.at = F.today(); }
+      paintDock();
+      paint(false);
+    }
+  }
+  /** первое открытие: напоминания включены по умолчанию — Telegram один раз спрашивает, можно ли боту писать; отказ — выключено */
+  function ntfFirst() {
+    var asked = '';
+    try { asked = localStorage.getItem('fin_wa') || ''; } catch (e) { asked = '1'; }
+    if (!ntfCan() || (st.cfg && st.cfg.ntf) || asked || !inTg || !tg.requestWriteAccess || !(tg.isVersionAtLeast && tg.isVersionAtLeast('6.9'))) { ntfSync(false); return; }
+    try { localStorage.setItem('fin_wa', '1'); } catch (e) { /* без памяти спросим и в следующий раз */ }
+    try {
+      tg.requestWriteAccess(function (ok) { if (ok) { ntfSync(false); } else { var x = ntf(); x.on = 0; ntfSave(x); } });
+    } catch (e) { ntfSync(false); }
+  }
+  function startUp() { startShare(); goRoute(); ntfFirst(); }
+
   // ---------- настройки ----------
   function openSettings() {
     if (!st.loaded || st.error || firstRun()) { return; }
@@ -4629,6 +4768,7 @@
       row('setSrcs', WORDS.i.list, String(F.SRCS.length), function () { openCats('i'); });
       row('budgetBtn', 'Бюджет на месяц', budgetOn() ? F.fmt(st.budget.a) : 'не задан', function () { openBudget(openSettings); }); // отдельно от подсказки: задать можно, даже если её убрали
       row('paysBtn', 'Платежи месяца', (st.pays.list || []).length ? String(st.pays.list.length) : 'нет', function () { openPays(openSettings); });
+      if (ntfCan()) { row('notifyBtn', 'Уведомления в чате', ntf().on ? 'вкл' : 'выкл', function () { openNotify(openSettings); }); }
       cur = ul2;
       row('themeBtn', 'Оформление', themeWord(themePref()), function () { openTheme(openSettings); });
       function swRow(id, name, on, fn) { // строка-переключатель iOS 26: нажимается целиком, ручка — стекло
@@ -5608,7 +5748,7 @@
     fit();
     paintDock();
     view.appendChild(el('p', 'boot', 'Открываем записи'));
-    reload(true, startShare); // открыли по ссылке с настройкой — после загрузки сразу лист «Вставить настройку»
+    reload(true, startUp); // после загрузки: ссылка с настройкой, переход из сообщения бота, «был сегодня» для напоминаний
   }
 
   window.addEventListener('error', function (e) { // белого экрана без объяснения быть не должно
