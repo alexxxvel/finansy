@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'ab57d8a8a2'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '02d474c441'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -62,7 +62,17 @@
     'tab-history': '<path d="M8 6.5h11M8 12h11M8 17.5h11"/><path d="M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01" stroke-width="2.6"/>',
     'tab-goals': '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".6" stroke-width="2.4"/>',
     'tab-stats': '<path d="M5 19V11M10 19V5M15 19v-6M20 19V8"/>',
-    back: '<path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1ZM17 9l-6 6M11 9l6 6"/>'
+    back: '<path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1ZM17 9l-6 6M11 9l6 6"/>',
+    // значки разделов настроек (26.10.2026)
+    contrast: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
+    type: '<path d="M21 14h-5"/><path d="M16 16v-3.5a2.5 2.5 0 0 1 5 0V16"/><path d="M4.5 13h6"/><path d="m3 16 4.5-9 4.5 9"/>',
+    vibrate: '<path d="m2 8 2 2-2 2 2 2-2 2"/><path d="m22 8-2 2 2 2-2 2 2 2"/><rect width="8" height="14" x="8" y="5" rx="1"/>',
+    archive: '<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+    notes: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+    share: '<path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>',
+    download: '<path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>',
+    bulb: '<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/>',
+    send: '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>'
   };
 
   // ---------- слой iOS 26 (ios.js): линза над рядом кнопок, ручка тумблера ----------
@@ -375,6 +385,7 @@
     var base = B ? Math.max(B, s.spent, 1) : Math.max(avail, s.spent + put + Math.max(0, -dnet), 1);
     var bar = el('div', 'spent__bar');
     bar.setAttribute('role', 'img');
+    bar.addEventListener('click', function () { barInfo(); }); // касание полосы — «как считается»
     bar.setAttribute('aria-label', avail > 0 ? 'Потрачено ' + Math.round(s.spent / avail * 100) + ' процентов доступного' : 'Доход ещё не внесён');
     // строгий стиль: две крупнейшие категории и остальное графитом; «Цветное» (25.10.2026, как «Экранное время»): четыре категории из «Куда ушло» их цветами, остальное серым
     var segs = [], top = colorful() ? 4 : 2, rest = s.spent;
@@ -407,7 +418,13 @@
       add(legend, baseBtn, left < 0 ? el('span', 'is-over', 'перерасход ' + F.fmt(-left)) : el('span', 'is-left', 'осталось ' + F.fmt(left)));
     } else if (noBase) { if (!tip) { add(legend, el('span', '', s.spent || put ? 'доход ещё не внесён' : 'записей в этом месяце нет')); } }
     else {
-      add(legend, el('span', '', avail > 0 ? 'из' + F.NB + F.fmt(avail) : (s.income ? 'из' + F.NB + F.fmt(s.income) : 'доход ещё не внесён')));
+      if (avail > 0) { // подпись словами: из чего полоса (знакомый разработчика не понял «из 6 592,13»: это доход и остаток прошлого месяца)
+        var incBtn = btn('spent__base');
+        incBtn.id = 'baseLine';
+        add(incBtn, document.createTextNode((avail === s.income ? 'из дохода' : 'из доступных') + F.NB + F.fmt(avail)), icon('right'));
+        incBtn.addEventListener('click', function () { barInfo(); });
+        legend.appendChild(incBtn);
+      } else { add(legend, el('span', '', s.income ? 'из' + F.NB + F.fmt(s.income) : 'доход ещё не внесён')); }
       add(legend, left < 0 ? el('span', 'is-over', 'перерасход ' + F.fmt(-left)) : el('span', 'is-left', 'осталось ' + F.fmt(left)));
     }
     add(spent, noBase ? null : bar, tip ? budgetTip() : legend);
@@ -425,6 +442,44 @@
       var dayEl = el('p', 'spent__day', dayText);
       dayEl.id = 'perDay';
       spent.appendChild(dayEl);
+    }
+    /** лист «Как считается полоса»: из чего доступное, что ушло, откуда «в день» */
+    function barInfo() {
+      haptic();
+      swapModal('list', false, function (m) {
+        var box = el('div', 'pick pick--barinfo'), ul = el('ul', 'legend legend--facts'), ul2 = el('ul', 'legend legend--facts');
+        function row(list, label, value, strong) { var li = el('li', strong ? 'is-total' : ''); add(li, el('span', '', label), el('data', '', value)); list.appendChild(li); }
+        var pm = F.MONTHS_GEN[+F.prevMonth(st.month).slice(5, 7) - 1];
+        if (B) { row(ul, 'Бюджет на месяц', F.fmt(B), true); }
+        else {
+          row(ul, 'Доход в этом месяце', F.fmt(s.income));
+          if (st.carry) { row(ul, 'Остаток с ' + pm, (st.carry < 0 ? '−' : '') + F.fmt(Math.abs(st.carry))); }
+          if (back) { row(ul, 'Снято из накоплений', F.fmt(back)); }
+          if (dnet > 0) { row(ul, 'Долги: взято и возвращено вам', F.fmt(dnet)); }
+          row(ul, 'Можно потратить за месяц', F.fmt(avail), true);
+        }
+        row(ul2, 'Потрачено', F.fmt(s.spent));
+        if (put > 0 && !B) { row(ul2, 'Отложено на цели', F.fmt(put)); }
+        if (dnet < 0 && !B) { row(ul2, 'Отдано в долг', F.fmt(-dnet)); }
+        row(ul2, left < 0 ? 'Перерасход' : 'Осталось', F.fmt(Math.abs(left)), true);
+        var how = el('p', 'pick__info', nb((B ? 'Полоса — ваш бюджет на месяц целиком.' : 'Полоса — всё, что можно потратить в этом месяце: доход' + (st.carry ? ' и остаток прошлого месяца' : '') + '.') + ' Траты заполняют её слева, пустая часть — то, что ещё осталось.'));
+        var perLine = per && days > 1 ? el('p', 'pick__info', nb('Можно тратить по ' + F.fmtDay(per) + ' BYN в день: остаток ' + F.fmt(left) + ' поделён на ' + days + ' ' + F.plural(days, 'день', 'дня', 'дней') + ' до конца месяца.')) : null;
+        var go = btn('btn btn--quiet', B ? 'Изменить бюджет' : 'Задать свой бюджет вместо дохода');
+        go.id = 'barBudget';
+        go.addEventListener('click', function () { openBudget(barInfo); });
+        add(box, el('h2', 'pick__title', 'Как считается полоса'), how, ul, ul2, perLine, go);
+        m.appendChild(box);
+      }, null);
+    }
+    // подсказка один раз, когда появилась первая трата: что значит полоса (нажать — подробнее)
+    var barTipSeen = '';
+    try { barTipSeen = localStorage.getItem('fin_bartip') || ''; } catch (e) { barTipSeen = '1'; }
+    if (!noBase && !B && s.spent > 0 && !barTipSeen && st.month === F.monthOf(F.today())) {
+      var bt = btn('tip tip--bar', nb('Полоса — всё, что можно потратить за месяц. Траты заполняют её. Нажмите, чтобы узнать подробнее'));
+      bt.id = 'barTip';
+      bt.addEventListener('click', function () { if (bt.parentNode) { bt.parentNode.removeChild(bt); } barInfo(); });
+      spent.insertBefore(bt, spent.querySelector('.spent__legend') ? spent.querySelector('.spent__legend').nextSibling : null);
+      try { localStorage.setItem('fin_bartip', '1'); } catch (e) { /* без памяти подсказка покажется ещё раз — не страшно */ }
     }
     if (B && left < 0) { // бюджет кончился: в какой день траты месяца его перешли
       var gone = budgetGone(B), goneEl = el('p', 'spent__day', gone ? nb('бюджет кончился ' + F.dayLabel(gone).toLowerCase()) : '');
@@ -1072,9 +1127,11 @@
   function statsRow(box, after) {
     statIsOwner(function (yes) {
       if (!yes || !box.isConnected || box.querySelector('#statsBtn')) { return; }
-      var solo = el('ul', 'menu menu--solo'), li = el('li'), b = btn('menu__row');
+      var solo = el('ul', 'menu menu--solo menu--stats'), li = el('li'), b = btn('menu__row menu__row--tile'), tl = el('i', 'mtile');
       b.id = 'statsBtn';
-      add(b, el('span', '', 'Статистика'), el('small', '', 'видно только вам'), icon('right'));
+      tl.setAttribute('data-c', 'indigo');
+      tl.appendChild(icon('tab-stats'));
+      add(b, tl, el('span', '', 'Статистика'), el('small', '', 'видно только вам'), icon('right'));
       b.addEventListener('click', function () { openStats(openSettings); });
       li.appendChild(b);
       solo.appendChild(li);
@@ -4755,53 +4812,53 @@
     if (!st.loaded || st.error || firstRun()) { return; }
     haptic();
     swapModal('list', false, function (m) {
-      var box = el('div', 'pick'), ul = el('ul', 'menu'), ul2 = el('ul', 'menu menu--group'), ul3 = el('ul', 'menu menu--group'), cur = ul; // группы: учёт, вид, перенос (замечание арт-директора 18.10.2026)
-      function row(id, name, small, fn) {
-        var li = el('li'), b = btn('menu__row');
+      // разделы с подписью, как в «Настройках» iPhone (26.10.2026: «всё в каше» — новичок не находил нужное)
+      var box = el('div', 'pick pick--settings'), cur = null, first = null;
+      function section(title) {
+        var cap = el('p', 'menu__cap', title);
+        cur = el('ul', 'menu menu--sec');
+        add(box, cap, cur);
+        if (!first) { first = cap; }
+      }
+      function tile(name, c) { var t = el('i', 'mtile'); t.setAttribute('data-c', c); t.appendChild(icon(name)); return t; }
+      function row(id, ic, c, name, small, fn, sub) { // small — значение справа, sub — пояснение под названием
+        var li = el('li'), b = btn('menu__row menu__row--tile' + (sub ? ' menu__row--sub' : ''));
         b.id = id;
-        add(b, el('span', '', name), small ? el('small', '', small) : null, icon('right'));
+        add(b, tile(ic, c), el('span', '', name), sub ? el('em', 'menu__sub', sub) : null, small ? el('small', '', small) : null, icon('right'));
         b.addEventListener('click', fn);
         li.appendChild(b);
         cur.appendChild(li);
       }
-      row('setCats', WORDS.e.list, String(F.CATS.length), function () { openCats('e'); });
-      row('setSrcs', WORDS.i.list, String(F.SRCS.length), function () { openCats('i'); });
-      row('budgetBtn', 'Бюджет на месяц', budgetOn() ? F.fmt(st.budget.a) : 'не задан', function () { openBudget(openSettings); }); // отдельно от подсказки: задать можно, даже если её убрали
-      row('paysBtn', 'Платежи месяца', (st.pays.list || []).length ? String(st.pays.list.length) : 'нет', function () { openPays(openSettings); });
-      if (ntfCan()) { row('notifyBtn', 'Уведомления в чате', ntf().on ? 'вкл' : 'выкл', function () { openNotify(openSettings); }); }
-      cur = ul2;
-      row('themeBtn', 'Оформление', themeWord(themePref()), function () { openTheme(openSettings); });
-      function swRow(id, name, on, fn) { // строка-переключатель iOS 26: нажимается целиком, ручка — стекло
-        var li = el('li'), b = btn('menu__row menu__row--switch');
+      function swRow(id, ic, c, name, on, fn) { // строка-переключатель iOS 26: нажимается целиком, ручка — стекло
+        var li = el('li'), b = btn('menu__row menu__row--switch menu__row--tile');
         b.id = id;
         b.setAttribute('role', 'switch');
         b.setAttribute('aria-checked', String(on));
-        add(b, el('span', '', name), swKnob(b));
+        add(b, tile(ic, c), el('span', '', name), swKnob(b));
         b.addEventListener('click', function () { var v = b.getAttribute('aria-checked') !== 'true'; b.setAttribute('aria-checked', String(v)); fn(v); });
         li.appendChild(b);
         cur.appendChild(li);
       }
-      swRow('sizeBtn', 'Крупный текст', sizePref() === 'big', function (v) {
+      box.appendChild(el('h2', '', 'Настройки'));
+      section('Деньги');
+      row('budgetBtn', 'wallet', 'green', 'Бюджет на месяц', budgetOn() ? F.fmt(st.budget.a) : 'не задан', function () { openBudget(openSettings); }); // отдельно от подсказки: задать можно, даже если её убрали
+      row('paysBtn', 'repeat', 'indigo', 'Платежи месяца', (st.pays.list || []).length ? String(st.pays.list.length) : 'нет', function () { openPays(openSettings); });
+      row('setCats', 'cart', 'orange', WORDS.e.list, String(F.CATS.length), function () { openCats('e'); });
+      row('setSrcs', 'cash', 'teal', WORDS.i.list, String(F.SRCS.length), function () { openCats('i'); });
+      section('Внешний вид');
+      row('themeBtn', 'contrast', 'blue', 'Оформление', themeWord(themePref()), function () { openTheme(openSettings); });
+      swRow('sizeBtn', 'type', 'cyan', 'Крупный текст', sizePref() === 'big', function (v) {
         try { if (v) { localStorage.setItem('fin_size', 'big'); } else { localStorage.removeItem('fin_size'); } } catch (e) { /* без памяти выбор живёт до закрытия */ }
         haptic('ok');
         applySize();
         fit();
       });
-      if (inTg && tg.HapticFeedback) {
-        swRow('hapticBtn', 'Вибрация при касании', !hapticOff(), function (v) {
-          try { if (v) { localStorage.removeItem('fin_haptic'); } else { localStorage.setItem('fin_haptic', 'off'); } } catch (e) { /* без памяти выбор живёт до закрытия */ }
-          haptic('ok');
-        });
-      }
-      cur = ul3;
-      row('shareBtn', 'Поделиться настройкой', 'близкому', function () { openShare(openSettings); });
-      row('pasteBtn', 'Вставить настройку', 'по коду', function () { openImport(openSettings, null); });
-      row('notesBtn', 'Перенос из заметок', '', function () { openNotes(openSettings); });
-      row('backupBtn', 'Копия данных', '', function () { openBackup(openSettings); });
-      add(box, el('h2', '', 'Настройки'), ul, ul2, ul3);
-      statsRow(box, ul); // «Статистика» — только у автора: сервер проверяет подпись Telegram
-      if (homeCan() || st.home === 'added') { // строки нет, где значок не ставится (Telegram на компьютере, старая версия)
-        var solo = el('ul', 'menu menu--solo'), li = el('li'), hb = btn('menu__row menu__row--icon');
+      // «На телефоне»: чат, значок и вибрация — то, что есть только в телефоне; где ничего из этого нет (Telegram на компьютере), раздела нет
+      var canHome = homeCan() || st.home === 'added', canHaptic = !!(inTg && tg.HapticFeedback);
+      if (ntfCan() || canHome || canHaptic) { section('На телефоне'); }
+      if (ntfCan()) { row('notifyBtn', 'bell', 'red', 'Уведомления в чате', ntf().on ? 'вкл' : 'выкл', function () { openNotify(openSettings); }); }
+      if (canHome) {
+        var li = el('li'), hb = btn('menu__row menu__row--icon');
         hb.id = 'homeBtn';
         if (st.home === 'added') {
           var ok = el('small', '', 'добавлен');
@@ -4814,18 +4871,27 @@
           hb.addEventListener('click', homeAdd);
         }
         li.appendChild(hb);
-        solo.appendChild(li);
-        box.appendChild(solo);
+        cur.appendChild(li);
       }
-      // обратная связь — последней группой: анонимно и лично (пункт 17)
-      var ul5 = el('ul', 'menu menu--group'), fbLi = el('li'), auLi = el('li'), fb = btn('menu__row');
-      fb.id = 'fbBtn';
-      add(fb, el('span', '', 'Как улучшить приложение'), el('small', '', 'анонимно'), icon('right'));
-      fb.addEventListener('click', function () { openFeedback(openSettings); });
-      fbLi.appendChild(fb);
-      auLi.appendChild(authorRow());
-      add(ul5, fbLi, auLi);
-      box.appendChild(ul5);
+      if (canHaptic) {
+        swRow('hapticBtn', 'vibrate', 'pink', 'Вибрация при касании', !hapticOff(), function (v) {
+          try { if (v) { localStorage.removeItem('fin_haptic'); } else { localStorage.setItem('fin_haptic', 'off'); } } catch (e) { /* без памяти выбор живёт до закрытия */ }
+          haptic('ok');
+        });
+      }
+      section('Данные');
+      row('backupBtn', 'archive', 'gray', 'Копия данных', '', function () { openBackup(openSettings); }, 'сохранить файлом или вернуть');
+      row('notesBtn', 'notes', 'yellow', 'Перенос из заметок', '', function () { openNotes(openSettings); }, 'список трат из заметок телефона');
+      row('shareBtn', 'share', 'mint', 'Поделиться настройкой', '', function () { openShare(openSettings); }, 'категории и бюджет — близкому');
+      row('pasteBtn', 'download', 'purple', 'Вставить настройку', '', function () { openImport(openSettings, null); }, 'по коду от близкого');
+      // обратная связь — последним разделом: анонимно и лично (пункт 17)
+      section('Помощь');
+      row('fbBtn', 'bulb', 'orange', 'Как улучшить приложение', '', function () { openFeedback(openSettings); }, 'анонимно');
+      var auLi = el('li'), au = authorRow('menu__row--tile');
+      au.insertBefore(tile('send', 'blue'), au.firstChild);
+      auLi.appendChild(au);
+      cur.appendChild(auLi);
+      statsRow(box, first); // «Статистика» — только у автора (сервер проверяет подпись Telegram), над разделами
       m.appendChild(box);
     });
   }

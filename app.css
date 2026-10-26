@@ -283,6 +283,27 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .menu__row span { font: 500 17px/1.25 var(--font); letter-spacing: -.015em; }
 .menu__row small { font: 400 15px/1.25 var(--font); color: var(--muted); font-variant-numeric: tabular-nums; }
 .menu__row svg { grid-column: 3; width: 14px; height: 14px; color: var(--tert); }
+/* настройки по разделам (26.10.2026): подпись раздела над группой, значок в круге у каждой строки */
+.menu__cap { margin: 24px 16px 8px; font: 600 15px/1.3 var(--font); letter-spacing: -.01em; color: var(--muted); }
+.pick--settings > h2 + .menu__cap, .pick--settings > h2 + .menu--stats { margin-top: 18px; }
+.menu--sec { margin-top: 0; }
+.menu--stats + .menu__cap { margin-top: 24px; }
+.menu__row--tile { grid-template-columns: 30px 1fr auto 14px; column-gap: 12px; padding-left: 12px; }
+.menu__row--tile > span { grid-column: 2; }
+.menu__row--tile > small { grid-column: 3; }
+.menu__row--tile > svg, .menu__row--tile > .out { grid-column: 4; }
+.menu__row--sub { grid-template-rows: auto auto; row-gap: 2px; padding-top: 9px; padding-bottom: 9px; }
+.menu__row--sub > span { grid-row: 1; align-self: end; }
+.menu__sub { grid-column: 2; grid-row: 2; align-self: start; font: 400 14px/1.25 var(--font); font-style: normal; color: var(--muted); }
+.menu__row--sub > .mtile, .menu__row--sub > svg, .menu__row--sub > small { grid-row: 1 / span 2; }
+.menu__row--switch.menu__row--tile { grid-template-columns: 30px 1fr auto; }
+.menu__row--switch.menu__row--tile > .ios-switch { grid-column: 3; }
+.mtile { grid-column: 1; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 999px; background: var(--icon-bg); color: var(--ink); font-style: normal; }
+.menu__row .mtile svg { grid-column: auto; width: 17px; height: 17px; color: inherit; }
+/* в цветном стиле — круг своего цвета, значок белым, как в «Настройках» iPhone; на жёлтом значок тёмный */
+:root[data-style="color"] .mtile[data-c] { background: var(--cl); color: #FFFFFF; }
+:root[data-style="color"] .mtile[data-c="yellow"] { color: rgba(0, 0, 0, .78); }
+:root[data-style="color"] .mtile svg { stroke-width: 2.2; }
 .lbl--gap, .rows--gap { margin-top: 16px; }
 .lbl--gap { font-weight: 600; letter-spacing: -.005em; text-wrap: balance; } /* подпись группы — заголовок, как «Куда ушло» на главной; подсказка над ней обычным начертанием */
 /* подсказка у шестерёнки после первого экрана */
@@ -626,6 +647,13 @@ h1.month { margin: 0; cursor: default; }
 /* «из бюджета 1 500,00 ›»: строка с шевроном; зона нажатия 44 px — невидимой рамкой, высотой нельзя: наезжает на строку «в день» */
 .spent__base { position: relative; display: inline-flex; align-items: center; gap: 4px; font: inherit; color: inherit; }
 .spent__base svg { width: 12px; height: 12px; color: var(--tert); }
+.spent__bar { cursor: pointer; }
+/* подсказка под полосой один раз (26.10.2026): облачко со стрелкой вверх, в потоке страницы */
+.tip--bar { position: relative; top: auto; right: auto; display: block; width: 100%; margin-top: 12px; text-align: left; white-space: normal; transform-origin: 24px 0; }
+.tip--bar::before { right: auto; left: 22px; }
+.pick--barinfo .legend { margin-top: 10px; }
+.pick--barinfo .legend .is-total span, .pick--barinfo .legend .is-total data { font-weight: 600; color: var(--ink); }
+.pick--barinfo .btn--quiet { margin-top: 18px; width: 100%; }
 .spent__base::after { content: ""; position: absolute; left: -8px; right: -8px; top: -12px; bottom: -12px; }
 .spent__base:active { opacity: .6; }
 /* перерасход: самый тёмный отрезок за риской конца бюджета */
