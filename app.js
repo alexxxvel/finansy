@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'fd40c2f693'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '05bf3d3221'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -834,7 +834,7 @@
     return row;
   }
   // ---------- значок на экране телефона (вариант В, решение разработчика 18.10.2026) ----------
-  /** картинка значка — кошелёк (выбор разработчика 18.10.2026): тот же рендер, что в BotFather (значки\кошелёк-botfather-512.png), 144 px */
+  /** картинка значка — кошелёк (выбор разработчика 18.10.2026, финальный вид 26.10.2026): тот же рендер, что аватарка бота (значки\кошелёк-финал-botfather-1024.png), 144 px */
   function appIcon(size) {
     var s = document.createElement('span'), img = document.createElement('img');
     s.className = 'appicon';
