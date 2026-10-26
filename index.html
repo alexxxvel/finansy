@@ -9,18 +9,56 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Финансы</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="tokens.css?v=05bf3d3221">
-<link rel="stylesheet" href="app.css?v=05bf3d3221">
-<link rel="stylesheet" href="ios.css?v=05bf3d3221">
-<!-- официальный мост Telegram: через него приложение читает и пишет записи в облако Telegram -->
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<!-- экран загрузки (решение разработчика 26.10.2026): рисуется первым — стиль здесь же, тему и стиль ставит boot.js до отрисовки.
+     Чёрно-белый стиль — значок и бегущая линия (А), цветной — значок и растущая шкала «Потрачено» (В). Появляется с задержкой 0,18 с:
+     на быстрых телефонах его не видно; уходит, когда app.js нарисовал первый экран (hideSplash). Стили и скрипты приложения ниже
+     экрана и с defer: пока они грузятся, экран уже на месте (раньше синхронный скрипт Telegram в <head> держал белый экран). -->
+<style>
+html { background: #F5F5F7; }
+html[data-theme="dark"] { background: #000000; }
+#splash { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: #F5F5F7; animation: sp-in .32s ease-out .18s both; transition: opacity .26s ease-out; }
+html[data-theme="dark"] #splash { background: #000000; }
+#splash.is-out { opacity: 0; pointer-events: none; }
+.sp-in { display: grid; justify-items: center; gap: 22px; }
+.sp-ico { width: 76px; height: 76px; border-radius: 17px; box-shadow: 0 12px 30px -12px rgba(0,0,0,.45); animation: sp-breathe 2.4s ease-in-out infinite; }
+.sp-line { position: relative; width: 84px; height: 3px; border-radius: 2px; background: #E3E3E8; overflow: hidden; }
+html[data-theme="dark"] .sp-line { background: #2C2C2E; }
+.sp-line::after { content: ""; position: absolute; top: 0; bottom: 0; width: 40%; border-radius: 2px; background: #1D1D1F; animation: sp-slide 1.15s cubic-bezier(.45, 0, .55, 1) infinite; }
+html[data-theme="dark"] .sp-line::after { background: #F5F5F7; }
+.sp-scale { display: none; width: 104px; height: 6px; border-radius: 3px; background: #E3E3E8; gap: 2px; overflow: hidden; }
+html[data-theme="dark"] .sp-scale { background: #2C2C2E; }
+.sp-scale b { display: block; height: 100%; transform-origin: 0 50%; animation: sp-grow 2.2s cubic-bezier(.22, 1, .36, 1) infinite; }
+.sp-scale b:nth-child(1) { flex: 4; background: #FF8D28; }
+.sp-scale b:nth-child(2) { flex: 2; background: #0088FF; animation-delay: .18s; }
+.sp-scale b:nth-child(3) { flex: 1.5; background: #00C0E8; animation-delay: .32s; }
+.sp-scale b:nth-child(4) { flex: 1; background: #8E8E93; animation-delay: .44s; }
+html[data-theme="dark"] .sp-scale b:nth-child(1) { background: #FF9230; }
+html[data-theme="dark"] .sp-scale b:nth-child(2) { background: #0091FF; }
+html[data-theme="dark"] .sp-scale b:nth-child(3) { background: #3CD3FE; }
+html[data-style="color"] .sp-line { display: none; }
+html[data-style="color"] .sp-scale { display: flex; }
+.sp-help { position: absolute; left: 24px; right: 24px; bottom: max(32px, env(safe-area-inset-bottom, 0px)); margin: 0; text-align: center; font: 500 15px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif; color: #6E6E73; animation: sp-in .4s ease-out 9s both; } /* долго нет приложения — подсказка */
+html[data-theme="dark"] .sp-help { color: #98989D; }
+@keyframes sp-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sp-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(.96); } }
+@keyframes sp-slide { 0% { left: -40%; } 100% { left: 100%; } }
+@keyframes sp-grow { 0% { transform: scaleX(0); opacity: 1; } 55% { transform: scaleX(1); opacity: 1; } 85% { transform: scaleX(1); opacity: 0; } 100% { transform: scaleX(0); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .sp-ico { animation: none; } .sp-line::after, .sp-scale b { animation-duration: 2.4s; } }
+</style>
+<script src="boot.js?v=1870cf496a"></script>
 </head>
 <body>
+<div id="splash" aria-hidden="true"><div class="sp-in"><img class="sp-ico" src="appicon.png" width="76" height="76" alt=""><span class="sp-line"></span><span class="sp-scale"><b></b><b></b><b></b><b></b></span></div><p class="sp-help">Загрузка идёт дольше обычного. Если ничего не меняется, закройте окно и откройте его ещё раз.</p></div>
 <!-- В #root всегда есть видимый текст: белого экрана без объяснения быть не может (его заменяет app.js) -->
 <div id="root"><p class="boot">Открываем учёт. Если надпись не исчезает, закройте окно и откройте его ещё раз.</p></div>
-<script src="core.js?v=05bf3d3221"></script>
-<script src="store.js?v=05bf3d3221"></script>
-<script src="ios.js?v=05bf3d3221"></script>
-<script src="app.js?v=05bf3d3221"></script>
+<link rel="stylesheet" href="tokens.css?v=1870cf496a">
+<link rel="stylesheet" href="app.css?v=1870cf496a">
+<link rel="stylesheet" href="ios.css?v=1870cf496a">
+<!-- официальный мост Telegram: через него приложение читает и пишет записи в облако Telegram; defer — порядок сохраняется, экран не ждёт -->
+<script defer src="https://telegram.org/js/telegram-web-app.js"></script>
+<script defer src="core.js?v=1870cf496a"></script>
+<script defer src="store.js?v=1870cf496a"></script>
+<script defer src="ios.js?v=1870cf496a"></script>
+<script defer src="app.js?v=1870cf496a"></script>
 </body>
 </html>

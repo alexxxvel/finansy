@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '05bf3d3221'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '1870cf496a'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -834,7 +834,7 @@
     return row;
   }
   // ---------- значок на экране телефона (вариант В, решение разработчика 18.10.2026) ----------
-  /** картинка значка — кошелёк (выбор разработчика 18.10.2026, финальный вид 26.10.2026): тот же рендер, что аватарка бота (значки\кошелёк-финал-botfather-1024.png), 144 px */
+  /** картинка значка — кошелёк (выбор разработчика 18.10.2026, финальный вид 26.10.2026): тот же рендер, что аватарка бота (значки\кошелёк-финал-botfather-1024.png), 256 px: хватает и экрану загрузки (76 px на плотном экране) */
   function appIcon(size) {
     var s = document.createElement('span'), img = document.createElement('img');
     s.className = 'appicon';
@@ -3402,6 +3402,7 @@
     if (st.tab === 'history') { paintHistory(); } else if (st.tab === 'goals') { paintGoals(); } else if (st.tab === 'stats') { paintStats(); } else { paintMonth(animate); }
     view.scrollTop = 0;
     if (animate && view.animate) { view.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: reduce ? 120 : 180, easing: 'ease-out' }); }
+    hideSplash();
   }
 
   // ---------- загрузка ----------
@@ -4156,6 +4157,7 @@
     paint(false);
   }
   function paintFirst() {
+    hideSplash();
     var f = st.first || (st.first = {});
     if (!f.base) { var base = pickBase(); f.base = base.list; f.on = base.on; f.mine = []; f.busy = false; }
     function all() { return f.base.concat(f.mine); }
@@ -5545,7 +5547,15 @@
   }
 
   // ---------- запуск ----------
+  /** экран загрузки (index.html, решение разработчика 26.10.2026) уходит, когда нарисован первый экран или сообщение о сбое */
+  function hideSplash() {
+    var s = document.getElementById('splash');
+    if (!s || s.classList.contains('is-out')) { return; }
+    s.classList.add('is-out');
+    setTimeout(function () { if (s.parentNode) { s.parentNode.removeChild(s); } }, reduce ? 0 : 320);
+  }
   function fail(title, text) {
+    hideSplash();
     clear(root);
     var box = el('div', 'fail');
     add(box, el('h2', '', title), el('p', '', text));
@@ -5557,7 +5567,7 @@
     tgTry(function () { tg.expand(); });
     if (bridgeOnly) { fail('Не загрузился Telegram', 'Закройте окно и откройте его ещё раз. Записи в безопасности: без связи с Telegram приложение ничего не меняет.'); return; }
     if (inTg && !(tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') && tg.CloudStorage)) { fail('Нужно обновить Telegram', 'Эта версия Telegram не умеет хранить записи приложения. Обновите Telegram и откройте учёт снова.'); return; }
-    applyTheme(false); // до первой отрисовки: без вспышки светлого
+    applyTheme(true); // до первой отрисовки; true — тему на <html> уже поставил boot.js, а шапку и низ Telegram покрасить всё равно нужно
     applyStyle(); // и акцент: в цветном стиле часть цветов кнопок занята
     applySize();
     tgTry(function () { tg.onEvent('themeChanged', function () { if (themePref() === 'auto') { applyTheme(true); } }); });
