@@ -192,7 +192,8 @@
     root.addEventListener("pointercancel", function () { x0 = null; root.classList.remove("is-drag"); root.style.setProperty("--dx", "0px"); });   // отмену браузера (у pointercancel clientX = 0) за смахивание не считаем
     root.addEventListener("dragstart", function (e) { e.preventDefault(); });   // картинку мышью браузер тянет как своё: на компьютере это обрывало смахивание
 
-    preload("add");
+    preload("add");   // остальные сценарии подгружаются следом, пока человек читает первый лист: на медленной сети экран телефона не пустой
+    setTimeout(function () { preload("goals"); }, 900); setTimeout(function () { preload("stats"); }, 1800);
     window.requestAnimationFrame(function () { root.classList.add("is-open"); measure(); go(0); });
   }
 
