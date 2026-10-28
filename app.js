@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '02d474c441'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '65bd199fa5'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -63,6 +63,7 @@
     'tab-goals': '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".6" stroke-width="2.4"/>',
     'tab-stats': '<path d="M5 19V11M10 19V5M15 19v-6M20 19V8"/>',
     back: '<path d="M21 5H9l-6 7 6 7h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1ZM17 9l-6 6M11 9l6 6"/>',
+    play: '<path d="M6 3 20 12 6 21Z"/>',
     // значки разделов настроек (26.10.2026)
     contrast: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
     type: '<path d="M21 14h-5"/><path d="M16 16v-3.5a2.5 2.5 0 0 1 5 0V16"/><path d="M4.5 13h6"/><path d="m3 16 4.5-9 4.5 9"/>',
@@ -4254,9 +4255,18 @@
     tgTry(function () { tg.BackButton.hide(); });
     paint(false);
   }
+  /** обучение «Как пользоваться» (tour.js): у нового человека — один раз перед выбором категорий; отметка живёт на этом телефоне */
+  function tourSeen() { if (st.tourSeen) { return true; } try { return localStorage.getItem('fin_tour') === '1'; } catch (e) { return false; } }
+  function tourMark() { st.tourSeen = true; try { localStorage.setItem('fin_tour', '1'); } catch (e) { /* без памяти обучение покажется ещё раз — не страшно */ } }
+  function openTour(manual, after) {
+    if (!window.FINTOUR) { if (after) { after(); } return; }
+    haptic();
+    window.FINTOUR.open({ manual: manual, onClose: function (kind) { if (!manual) { tourMark(); } if (after) { after(kind); } } });
+  }
   function paintFirst() {
     hideSplash();
     var f = st.first || (st.first = {});
+    if (!f.manual && !tourSeen() && window.FINTOUR) { openTour(false, function () { paintFirst(); }); return; } // новый человек: сначала обучение, потом выбор категорий
     if (!f.base) { var base = pickBase(); f.base = base.list; f.on = base.on; f.mine = []; f.busy = false; }
     function all() { return f.base.concat(f.mine); }
     function picked() { return all().filter(function (c) { return f.on[c[0]]; }); }
@@ -4886,6 +4896,7 @@
       row('pasteBtn', 'download', 'purple', 'Вставить настройку', '', function () { openImport(openSettings, null); }, 'по коду от близкого');
       // обратная связь — последним разделом: анонимно и лично (пункт 17)
       section('Помощь');
+      row('tourBtn', 'play', 'teal', 'Как пользоваться', '', function () { openTour(true, null); }, 'обучение за полминуты');
       row('fbBtn', 'bulb', 'orange', 'Как улучшить приложение', '', function () { openFeedback(openSettings); }, 'анонимно');
       var auLi = el('li'), au = authorRow('menu__row--tile');
       au.insertBefore(tile('send', 'blue'), au.firstChild);

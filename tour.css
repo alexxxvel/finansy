@@ -1,0 +1,157 @@
+/* Обучение «Как пользоваться» (28.10.2026): пять листов поверх приложения — знакомство, «Трата», «Цели», «Аналитика», финал.
+   В телефоне проигрывается настоящий сценарий приложения (кадры app/tour/<тема>-<стиль>/, снимает tools/tour_frames.py): палец идёт к кнопке,
+   «сюда», нажатие, новый экран; шаги 1-2-3 загораются в такт. Кошелёк и телефон — общие предметы между листами.
+   Только transform/opacity (на старых Android нет отдельных translate/scale). Движение: ход пальца 0,7 с ease-in-out, нажатие 0,16 с, смена экрана 0,36 с,
+   смена листа — карусель 0,4 + 0,6 с. Сборка и правила — journal «Онбординг-инструкция». Лист живёт внутри #root: ширина и высота приложения. */
+.tour { --ink: #F5F5F7; --mute: #8E8E93; --soft: rgb(255 255 255 / .1); --hair: rgb(255 255 255 / .16); --dx: 0px; --dir: 1;
+  position: absolute; inset: 0; z-index: 40; display: flex; flex-direction: column; overflow: hidden; background: #000; color: var(--ink); perspective: 1200px;
+  font-family: var(--font); user-select: none; -webkit-user-select: none; touch-action: pan-y; opacity: 0; transition: opacity 320ms cubic-bezier(.23, 1, .32, 1); }
+.tour.is-open { opacity: 1; }
+.tour[data-t="light"] { --ink: #1D1D1F; --mute: #6E6E73; --soft: rgb(0 0 0 / .06); --hair: rgb(0 0 0 / .12); background: #F5F5F7; }
+.tour::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, #1C1C20 0%, #0A0A0C 44%, #000 70%); }
+.tour[data-t="light"]::before { background: linear-gradient(180deg, #FFFFFF 0%, #F5F5F7 44%, #EDEDF1 100%); }
+.tour[data-dir="back"] { --dir: -1; }
+.tour > * { position: relative; }
+.tour img { -webkit-user-drag: none; user-drag: none; }
+
+/* верх: полоса из пяти делений и «Пропустить» */
+.tour__top { flex: none; z-index: 6; display: flex; align-items: center; gap: 14px; height: 44px; margin: calc(max(env(safe-area-inset-top, 0px), calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px))) + 14px) 20px 0; }
+.tour__bars { flex: 1; display: grid; grid-auto-flow: column; gap: 5px; }
+.tour__bars i { height: 3px; border-radius: 2px; background: var(--soft); overflow: hidden; }
+.tour__bars b { display: block; height: 100%; background: var(--ink); transform-origin: 0 50%; transform: scaleX(var(--p, 0)); }
+.tour__skip { min-height: 44px; padding: 0 2px; border: 0; background: none; color: var(--mute); font: 500 16px/1 var(--font); cursor: pointer; transition: opacity 200ms ease; }
+.tour[data-cur="4"] .tour__skip { opacity: 0; pointer-events: none; }
+
+/* сцена: кошелёк и телефон занимают всё, что осталось между верхом и текстом */
+.tour__stage { flex: 1 1 0; min-height: 0; z-index: 2; }
+.tour__wallet { position: absolute; left: 50%; top: 50%; width: var(--ws, 380px); height: var(--ws, 380px); margin: calc(var(--ws, 380px) / -2) 0 0 calc(var(--ws, 380px) / -2); pointer-events: none;
+  animation: tour-wallet-in 1100ms cubic-bezier(.23, 1, .32, 1) backwards; transition: transform 700ms cubic-bezier(.77, 0, .175, 1), opacity 500ms cubic-bezier(.23, 1, .32, 1); }   /* backwards, не both: иначе конец анимации держит opacity 1 и кошелёк не уходит с листов 2–4 */
+@keyframes tour-wallet-in { from { opacity: 0; transform: translateY(36px) scale(.9); } to { opacity: 1; transform: none; } }
+.tour__bob { position: absolute; inset: 0; animation: tour-float 6s ease-in-out infinite; }
+@keyframes tour-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-10px) rotate(-1.2deg); } }
+.tour__bob img { position: absolute; inset: 0; width: 100%; height: 100%; transition: opacity 500ms cubic-bezier(.23, 1, .32, 1), transform 700ms cubic-bezier(.23, 1, .32, 1); }
+.tour__bob .tour__cards { opacity: 0; transform: translateY(26px) scale(.96); }
+.tour__floor { position: absolute; left: 50%; bottom: 17%; width: 46%; height: 22px; transform: translateX(-50%); border-radius: 50%; background: rgb(255 255 255 / .06); filter: blur(16px); }
+.tour[data-t="light"] .tour__floor { background: rgb(30 30 60 / .22); }
+.tour[data-cur="1"] .tour__wallet, .tour[data-cur="2"] .tour__wallet, .tour[data-cur="3"] .tour__wallet { opacity: 0; transform: translateY(70%) scale(.5); }
+.tour[data-cur="4"] .tour__hero { opacity: 0; }
+.tour[data-cur="4"] .tour__cards { opacity: 1; transform: none; transition-delay: 200ms; }
+
+/* телефон: стоит на месте на листах 2–4 (меняется только экран), снизу уходит в фон; смена листа — карусель */
+.tour__dev { position: absolute; left: 50%; top: 4px; bottom: 0; width: var(--dw, 344px); margin-left: calc(var(--dw, 344px) / -2); padding: 7px 7px 0; border-radius: 46px 46px 0 0; box-sizing: border-box;
+  background: #2C2C2E; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .18), 0 -1px 0 rgb(255 255 255 / .18);
+  opacity: 0; transform: translateY(150px) rotateX(24deg) scale(.9); transform-origin: 50% 100%; transition: transform 900ms cubic-bezier(.23, 1, .32, 1), opacity 500ms cubic-bezier(.23, 1, .32, 1);
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent 100%); mask-image: linear-gradient(to bottom, #000 calc(100% - 44px), transparent 100%); }
+.tour[data-t="light"] .tour__dev { background: #1D1D1F; box-shadow: 0 30px 60px rgb(0 0 0 / .12), 0 8px 16px rgb(0 0 0 / .06); }
+.tour[data-cur="1"] .tour__dev, .tour[data-cur="2"] .tour__dev, .tour[data-cur="3"] .tour__dev { opacity: 1; transform: rotateY(calc(var(--dx) * -.025deg)) translateX(calc(var(--dx) * .12)); }
+.tour[data-cur="4"] .tour__dev { opacity: 0; transform: translateY(90px) rotateX(-14deg) scale(.92); }
+.tour.is-drag .tour__dev, .tour.is-drag .tour__copy.is-cur { transition-duration: 0ms; }
+.tour__dev.swap-fwd { animation: tour-out-l 380ms cubic-bezier(.55, 0, .75, .2) both, tour-in-r 620ms cubic-bezier(.23, 1, .32, 1) 380ms both; }
+.tour__dev.swap-back { animation: tour-out-r 380ms cubic-bezier(.55, 0, .75, .2) both, tour-in-l 620ms cubic-bezier(.23, 1, .32, 1) 380ms both; }
+@keyframes tour-out-l { to { opacity: 0; transform: translateX(-118%) rotateY(28deg) scale(.86); } }
+@keyframes tour-in-r { from { opacity: 0; transform: translateX(118%) rotateY(-28deg) scale(.86); } to { opacity: 1; transform: none; } }
+@keyframes tour-out-r { to { opacity: 0; transform: translateX(118%) rotateY(-28deg) scale(.86); } }
+@keyframes tour-in-l { from { opacity: 0; transform: translateX(-118%) rotateY(28deg) scale(.86); } to { opacity: 1; transform: none; } }
+.tour__win { position: relative; width: 100%; height: 100%; border-radius: 39px 39px 0 0; overflow: hidden; background: #0B0B0C; }
+.tour[data-t="light"] .tour__win { background: #F5F5F7; }
+.tour__cam { position: absolute; left: 0; top: 0; width: 390px; height: 844px; transform-origin: 0 0; transition: transform 700ms ease-in-out; will-change: transform; }
+.tour__shots { position: absolute; inset: 0; }
+.tour__shots img { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 360ms ease; }
+.tour__shots img.is-on { opacity: 1; }
+.tour__glass { position: absolute; inset: 0; pointer-events: none; border-radius: 39px 39px 0 0; overflow: hidden; background: linear-gradient(118deg, rgb(255 255 255 / .1) 0%, rgb(255 255 255 / 0) 30%); }
+.tour__glass::after { content: ""; position: absolute; top: -20%; bottom: -20%; left: -60%; width: 40%; background: linear-gradient(100deg, transparent, rgb(255 255 255 / .16), transparent); opacity: 0; }
+.tour__dev.is-sheen .tour__glass::after { animation: tour-sheen 1000ms cubic-bezier(.23, 1, .32, 1); }
+@keyframes tour-sheen { 0% { opacity: 0; transform: skewX(-14deg) translateX(0); } 20% { opacity: 1; } 100% { opacity: 0; transform: skewX(-14deg) translateX(560px); } }
+
+/* палец и «сюда»: внешний слой едет (transform), внутренний нажимается — сжатие идёт вокруг центра пальца */
+.tour__finger, .tour__aim { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; }
+.tour__finger { z-index: 4; opacity: 0; transition: transform 700ms ease-in-out, opacity 250ms cubic-bezier(.23, 1, .32, 1); }
+.tour__aim { z-index: 3; }
+.tour__finger i { position: absolute; left: -28px; top: -28px; width: 56px; height: 56px; border-radius: 50%; background: rgb(255 255 255 / .35); box-shadow: 0 0 0 1.5px rgb(255 255 255 / .85), 0 8px 20px rgb(0 0 0 / .3); transition: transform 150ms cubic-bezier(.23, 1, .32, 1); }
+.tour[data-t="light"] .tour__finger i { background: rgb(0 0 0 / .18); box-shadow: 0 0 0 1.5px rgb(255 255 255 / .95), 0 8px 20px rgb(0 0 0 / .25); }
+.tour__finger.is-press i { transform: scale(.9); }
+.tour__finger i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; border: 2px solid rgb(255 255 255 / .9); opacity: 0; }
+.tour__finger.is-press i::after { animation: tour-ring 600ms cubic-bezier(.23, 1, .32, 1); }
+@keyframes tour-ring { 0% { opacity: .9; transform: scale(1); } 100% { opacity: 0; transform: scale(1.64); } }
+.tour__aim i { position: absolute; left: -35px; top: -35px; width: 70px; height: 70px; border-radius: 50%; background: rgb(10 124 255 / .18); box-shadow: 0 0 0 2px rgb(10 124 255 / .55); opacity: 0; transform: scale(.6); transition: opacity 250ms cubic-bezier(.23, 1, .32, 1), transform 400ms cubic-bezier(.23, 1, .32, 1); }
+.tour__aim.is-on i { opacity: 1; transform: scale(1); }
+
+/* главный элемент шага: в конце сценария выходит из экрана наружу, перекрывая рамку телефона */
+.tour__pop { position: absolute; z-index: 5; left: 50%; top: 22px; width: min(252px, calc(100% - 28px)); margin-left: -88px; padding: 14px 16px; border-radius: 22px; box-sizing: border-box; pointer-events: none;
+  background: #1C1C1E; color: var(--ink); box-shadow: 0 0 0 1px rgb(255 255 255 / .1), 0 30px 50px -18px rgb(0 0 0 / .8);
+  opacity: 0; transform: translate(-24px, 30px) scale(.9); transition: opacity 320ms cubic-bezier(.23, 1, .32, 1), transform 400ms cubic-bezier(.23, 1, .32, 1); }
+.tour[data-t="light"] .tour__pop { background: #FFFFFF; box-shadow: 0 0 0 1px rgb(0 0 0 / .05), 0 30px 50px -22px rgb(30 30 60 / .4), 0 8px 16px -8px rgb(30 30 60 / .2); }
+.tour__pop.is-on { opacity: 1; transform: none; transition: opacity 320ms cubic-bezier(.23, 1, .32, 1), transform 700ms cubic-bezier(.34, 1.56, .64, 1); }   /* лёгкий перелёт и возврат: результат «приземляется» */
+.tour__prow { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.tour__pic { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--soft); color: var(--ink); }
+.tour__pic svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tour[data-s="color"] .tour__pic[data-c] { background: var(--cl); color: #FFFFFF; }
+.tour__pt b { display: block; font: 600 16px/1.2 var(--font); }
+.tour__pt small { display: block; margin-top: 2px; font: 500 13px/1.2 var(--font); color: var(--mute); }
+.tour__psum { font: 700 22px/1 var(--font); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.tour__psum i { font-size: 14px; font-style: normal; }
+.tour__pbar { height: 6px; margin-top: 10px; border-radius: 3px; background: var(--soft); overflow: hidden; }
+.tour__pbar b { display: block; height: 100%; border-radius: 3px; background: var(--ink); transform-origin: 0 50%; transform: scaleX(.308); transition: transform 900ms cubic-bezier(.23, 1, .32, 1) 380ms; }
+.tour[data-s="color"] .tour__pbar b { background: #CB30E0; }
+.tour__pop.is-on .tour__pbar b { transform: scaleX(.338); }   /* 1 540 → 1 690 из 5 000 */
+.tour__plist { display: grid; gap: 8px; margin-top: 10px; }
+.tour__plist .tour__prow { grid-template-columns: 26px minmax(0, 1fr) auto; }
+.tour__plist .tour__pic { width: 26px; height: 26px; } .tour__plist .tour__pic svg { width: 14px; height: 14px; }
+.tour__plist span { font: 500 15px/1.2 var(--font); }
+.tour__plist data { font: 600 15px/1 var(--font); font-variant-numeric: tabular-nums; }
+.tour__phead { display: flex; justify-content: space-between; font: 600 14px/1.2 var(--font); color: var(--mute); }
+.tour__pop--stats .tour__prow { opacity: 0; transform: translateY(6px); transition: opacity 300ms cubic-bezier(.23, 1, .32, 1), transform 300ms cubic-bezier(.23, 1, .32, 1); }
+.tour__pop--stats.is-on .tour__prow { opacity: 1; transform: none; }
+.tour__pop--stats.is-on .tour__prow:nth-child(2) { transition-delay: 300ms; } .tour__pop--stats.is-on .tour__prow:nth-child(3) { transition-delay: 360ms; } .tour__pop--stats.is-on .tour__prow:nth-child(4) { transition-delay: 420ms; }
+
+/* текст: все пять на одном месте, друг под другом; уходит и приходит по направлению листания, строки по очереди */
+.tour__copies { flex: none; z-index: 5; display: grid; padding: 0 28px 0; }
+.tour__copy { grid-area: 1 / 1; align-self: start; opacity: 0; pointer-events: none; transform: translateX(calc(var(--dir) * 44px)); transition: opacity 300ms cubic-bezier(.23, 1, .32, 1), transform 520ms cubic-bezier(.23, 1, .32, 1); }
+.tour__copy.is-out { transform: translateX(calc(var(--dir) * -44px)); transition: opacity 220ms cubic-bezier(.23, 1, .32, 1), transform 420ms cubic-bezier(.23, 1, .32, 1); }
+.tour__copy.is-cur { opacity: 1; transform: translateX(calc(var(--dx) * .35)); pointer-events: auto; transition-delay: 90ms; }
+.tour__copy > * { opacity: 0; transform: translateX(calc(var(--dir) * 18px)); transition: opacity 420ms cubic-bezier(.23, 1, .32, 1), transform 560ms cubic-bezier(.23, 1, .32, 1); }
+.tour__copy.is-cur > * { opacity: 1; transform: none; }
+.tour__copy.is-cur > :nth-child(1) { transition-delay: 120ms; } .tour__copy.is-cur > :nth-child(2) { transition-delay: 180ms; } .tour__copy.is-cur > :nth-child(3) { transition-delay: 240ms; }
+.tour__copy h2 { margin: 0; font: 700 32px/1.06 var(--font); letter-spacing: -.035em; font-variation-settings: "opsz" 32; text-wrap: balance; color: var(--ink); }
+.tour__copy p { margin: 10px 0 0; font: 400 17px/1.4 var(--font); color: var(--mute); text-wrap: pretty; }
+.tour__steps { display: grid; margin: 12px 0 0; padding: 0; list-style: none; }
+.tour__steps li { display: grid; grid-template-columns: 26px 1fr; gap: 12px; align-items: center; min-height: 32px; font: 500 17px/1.25 var(--font); color: var(--mute); opacity: 0; transform: translateX(calc(var(--dir) * 14px)); transition: color 260ms cubic-bezier(.23, 1, .32, 1), opacity 380ms cubic-bezier(.23, 1, .32, 1), transform 500ms cubic-bezier(.23, 1, .32, 1); }
+.tour__copy.is-cur .tour__steps li { opacity: 1; transform: none; }
+.tour__copy.is-cur .tour__steps li:nth-child(1) { transition-delay: 0ms, 200ms, 200ms; } .tour__copy.is-cur .tour__steps li:nth-child(2) { transition-delay: 0ms, 260ms, 260ms; } .tour__copy.is-cur .tour__steps li:nth-child(3) { transition-delay: 0ms, 320ms, 320ms; }
+.tour__steps li b { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--hair); font: 600 14px/1 var(--font); transition: background-color 260ms cubic-bezier(.23, 1, .32, 1), color 260ms cubic-bezier(.23, 1, .32, 1), box-shadow 260ms cubic-bezier(.23, 1, .32, 1); }
+.tour__steps li.is-on { color: var(--ink); }
+.tour__steps li.is-on b { background: var(--ink); color: #000; box-shadow: none; animation: tour-step 420ms cubic-bezier(.34, 1.56, .64, 1); }
+.tour[data-t="light"] .tour__steps li.is-on b { color: #FFFFFF; }
+@keyframes tour-step { from { transform: scale(.7); } to { transform: scale(1); } }
+.tour__steps li.is-done b { background: var(--soft); color: var(--ink); box-shadow: none; }
+.tour__badge { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 6px 12px 6px 6px; border-radius: 999px; background: var(--soft); font: 600 14px/1 var(--font); color: var(--ink); }
+.tour__badge img { width: 22px; height: 22px; border-radius: 6px; }
+
+/* низ: «назад» и главная кнопка */
+.tour__foot { flex: none; z-index: 6; display: flex; gap: 10px; padding: 16px 24px max(28px, var(--safe-b)); }
+.tour__back { flex: none; width: 56px; min-height: 56px; border: 0; border-radius: 999px; background: var(--soft); color: var(--ink); font: 600 22px/1 var(--font); cursor: pointer; }
+.tour__back[hidden] { display: none; }
+.tour__next { flex: 1; min-height: 56px; border: 0; border-radius: 999px; background: var(--accent, #0076DE); color: var(--on-accent, #FFFFFF); font: 600 17px/1 var(--font); cursor: pointer; transition: transform 140ms cubic-bezier(.23, 1, .32, 1); }
+.tour__next:active { transform: scale(.97); }
+.tour__next span { display: inline-block; transition: opacity 180ms cubic-bezier(.23, 1, .32, 1), transform 260ms cubic-bezier(.23, 1, .32, 1); }
+.tour__next span.is-swap { opacity: 0; transform: translateY(6px); }
+.tour button:focus-visible { outline: 2px solid var(--accent, #0A84FF); outline-offset: 2px; }
+
+/* низкий экран (iPhone SE, окно Telegram без раскрытия): текст компактнее, чтобы телефону осталось место */
+@container app (max-height: 720px) {
+  .tour__copy h2 { font-size: 26px; }
+  .tour__copy p { margin-top: 6px; font-size: 15px; line-height: 1.35; }
+  .tour__steps { margin-top: 8px; }
+  .tour__steps li { min-height: 28px; font-size: 15px; }
+  .tour__badge { margin-bottom: 8px; }
+  .tour__foot { padding: 10px 24px max(18px, var(--safe-b)); }
+  .tour__next, .tour__back { min-height: 50px; }
+}
+@container app (max-width: 359px) { .tour__copy h2 { font-size: 27px; } .tour__copy { padding: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .tour, .tour__wallet, .tour__bob, .tour__bob img, .tour__dev, .tour__cam, .tour__shots img, .tour__finger, .tour__copy, .tour__copy > *, .tour__steps li, .tour__pop { transition-duration: 1ms; }
+  .tour__wallet, .tour__bob, .tour__steps li.is-on b, .tour__dev.is-sheen .tour__glass::after { animation: none; }
+  .tour__dev.swap-fwd, .tour__dev.swap-back { animation: none; }
+  .tour__finger.is-press i::after { animation: none; }
+}
