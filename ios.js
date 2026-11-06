@@ -161,7 +161,7 @@
       copy.style.clipPath = 'inset(' + Tc.toFixed(1) + 'px ' + (items.offsetWidth - Rc).toFixed(1) + 'px ' + (items.offsetHeight - Bc).toFixed(1) + 'px ' + Lc.toFixed(1) + 'px round ' + ((vh - bx) / m).toFixed(1) + 'px / ' + (iv / m).toFixed(1) + 'px)';
       if (rim) {
         if (bx < 0.3) { rim.style.visibility = 'hidden'; } else {
-          var mx = 1 + (LQ.rim[0] - 1) * l, my = 1 + (LQ.rim[1] - 1) * l, sh = (1.8 * l).toFixed(2); // у концов стекло тянет то, что под ним, вбок — копия шире, почти не выше
+          var mx = 1 + (LQ.rim[0] - 1) * l, my = 1 + (LQ.rim[1] - 1) * l; // у концов стекло тянет то, что под ним, вбок — копия шире, почти не выше
           var x0 = cx - half / mx, x1 = cx + half / mx, t0 = cy - vh / my, b0 = cy + vh / my, ring = ringMask(x0, x1, t0, b0, vh / mx, vh / my, bx / mx, by / my);
           rim.style.visibility = '';
           rim.style.transformOrigin = copy.style.transformOrigin;
@@ -171,7 +171,6 @@
           rim.style.webkitMaskPosition = rim.style.maskPosition = ring.pos;
           rim.style.webkitMaskSize = rim.style.maskSize = ring.size;
           rim.style.webkitMaskRepeat = rim.style.maskRepeat = 'no-repeat';
-          rim.style.filter = 'drop-shadow(' + sh + 'px 0 0 rgba(255,45,95,.55)) drop-shadow(-' + sh + 'px 0 0 rgba(0,170,255,.6))'; // радужная кайма, как у края стекла
         }
       }
     }

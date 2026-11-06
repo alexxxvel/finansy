@@ -49,7 +49,7 @@
 /* радужная кромка преломления — видна, пока линзу держат (как у Telegram на iOS 26) */
 .ios-lq__lens::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: calc(var(--lg-chroma) * 1px);
   background: conic-gradient(from 200deg, var(--lg-chromaWarm), rgba(255, 255, 255, 0) 18%, var(--lg-chromaCool) 34%, rgba(255, 255, 255, 0) 52%, var(--lg-chromaCool) 68%, var(--lg-chromaWarm));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: calc(var(--press, 0) * .85); }
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: calc(var(--press, 0) * .35); } /* радуга на кромке — едва, как у стекла Apple; яркая синяя обводка выглядела дёшево (06.11.2026) */
 .ios-lq__lens::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
   background: radial-gradient(90% 70% at 30% 0%, rgba(255, 255, 255, calc(.5 * var(--press, 0) + .15)), rgba(255, 255, 255, 0) 60%); }
 
