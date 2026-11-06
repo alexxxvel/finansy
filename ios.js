@@ -62,16 +62,16 @@
 
   /* ---------- жидкая линза над рядом кнопок (версия 3, 06.11.2026 — по покадровому замеру записей iPhone разработчика: Telegram и «Телефон», iOS 26/27) ----------
      Замер 30 кадров/с (центр цвета акцента под линзой, кадр за кадром):
-     • переезд к соседней вкладке — 98 % пути за ≈ 0,13 с, довод ≈ 1 %: пружина 0,2 с, отскок 0,15 (по замерам UIKit Codename One было 0,4 с — на живом айфоне вдвое быстрее);
+     • переезд к соседней вкладке — на записи 98 % пути за ≈ 0,13 с, довод ≈ 1 %; на телефоне разработчику «даже слишком быстро» — пружина 0,28 с, отскок 0,15 (по замерам UIKit Codename One было 0,4 с — на живом айфоне вдвое быстрее);
      • в пути линза растягивается почти вдвое и накрывает обе вкладки, к приезду собирается обратно (≈ 0,1 с) — растяжение по скорости через короткую пружину;
-     • касание — линза сразу становится поднятым стеклом (≈ 0,1 с, без отскока) и держится им ≈ 0,24 с от касания, даже если палец уже отпустили; потом за ≈ 0,15 с
+     • касание — линза сразу становится поднятым стеклом (≈ 0,1 с, без отскока) и держится им ≈ 0,28 с от касания, даже если палец уже отпустили; потом за ≈ 0,15 с
        оседает в серую подложку (без отскока: в версии 1 был отскок 0,3 — линза проседала ниже покоя и «прыгала»);
      • поднятая линза выше панели на 5 px сверху и снизу и шире вкладки на 20 px; у краёв — полоса преломления: то, что под линзой, там крупнее и с радужной каймой,
        внутри — ровно и чуть крупнее (×1,18), цвет под ней чуть светлее;
      • вся панель на касание чуть растёт — до ×1,03 пружиной ω 17,6, ζ 0,59 (замер UIKit), свой сдвиг панели сохраняется;
      • за пальцем линза идёт своей пружиной 0,196 с, отскок 0,1; отпустили — вкладка ПОД ПАЛЬЦЕМ (быстрый бросок — соседняя по ходу), скорость не сбрасывается;
      • протянули линзу через вкладку — лёгкий щелчок (Telegram HapticFeedback), как в iOS. */
-  var LQ = { travel: [0.2, 0.15], follow: [0.196, 0.1], lift: 0.1, drop: 0.15, hold: 0.24, swell: [0.357, 0.41], gel: 0.07, gelK: 1500, gelMax: 0.7, fling: 800, rim: [1.5, 1.06], band: [11, 3] };
+  var LQ = { travel: [0.28, 0.15], follow: [0.196, 0.1], lift: 0.1, drop: 0.15, hold: 0.28, swell: [0.357, 0.41], gel: 0.07, gelK: 1500, gelMax: 0.7, fling: 800, rim: [1.5, 1.06], band: [11, 3] };
   function hapticTick() {
     try {
       var w = window.Telegram && window.Telegram.WebApp, h = w && w.HapticFeedback;
@@ -238,11 +238,12 @@
       var d = drag;
       drag = null;
       L.tune(LQ.drop, 0);
-      var hold = reduce ? 0 : LQ.hold * 1000 - (e.timeStamp - d.t0); // короткое касание: стекло держится до ≈ 0,24 с от касания, как на айфоне
+      var hold = reduce ? 0 : LQ.hold * 1000 - (e.timeStamp - d.t0); // короткое касание: стекло держится до ≈ 0,28 с от касания, как на айфоне
       clearTimeout(dropTimer);
       if (hold > 16) { dropTimer = setTimeout(function () { if (!drag) { L.t = 0; B.t = 0; wake(self); } }, hold); } else { L.t = 0; B.t = 0; }
-      if (d.moved && !cancel) {
-        var lx = local(e), last = d.hist[d.hist.length - 1], v = e.timeStamp - last.t > 120 ? 0 : velocity(d.hist); // палец замер перед отпусканием — броска нет
+      if (d.moved) { // протягивание перехватила система (pointercancel) — вкладка под последним положением пальца, без прыжка
+        var last = d.hist[d.hist.length - 1], real = e.type === 'pointerup' && (e.clientX || e.clientY), lx = real ? local(e) : last.x; // iOS при перехвате касания шлёт clientX = 0 — берём последнее настоящее положение пальца
+        var v = cancel || e.timeStamp - last.t > 120 ? 0 : velocity(d.hist); // палец замер перед отпусканием — броска нет
         var i = nearest(clamp(lx - d.grab, slot(0).x, slot(btns.length - 1).x + slot(btns.length - 1).w));
         if (Math.abs(v) > LQ.fling) { var s = slot(i), mid = s.x + s.w / 2, ahead = v > 0 ? lx - d.grab > mid - s.w * 0.1 : lx - d.grab < mid + s.w * 0.1; if (ahead) { i += v > 0 ? 1 : -1; } }
         select(i, true, true); // скорость линзы не сбрасывается: доезжает с того места и с той скоростью, что была
@@ -251,7 +252,7 @@
     }
     el.addEventListener('pointerup', function (e) { end(e, false); });
     el.addEventListener('pointercancel', function (e) { end(e, true); });
-    el.addEventListener('lostpointercapture', function (e) { if (drag && drag.moved) { end(e, false); } });
+    el.addEventListener('lostpointercapture', function (e) { if (drag && drag.moved) { end(e, true); } });
     watchSize(el, function () { place(); var t = slot(sel); X.jump(t.x); W.jump(t.w); render(); });
     // выбранное поменяло само приложение (aria-pressed / aria-selected) — линза едет туда же, без события
     if (typeof MutationObserver !== 'undefined') {

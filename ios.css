@@ -35,7 +35,8 @@
 :root[data-theme="dark"][data-accent="brown"] { --accent: #926E52; --on-accent: #FFFFFF; --acc: #B78A66; --acc-text: #DBA679; --acc-soft: rgba(183, 138, 102, .18); }
 
 /* ---------- жидкая линза: общий механизм (панель вкладок, сегменты) ---------- */
-.ios-lq { position: relative; isolation: isolate; display: flex; touch-action: pan-y; }
+.ios-lq { position: relative; isolation: isolate; display: flex; touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.ios-lq.ios-tabbar { touch-action: none; } /* панель вкладок касание браузеру не отдаёт: иначе на айфоне зажатый палец перехватывается и линза не водится (06.11.2026) */
 .ios-lq__items { position: relative; z-index: 1; display: flex; flex: 1; min-width: 0; }
 .ios-lq__items > button, .ios-lq__items--lens > span { flex: 1 1 0; min-width: 0; }
 .ios-lq.is-live .ios-lq__items:not(.ios-lq__items--lens) {
