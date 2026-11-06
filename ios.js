@@ -246,12 +246,21 @@
         var i = nearest(clamp(lx - d.grab, slot(0).x, slot(btns.length - 1).x + slot(btns.length - 1).w));
         if (Math.abs(v) > LQ.fling) { var s = slot(i), mid = s.x + s.w / 2, ahead = v > 0 ? lx - d.grab > mid - s.w * 0.1 : lx - d.grab < mid + s.w * 0.1; if (ahead) { i += v > 0 ? 1 : -1; } }
         select(i, true, true); // скорость линзы не сбрасывается: доезжает с того места и с той скоростью, что была
-      } else if (!cancel) { select(d.under, true, false); } else { select(sel); }
+      } else if (!cancel) {
+        select(d.under, true, false);
+        if (owned && e.pointerType === 'touch') { owned = false; btns[d.under].click(); } // касание забрали у системы — родного click не будет, нажимаем сами
+      } else { select(sel); }
       wake(self);
+    }
+    // iOS (Telegram): долгое касание иначе забирает системный жест — линзу не поводить. Касание панели вкладок целиком наше, нажатие вкладки — наш click
+    var owned = false;
+    if (tabbar) {
+      el.addEventListener('touchstart', function (e) { owned = e.touches.length === 1; if (owned && e.cancelable) { e.preventDefault(); } }, { passive: false });
+      el.addEventListener('touchmove', function (e) { if (owned && e.cancelable) { e.preventDefault(); } }, { passive: false });
     }
     el.addEventListener('pointerup', function (e) { end(e, false); });
     el.addEventListener('pointercancel', function (e) { end(e, true); });
-    el.addEventListener('lostpointercapture', function (e) { if (drag && drag.moved) { end(e, true); } });
+    el.addEventListener('lostpointercapture', function (e) { if (e.target === el && drag && drag.moved) { end(e, true); } }); // только своё: кнопка теряет касание, когда его забирает панель, — это не конец жеста
     watchSize(el, function () { place(); var t = slot(sel); X.jump(t.x); W.jump(t.w); render(); });
     // выбранное поменяло само приложение (aria-pressed / aria-selected) — линза едет туда же, без события
     if (typeof MutationObserver !== 'undefined') {
