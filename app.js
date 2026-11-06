@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '497ef51203'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '2e1d7d1556'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -233,7 +233,17 @@
   }
   function syncAdd() { if (addText) { addText.nodeValue = addLabel(); } }
   /** низ (решение разработчика 14.10.2026): широкая синяя «Добавить» с подписью над четырьмя вкладками */
+  var dockTabs = null;
   function paintDock() {
+    if (dockTabs && dockTabs.isConnected) { // панель уже стоит: меняется только выбранная вкладка, линза доезжает сама (06.11.2026: пересборка на каждое касание бросала линзу рывком)
+      [].forEach.call(dockTabs.querySelectorAll('button[data-tab]'), function (b) {
+        var on = b.getAttribute('data-tab') === st.tab;
+        b.setAttribute('aria-selected', String(on));
+        if (on) { b.setAttribute('aria-current', 'page'); } else { b.removeAttribute('aria-current'); }
+      });
+      syncAdd();
+      return;
+    }
     clear(dock);
     dock.className = 'dock dock--stack';
     // панель вкладок iOS 26 (25.10.2026): значки и подписи, под выбранной — линза; её можно тянуть пальцем между вкладками (ios.js)
@@ -262,6 +272,7 @@
     });
     add(tabs, items, el('span', 'ios-lq__lens'));
     liquidOn(tabs);
+    dockTabs = tabs;
     var a = btn('btn btn--add');
     a.id = 'addBtn';
     addText = document.createTextNode(addLabel());

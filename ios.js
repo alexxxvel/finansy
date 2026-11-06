@@ -26,6 +26,10 @@
     return true;
   };
   Spring.prototype.jump = function (x) { this.x = this.t = x; this.v = 0; };
+  Spring.prototype.tune = function (duration, bounce) { // другая пружина с того же места и с той же скоростью
+    this.k = Math.pow(2 * Math.PI / duration, 2);
+    this.c = bounce >= 0 ? (1 - bounce) * 4 * Math.PI / duration : 4 * Math.PI / (duration * (1 + bounce));
+  };
 
   // общий цикл кадров: компонент в списке, пока что-то движется; отключённый от страницы выпадает сам
   var active = [], raf = 0, last = 0;
@@ -56,20 +60,39 @@
     ro.observe(el);
   }
 
-  /* ---------- жидкая линза над рядом кнопок ---------- */
+  /* ---------- жидкая линза над рядом кнопок (версия 3, 06.11.2026 — по покадровому замеру записей iPhone разработчика: Telegram и «Телефон», iOS 26/27) ----------
+     Замер 30 кадров/с (центр цвета акцента под линзой, кадр за кадром):
+     • переезд к соседней вкладке — 98 % пути за ≈ 0,13 с, довод ≈ 1 %: пружина 0,2 с, отскок 0,15 (по замерам UIKit Codename One было 0,4 с — на живом айфоне вдвое быстрее);
+     • в пути линза растягивается почти вдвое и накрывает обе вкладки, к приезду собирается обратно (≈ 0,1 с) — растяжение по скорости через короткую пружину;
+     • касание — линза сразу становится поднятым стеклом (≈ 0,1 с, без отскока) и держится им ≈ 0,24 с от касания, даже если палец уже отпустили; потом за ≈ 0,15 с
+       оседает в серую подложку (без отскока: в версии 1 был отскок 0,3 — линза проседала ниже покоя и «прыгала»);
+     • поднятая линза выше панели на 5 px сверху и снизу и шире вкладки на 20 px; у краёв — полоса преломления: то, что под линзой, там крупнее и с радужной каймой,
+       внутри — ровно и чуть крупнее (×1,18), цвет под ней чуть светлее;
+     • вся панель на касание чуть растёт — до ×1,03 пружиной ω 17,6, ζ 0,59 (замер UIKit), свой сдвиг панели сохраняется;
+     • за пальцем линза идёт своей пружиной 0,196 с, отскок 0,1; отпустили — вкладка ПОД ПАЛЬЦЕМ (быстрый бросок — соседняя по ходу), скорость не сбрасывается;
+     • протянули линзу через вкладку — лёгкий щелчок (Telegram HapticFeedback), как в iOS. */
+  var LQ = { travel: [0.2, 0.15], follow: [0.196, 0.1], lift: 0.1, drop: 0.15, hold: 0.24, swell: [0.357, 0.41], gel: 0.07, gelK: 1500, gelMax: 0.7, fling: 800, rim: [1.5, 1.06], band: [11, 3] };
+  function hapticTick() {
+    try {
+      var w = window.Telegram && window.Telegram.WebApp, h = w && w.HapticFeedback;
+      if (h && (!w.isVersionAtLeast || w.isVersionAtLeast('6.1'))) { h.selectionChanged(); }
+    } catch (e) { /* без отклика — не страшно */ }
+  }
   function liquid(el) {
     if (!el || el.liquid) { return; }
     var items = el.querySelector('.ios-lq__items'), lens = el.querySelector('.ios-lq__lens');
     if (!items || !lens) { return; }
     var btns = [].slice.call(items.children), tabbar = el.classList.contains('ios-tabbar');
-    var mag = parseFloat(el.getAttribute('data-mag') || (tabbar ? '1.24' : '1')), press = parseFloat(el.getAttribute('data-press') || (tabbar ? PRESS : 1.12));
+    var mag = parseFloat(el.getAttribute('data-mag') || (tabbar ? '1.18' : '1'));
+    var press = parseFloat(el.getAttribute('data-press') || '1.12'); // сегменты: линза растёт в долю своего размера; у панели вкладок — на 16 px и за края
+    var swell = parseFloat(el.getAttribute('data-swell') || (tabbar ? '1.03' : '1'));
     var copy = items.cloneNode(true); // копия ряда под линзой: увеличена вокруг центра линзы и в цвете акцента
     copy.className += ' ios-lq__items--lens';
     copy.setAttribute('aria-hidden', 'true');
     copy.removeAttribute('role');
     copy.removeAttribute('id');
     [].forEach.call(copy.querySelectorAll('*'), function (n) {
-      ['id', 'role', 'aria-selected', 'aria-pressed', 'aria-controls', 'aria-label'].forEach(function (a) { n.removeAttribute(a); });
+      ['id', 'role', 'aria-selected', 'aria-pressed', 'aria-controls', 'aria-label', 'aria-current'].forEach(function (a) { n.removeAttribute(a); });
       [].slice.call(n.attributes).forEach(function (a) { if (a.name.indexOf('data-') === 0) { n.removeAttribute(a.name); } }); // копию не находят ни тесты, ни обработчики
       if (n.tagName === 'BUTTON') { n.tabIndex = -1; }
     });
@@ -80,38 +103,89 @@
       copy.replaceChild(s, b);
     });
     el.appendChild(copy);
+    var rim = null; // полоса преломления у краёв поднятой линзы: та же копия крупнее, с радужной каймой, видна только кольцом у кромки
+    if (tabbar && el.getAttribute('data-rim') !== 'off') {
+      rim = copy.cloneNode(true);
+      rim.className += ' ios-lq__items--rim';
+      el.insertBefore(rim, copy);
+    }
     var sel = 0;
     btns.forEach(function (b, k) { if (b.getAttribute('aria-selected') === 'true' || b.getAttribute('aria-pressed') === 'true') { sel = k; } });
-    var X = new Spring(0, 0.5, 0.15, 0.2), W = new Spring(0, 0.5, 0, 0.2), P = new Spring(0, 0.35, 0.3, 0.004), self = { el: el };
+    var X = new Spring(0, LQ.travel[0], LQ.travel[1], 0.2), W = new Spring(0, LQ.travel[0], 0, 0.2);
+    var L = new Spring(0, LQ.lift, 0, 0.004), B = new Spring(0, LQ.swell[0], LQ.swell[1], 0.003), G = new Spring(0, LQ.gel, 0, 0.002);
+    var baseT = '', rest = { top: 0, h: 0 }, self = { el: el }, dropTimer = 0;
 
     function slot(i) { var b = btns[i]; return { x: items.offsetLeft + b.offsetLeft, w: b.offsetWidth }; }
+    function slotAt(lx, d) { var i = d; btns.forEach(function (b, k) { var s = slot(k); if (lx >= s.x && lx <= s.x + s.w) { i = k; } }); return i; }
+    function nearest(cx) { var near = sel, best = 1e9; btns.forEach(function (b, k) { var s = slot(k), d = Math.abs(s.x + s.w / 2 - cx); if (d < best) { best = d; near = k; } }); return near; }
+    function local(e) { var r = el.getBoundingClientRect(), sc = r.width / (el.offsetWidth || r.width || 1); return (e.clientX - r.left) / (sc || 1); } // панель может быть чуть увеличена касанием
     function place() {
+      lens.style.height = '';
+      el.style.transform = '';   // свой сдвиг панели (например translateX(-50%)) сохраняется, разбухание — поверх него
+      var bt = getComputedStyle(el).transform; baseT = bt && bt !== 'none' ? bt + ' ' : '';
+      rest.top = lens.offsetTop;
+      rest.h = lens.offsetHeight;
       copy.style.left = items.offsetLeft + 'px';
       copy.style.top = items.offsetTop + 'px';
       copy.style.width = items.offsetWidth + 'px';
       copy.style.height = items.offsetHeight + 'px';
+      if (rim) { rim.style.cssText = copy.style.cssText; }
+    }
+    function ringMask(x0, x1, t0, b0, rx, ry, bx, by) { // кольцо по кромке капсулы: у концов толщина bx (там главное преломление), сверху и снизу — by
+      var cy = (t0 + b0) / 2, H = items.offsetHeight, mid = Math.max(0, x1 - x0 - 2 * rx), ex = Math.max(0.1, rx - bx), ey = Math.max(0.1, ry - by);
+      var end = function (at) { return 'radial-gradient(' + ex.toFixed(1) + 'px ' + ey.toFixed(1) + 'px at ' + at + 'px ' + cy.toFixed(1) + 'px, transparent 97%, #000 100%)'; };
+      return {
+        img: end(rx.toFixed(1)) + ', ' + end(0) + ', linear-gradient(#000 ' + (t0 + by).toFixed(1) + 'px, transparent ' + (t0 + by + 0.6).toFixed(1) + 'px, transparent ' + (b0 - by - 0.6).toFixed(1) + 'px, #000 ' + (b0 - by).toFixed(1) + 'px)',
+        pos: x0.toFixed(1) + 'px 0, ' + (x1 - rx).toFixed(1) + 'px 0, ' + (x0 + rx).toFixed(1) + 'px 0',
+        size: rx.toFixed(1) + 'px ' + H + 'px, ' + rx.toFixed(1) + 'px ' + H + 'px, ' + mid.toFixed(1) + 'px ' + H + 'px'
+      };
     }
     function render() {
-      var p = clamp(P.x, -0.2, 1.4), w = W.x, s = 1 + (press - 1) * p;
-      var stretch = clamp(Math.abs(X.v) / 4200, 0, 0.22); // растяжение по скорости — линза «течёт»
-      var sx = s * (1 + stretch), sy = s * (1 - stretch * 0.45);
-      lens.style.width = w + 'px';
-      lens.style.transform = 'translate3d(' + X.x.toFixed(2) + 'px,0,0) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')';
-      el.style.setProperty('--press', clamp(p, 0, 1).toFixed(3));
-      var cx = X.x + w / 2 - items.offsetLeft, half = w * sx / 2;
+      var l = clamp(L.x, 0, 1), g = clamp(G.x, 0, LQ.gelMax);
+      var gx = tabbar ? 20 : W.x * (press - 1), gy = tabbar ? 2 * (rest.top + 5) : rest.h * (press - 1);
+      var w = (W.x + gx * l) * (1 + g), h = (rest.h + gy * l) * (1 - g * 0.12); // поднятая — шире и выше панели; в пути вытягивается по ходу
+      lens.style.width = w.toFixed(2) + 'px';
+      lens.style.height = h.toFixed(2) + 'px';
+      lens.style.transform = 'translate3d(' + (X.x + (W.x - w) / 2).toFixed(2) + 'px,' + ((rest.h - h) / 2).toFixed(2) + 'px,0)';
+      var b = clamp(B.x, -0.3, 1.3);
+      el.style.transform = Math.abs(b) > 0.002 ? baseT + 'scale(' + (1 + (swell - 1) * b).toFixed(4) + ')' : '';
+      el.style.setProperty('--press', l.toFixed(3));
+      var cx = X.x + W.x / 2 - items.offsetLeft, half = w / 2, cy = rest.top + rest.h / 2 - items.offsetTop, vh = h / 2;
       el.style.setProperty('--l', (cx - half).toFixed(1));
       el.style.setProperty('--r', (cx + half).toFixed(1));
-      var lh = lens.offsetHeight, cy = lens.offsetTop + lh / 2 - items.offsetTop, vh = lh * sy / 2;
-      var m = 1 + (mag - 1) * clamp(p, 0, 1); // увеличение только под нажатой линзой
+      var m = 1 + (mag - 1) * l; // увеличение только под поднятой линзой
       copy.style.transformOrigin = cx.toFixed(1) + 'px ' + cy.toFixed(1) + 'px';
       copy.style.transform = 'scale(' + m.toFixed(4) + ')';
-      var L = cx - half / m, R = cx + half / m, T = cy - vh / m, B = cy + vh / m;
-      copy.style.clipPath = 'inset(' + T.toFixed(1) + 'px ' + (items.offsetWidth - R).toFixed(1) + 'px ' + (items.offsetHeight - B).toFixed(1) + 'px ' + L.toFixed(1) + 'px round ' + (vh / m).toFixed(1) + 'px)';
+      var bx = rim ? Math.min(LQ.band[0] * l, vh * 0.5) : 0, by = rim ? LQ.band[1] * l : 0, ih = half - bx, iv = vh - by; // внутри кольца — ровная копия; кольцо — у rim
+      var Lc = cx - ih / m, Rc = cx + ih / m, Tc = cy - iv / m, Bc = cy + iv / m;
+      copy.style.clipPath = 'inset(' + Tc.toFixed(1) + 'px ' + (items.offsetWidth - Rc).toFixed(1) + 'px ' + (items.offsetHeight - Bc).toFixed(1) + 'px ' + Lc.toFixed(1) + 'px round ' + ((vh - bx) / m).toFixed(1) + 'px / ' + (iv / m).toFixed(1) + 'px)';
+      if (rim) {
+        if (bx < 0.3) { rim.style.visibility = 'hidden'; } else {
+          var mx = 1 + (LQ.rim[0] - 1) * l, my = 1 + (LQ.rim[1] - 1) * l, sh = (1.8 * l).toFixed(2); // у концов стекло тянет то, что под ним, вбок — копия шире, почти не выше
+          var x0 = cx - half / mx, x1 = cx + half / mx, t0 = cy - vh / my, b0 = cy + vh / my, ring = ringMask(x0, x1, t0, b0, vh / mx, vh / my, bx / mx, by / my);
+          rim.style.visibility = '';
+          rim.style.transformOrigin = copy.style.transformOrigin;
+          rim.style.transform = 'scale(' + mx.toFixed(4) + ',' + my.toFixed(4) + ')';
+          rim.style.clipPath = 'inset(' + t0.toFixed(1) + 'px ' + (items.offsetWidth - x1).toFixed(1) + 'px ' + (items.offsetHeight - b0).toFixed(1) + 'px ' + x0.toFixed(1) + 'px round ' + (vh / mx).toFixed(1) + 'px / ' + (vh / my).toFixed(1) + 'px)';
+          rim.style.webkitMaskImage = rim.style.maskImage = ring.img;
+          rim.style.webkitMaskPosition = rim.style.maskPosition = ring.pos;
+          rim.style.webkitMaskSize = rim.style.maskSize = ring.size;
+          rim.style.webkitMaskRepeat = rim.style.maskRepeat = 'no-repeat';
+          rim.style.filter = 'drop-shadow(' + sh + 'px 0 0 rgba(255,45,95,.55)) drop-shadow(-' + sh + 'px 0 0 rgba(0,170,255,.6))'; // радужная кайма, как у края стекла
+        }
+      }
     }
-    self.tick = function (dt) { var a = X.step(dt), b = W.step(dt), c = P.step(dt); render(); return a || b || c; };
-    function select(i, user, drag) {
+    self.tick = function (dt) {
+      var a = X.step(dt), b = W.step(dt), c = L.step(dt), d = B.step(dt);
+      G.t = reduce ? 0 : clamp(Math.abs(X.v) / LQ.gelK, 0, LQ.gelMax);
+      var e = G.step(dt);
+      render();
+      return a || b || c || d || e || !!drag;
+    };
+    function select(i, user, dragged) {
       i = clamp(i, 0, btns.length - 1);
       var t = slot(i);
+      X.tune(LQ.travel[0], LQ.travel[1]);
       X.t = t.x;
       W.t = t.w;
       if (i !== sel || user === 'force') {
@@ -120,56 +194,64 @@
           if (b.hasAttribute('aria-selected')) { b.setAttribute('aria-selected', String(k === i)); }
           if (b.hasAttribute('aria-pressed')) { b.setAttribute('aria-pressed', String(k === i)); }
         });
-        if (user && user !== 'force') { fire(el, 'liquid:change', { index: i, value: btns[i].getAttribute('data-value') || String(i), drag: !!drag }); }
+        if (user && user !== 'force') { fire(el, 'liquid:change', { index: i, value: btns[i].getAttribute('data-value') || String(i), drag: !!dragged }); }
       }
       wake(self);
     }
-    // касание — линза растёт сразу; тянуть — 1:1 за пальцем (резина у краёв); отпустить — проекция скорости → ближайшая кнопка
+    // касание: линза сразу едет к вкладке под пальцем и поднимается, панель чуть растёт; тянуть — линза идёт за пальцем своей пружиной;
+    // отпустить — вкладка под пальцем (быстрый бросок — соседняя по ходу)
     var drag = null;
     el.addEventListener('pointerdown', function (e) {
       if (e.button !== 0 || e.isPrimary === false) { return; }
-      var r = el.getBoundingClientRect(), lx = e.clientX - r.left, under = sel, center = X.x + W.x / 2;
-      btns.forEach(function (b, k) { var s = slot(k); if (lx >= s.x && lx <= s.x + s.w) { under = k; } });
-      drag = { id: e.pointerId, start: lx, grab: lx - center, onLens: Math.abs(lx - center) < W.x / 2, under: under, moved: false, hist: [{ x: X.x, t: e.timeStamp }] };
-      P.t = 1;
-      if (!drag.onLens) { var t = slot(under); X.t = t.x; W.t = t.w; } // нажали другую кнопку — линза уже едет туда
+      var lx = local(e), center = X.x + W.x / 2, under = slotAt(lx, sel);
+      drag = { id: e.pointerId, start: lx, grab: lx - center, onLens: Math.abs(lx - center) < W.x / 2, under: under, near: under, moved: false, t0: e.timeStamp, hist: [{ x: lx, t: e.timeStamp }] };
+      clearTimeout(dropTimer);
+      L.tune(LQ.lift, 0);
+      L.t = 1;
+      B.t = 1;
+      if (!drag.onLens) { var t = slot(under); X.tune(LQ.travel[0], LQ.travel[1]); X.t = t.x; W.t = t.w; }
       wake(self);
     });
     el.addEventListener('pointermove', function (e) {
       if (!drag || e.pointerId !== drag.id) { return; }
-      var r = el.getBoundingClientRect(), lx = e.clientX - r.left;
+      var lx = local(e);
       if (!drag.moved) {
         if (Math.abs(lx - drag.start) < 6) { return; }
         drag.moved = true;
         try { el.setPointerCapture(e.pointerId); } catch (z) { /* без захвата тоже работает */ }
-        drag.grab = drag.onLens ? drag.grab : 0;
+        drag.grab = drag.onLens ? clamp(drag.grab, -W.x / 2, W.x / 2) : 0;
+        X.tune(LQ.follow[0], LQ.follow[1]);
       }
       var min = slot(0).x, max = slot(btns.length - 1).x, x = lx - drag.grab - W.x / 2;
       if (x < min) { x = min + rubber(x - min, el.clientWidth); }
       if (x > max) { x = max + rubber(x - max, el.clientWidth); }
-      var prev = drag.hist[drag.hist.length - 1], near = sel, best = 1e9;
-      X.v = e.timeStamp > prev.t ? (x - prev.x) / (e.timeStamp - prev.t) * 1000 : X.v;
-      X.x = X.t = x;
-      btns.forEach(function (b, k) { var s = slot(k), d = Math.abs(s.x + s.w / 2 - (x + W.x / 2)); if (d < best) { best = d; near = k; } });
+      X.t = x;
+      var near = nearest(x + W.x / 2);
+      if (near !== drag.near) { drag.near = near; hapticTick(); }
       W.t = slot(near).w;
-      drag.hist.push({ x: x, t: e.timeStamp });
+      drag.hist.push({ x: lx, t: e.timeStamp });
       if (drag.hist.length > 12) { drag.hist.shift(); }
       wake(self);
     });
     function end(e, cancel) {
       if (!drag || e.pointerId !== drag.id) { return; }
-      P.t = 0;
-      if (drag.moved && !cancel) {
-        var last = drag.hist[drag.hist.length - 1], v = e.timeStamp - last.t > 120 ? 0 : velocity(drag.hist), proj = X.x + W.x / 2 + project(v), near = sel, best = 1e9; // палец замер перед отпусканием — броска нет
-        btns.forEach(function (b, k) { var s = slot(k), d = Math.abs(s.x + s.w / 2 - proj); if (d < best) { best = d; near = k; } });
-        X.v = v;
-        select(near, true, true);
-      } else if (!cancel) { select(drag.under, true, false); } else { select(sel); }
+      var d = drag;
       drag = null;
+      L.tune(LQ.drop, 0);
+      var hold = reduce ? 0 : LQ.hold * 1000 - (e.timeStamp - d.t0); // короткое касание: стекло держится до ≈ 0,24 с от касания, как на айфоне
+      clearTimeout(dropTimer);
+      if (hold > 16) { dropTimer = setTimeout(function () { if (!drag) { L.t = 0; B.t = 0; wake(self); } }, hold); } else { L.t = 0; B.t = 0; }
+      if (d.moved && !cancel) {
+        var lx = local(e), last = d.hist[d.hist.length - 1], v = e.timeStamp - last.t > 120 ? 0 : velocity(d.hist); // палец замер перед отпусканием — броска нет
+        var i = nearest(clamp(lx - d.grab, slot(0).x, slot(btns.length - 1).x + slot(btns.length - 1).w));
+        if (Math.abs(v) > LQ.fling) { var s = slot(i), mid = s.x + s.w / 2, ahead = v > 0 ? lx - d.grab > mid - s.w * 0.1 : lx - d.grab < mid + s.w * 0.1; if (ahead) { i += v > 0 ? 1 : -1; } }
+        select(i, true, true); // скорость линзы не сбрасывается: доезжает с того места и с той скоростью, что была
+      } else if (!cancel) { select(d.under, true, false); } else { select(sel); }
       wake(self);
     }
     el.addEventListener('pointerup', function (e) { end(e, false); });
     el.addEventListener('pointercancel', function (e) { end(e, true); });
+    el.addEventListener('lostpointercapture', function (e) { if (drag && drag.moved) { end(e, false); } });
     watchSize(el, function () { place(); var t = slot(sel); X.jump(t.x); W.jump(t.w); render(); });
     // выбранное поменяло само приложение (aria-pressed / aria-selected) — линза едет туда же, без события
     if (typeof MutationObserver !== 'undefined') {
@@ -184,7 +266,8 @@
     X.jump(t0.x);
     W.jump(t0.w);
     select(sel, 'force');
-    P.jump(0);
+    L.jump(0);
+    B.jump(0);
     el.classList.add('is-live');
     render();
     el.liquid = { select: function (i) { select(i, false); } };
