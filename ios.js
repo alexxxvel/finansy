@@ -80,96 +80,176 @@
       if (h && (!w.isVersionAtLeast || w.isVersionAtLeast('6.1'))) { h.selectionChanged(); }
     } catch (e) { /* без отклика — не страшно */ }
   }
-  /* линзовое преломление поднятой линзы — SVG-фильтр смещения (версия 3.5, 08.11.2026, слово разработчика: «граней быть не должно… плавные, как реально линза,
-     видно, как оно растекается по краям, разбегается, как радуга появляется»; снимки Apple и Telegram рядом с нашим: «две совершенно разные кнопки»).
-     • Карта смещения капсулы — на холсте: середина плавно увеличена ×1,6 (как значки под линзой у Apple), к кромке смещение так же плавно растёт наружу —
-       то, что снаружи, втягивается внутрь и растекается вдоль края; в синем канале карты — сила края: по нему тёплый и холодный проходы с другой силой
-       ложатся только у кромки — радуга там, где у Apple, а не двоение посередине.
-     • Почему окошко во весь ряд: рамку фильтра Chrome и Safari считают по-разному, если из элемента что-то выступает (Safari — всегда по всему содержимому,
-       Chrome — по элементу только при обрезке; область не от угла Safari ещё и сдвигает). Окошко = ряд с запасом, ничего не выступает, область — весь элемент
-       от угла; карта линзы двигается внутри фильтра сдвигом (feOffset) за линзой. Проверено опытом в Edge и WebKit. */
-  // M, V — запас окошка вокруг ряда: ровно на поднятую и растянутую линзу у крайней вкладки; больше — окошко вылезает за экран и даёт прокрутку вбок (e2e «края», 08.11.2026)
-  var FX = { s0: 1.0, q: 1.7, d1: 0.06, rim: 0.62, M: 18, V: 16, res: 0.5, ghost: 0.85, frost: 0.38, soft: 0.9, gw: 0.14, gh: 20,
-    spectrum: [[1.26, 1, 0.12, 0.1], [1.13, 1, 0.82, 0.08], [0.94, 0.25, 0.95, 0.35], [0.86, 0.1, 0.65, 1], [0.76, 0.62, 0.22, 1]] }, fxN = 0, SVGNS = 'http://www.w3.org/2000/svg';
-  function lensMap(RW, RH, lw, lh) { // карта на всю область окошка RW × RH (CSS px), линза lw × lh — посередине
-    var cv = document.createElement('canvas'), ctx = cv.getContext && cv.getContext('2d');
-    if (!ctx || RW < 2 || RH < 2) { return null; }
-    // «толстая линза» (версия 3.6, подобрана на модели рядом со снимками Apple и Telegram): выборка по эллиптическому радиусу u от центра линзы,
-    // s(u) = s0·u − (s0 − d1)·u^(q+1)/(q+1), то есть наклон s'(u) = s0 − (s0 − d1)·u^q плавно падает от середины к краю: середина почти как есть,
-    // дальше всё крупнее, у самой кромки (наклон d1 ≈ 0) картинка растягивается мазком до края — значки соседних вкладок становятся большими дугами
-    var TW = Math.max(2, Math.round(RW * FX.res)), TH = Math.max(2, Math.round(RH * FX.res)), R = lh / 2, hw = lw / 2, o = [], es = [], max = 0.001, x, y, i;
-    var x0 = (RW - lw) / 2, y0 = (RH - lh) / 2;
-    cv.width = TW;
-    cv.height = TH;
-    for (y = 0; y < TH; y++) {
-      for (x = 0; x < TW; x++) {
-        var px = (x + 0.5) / FX.res - x0, py = (y + 0.5) / FX.res - y0, dx = px - clamp(px, R, lw - R), dy = py - R, ox = 0, oy = 0, e = 0;
-        if (Math.sqrt(dx * dx + dy * dy) < R && px > 0 && px < lw) {
-          var cx0 = px - hw, cy0 = py - R, u = Math.min(1, Math.sqrt(cx0 * cx0 / (hw * hw) + cy0 * cy0 / (R * R))) || 1e-6;
-          var s = FX.s0 * u - (FX.s0 - FX.d1) * Math.pow(u, FX.q + 1) / (FX.q + 1), fk = s / u - 1;
-          ox = cx0 * fk;
-          oy = cy0 * fk;
-          e = clamp((u - FX.rim) / (1 - FX.rim), 0, 1);
-          e = e * e * (3 - 2 * e); // где радуга: только у кромки, плавно
+  /* линзовое преломление поднятой линзы — WebGL (версия 4.0, 08.11.2026). Почему не SVG-фильтр: Telegram на iPhone не рисует CSS filter: url(#svg) с картой
+     смещения — разработчик видел на телефоне «старую линзу» при новой версии страницы, хотя Edge и WebKit под Windows рисовали. WebGL в WebView iOS и Android есть всегда.
+     • Ряд вкладок (копия под линзой, в цвете акцента) один раз рисуется в картинку: значки — их же контурами (path, circle, rect, line, use → symbol), подписи — текстом
+       тем же шрифтом; картинка уходит в текстуру. Перерисовка — при смене размеров, темы, цвета акцента и после загрузки шрифтов.
+     • Каждый кадр поднятой линзы шейдер считает «толстую линзу» (подобрана на модели рядом со снимками Apple и Telegram): по эллиптическому радиусу u
+       s(u) = s0·u − (s0 − d1)·u^(q+1)/(q+1) — середина почти как есть, к краю всё крупнее, у кромки мазок до края.
+     • Радуга — пять выборок с чуть разной силой преломления (красный → фиолетовый), веса цветов в сумме дают белый: посередине выборки совпадают и цвет чистый,
+       у кромки расходятся веером — как пламя бейджа «43» на снимке Telegram. У кромки — дымка цвета панели. */
+  var FX = { s0: 1.0, q: 1.7, d1: 0.06, rim: 0.62, frost: 0.38, M: 18, V: 16, gw: 0.14, gh: 20, disp: [1.2, 1.1, 1.0, 0.91, 0.83] };
+  var GL_VS = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
+  var GL_FS = [
+    'precision mediump float;',
+    'uniform sampler2D tex;uniform vec2 res;uniform vec2 c;uniform vec2 hs;uniform float R;uniform float lift;',
+    'uniform float s0;uniform float q;uniform float d1;uniform float rim;uniform vec3 frost;uniform float frostA;uniform float dsp[5];',
+    'vec4 at(vec2 p){return texture2D(tex,vec2(p.x/res.x,1.-p.y/res.y));}',
+    'void main(){',
+    ' vec2 p=vec2(gl_FragCoord.x,res.y-gl_FragCoord.y);vec2 d=p-c;',
+    ' float ex=max(abs(d.x)-(hs.x-R),0.);if(length(vec2(ex,d.y))>R){discard;}',
+    ' float u=clamp(length(d/hs),.0001,1.);',
+    ' float s=s0*u-(s0-d1)*pow(u,q+1.)/(q+1.);float k=(s/u-1.)*lift;',
+    ' vec4 t0=at(c+d*(1.+k*dsp[0]));vec4 t1=at(c+d*(1.+k*dsp[1]));vec4 t2=at(c+d*(1.+k*dsp[2]));vec4 t3=at(c+d*(1.+k*dsp[3]));vec4 t4=at(c+d*(1.+k*dsp[4]));',
+    // веса пяти цветов спектра; суммы по R, G, B — по единице: где выборки совпадают, цвет не меняется
+    ' vec3 col=t0.rgb*vec3(.5,0.,0.)+t1.rgb*vec3(.35,.3,0.)+t2.rgb*vec3(.15,.4,.1)+t3.rgb*vec3(0.,.3,.45)+t4.rgb*vec3(0.,0.,.45);',
+    ' float al=t0.a*.167+t1.a*.217+t2.a*.217+t3.a*.25+t4.a*.149;',
+    ' float e=clamp((u-rim)/(1.-rim),0.,1.);e=e*e*(3.-2.*e);float fa=e*e*frostA*lift;',
+    ' gl_FragColor=vec4(col*(1.-fa)+frost*fa,al*(1.-fa)+fa);',
+    '}'
+  ].join('\n');
+  function svgShapes(node, out) { // фигуры значка, включая use → symbol
+    var kids = node.children || [];
+    for (var i = 0; i < kids.length; i++) {
+      var n = kids[i], tag = (n.tagName || '').toLowerCase();
+      if (tag === 'use') {
+        var ref = n.getAttribute('href') || n.getAttribute('xlink:href'), sym = ref && ref.charAt(0) === '#' ? document.getElementById(ref.slice(1)) : null;
+        if (sym) { svgShapes(sym, out); }
+      } else if (tag === 'g' || tag === 'symbol') { svgShapes(n, out); } else { out.push(n); }
+    }
+    return out;
+  }
+  function shapePath(n) {
+    var tag = n.tagName.toLowerCase(), p = new Path2D(), a = function (k) { return parseFloat(n.getAttribute(k)) || 0; };
+    if (tag === 'path') { return new Path2D(n.getAttribute('d') || ''); }
+    if (tag === 'circle') { p.arc(a('cx'), a('cy'), a('r'), 0, Math.PI * 2); return p; }
+    if (tag === 'ellipse') { p.ellipse(a('cx'), a('cy'), a('rx'), a('ry'), 0, 0, Math.PI * 2); return p; }
+    if (tag === 'rect') { p.rect(a('x'), a('y'), a('width'), a('height')); return p; }
+    if (tag === 'line') { p.moveTo(a('x1'), a('y1')); p.lineTo(a('x2'), a('y2')); return p; }
+    if (tag === 'polyline' || tag === 'polygon') {
+      var pts = (n.getAttribute('points') || '').trim().split(/[\s,]+/).map(parseFloat);
+      for (var i = 0; i + 1 < pts.length; i += 2) { if (i) { p.lineTo(pts[i], pts[i + 1]); } else { p.moveTo(pts[i], pts[i + 1]); } }
+      if (tag === 'polygon') { p.closePath(); }
+      return p;
+    }
+    return null;
+  }
+  function drawRow(ctx, copy, ox, oy, hole) { // ряд-копия → картинка: значки контурами, подписи текстом
+    var base = copy.getBoundingClientRect();
+    [].forEach.call(copy.querySelectorAll('svg'), function (svg) {
+      var r = svg.getBoundingClientRect(), cs = getComputedStyle(svg), vb = (svg.getAttribute('viewBox') || '0 0 24 24').split(/[\s,]+/).map(parseFloat);
+      var uses = svg.querySelector('use'), sym = uses && document.getElementById((uses.getAttribute('href') || uses.getAttribute('xlink:href') || '').slice(1));
+      if (sym && sym.getAttribute('viewBox')) { vb = sym.getAttribute('viewBox').split(/[\s,]+/).map(parseFloat); }
+      if (!r.width || !vb[2]) { return; }
+      ctx.save();
+      ctx.translate(ox + r.left - base.left, oy + r.top - base.top);
+      ctx.scale(r.width / vb[2], r.height / vb[3]);
+      ctx.translate(-vb[0], -vb[1]);
+      svgShapes(svg, []).forEach(function (n) {
+        var p = shapePath(n);
+        if (!p) { return; }
+        var own = n.ownerSVGElement === svg ? getComputedStyle(n) : null;
+        var fill = n.getAttribute('fill') || (own ? own.fill : cs.fill), stroke = n.getAttribute('stroke') || (own ? own.stroke : cs.stroke);
+        var sw = parseFloat(n.getAttribute('stroke-width') || (own ? own.strokeWidth : cs.strokeWidth)) || 1;
+        if (/(^|\s)hole(\s|$)/.test(n.getAttribute('class') || '')) { fill = hole; stroke = 'none'; }
+        if (fill === 'currentColor') { fill = cs.color; }
+        if (stroke === 'currentColor') { stroke = cs.color; }
+        if (fill && fill !== 'none' && !/rgba\(0, 0, 0, 0\)/.test(fill)) { ctx.fillStyle = fill; ctx.fill(p); }
+        if (stroke && stroke !== 'none' && !/rgba\(0, 0, 0, 0\)/.test(stroke)) {
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = sw;
+          ctx.lineCap = (own || cs).strokeLinecap || 'round';
+          ctx.lineJoin = (own || cs).strokeLinejoin || 'round';
+          ctx.stroke(p);
         }
-        o.push(ox, oy);
-        es.push(e);
-        max = Math.max(max, Math.abs(ox), Math.abs(oy));
-      }
-    }
-    var img = ctx.createImageData(TW, TH);
-    for (i = 0; i < TW * TH; i++) {
-      img.data[i * 4] = Math.round(128 + 127 * o[i * 2] / max);
-      img.data[i * 4 + 1] = Math.round(128 + 127 * o[i * 2 + 1] / max);
-      img.data[i * 4 + 2] = Math.round(255 * es[i]); // сила края — для радуги
-      img.data[i * 4 + 3] = 255;
-    }
-    ctx.putImageData(img, 0, 0);
-    try { return { url: cv.toDataURL('image/png'), max: max }; } catch (z) { return null; }
-  }
-  function svgEl(name, attrs, parent) {
-    var n = document.createElementNS(SVGNS, name);
-    for (var a in attrs) { if (attrs.hasOwnProperty(a)) { n.setAttribute(a, attrs[a]); } }
-    if (parent) { parent.appendChild(n); }
-    return n;
-  }
-  function makeFx(host) { // фильтр на окошко: карта со сдвигом за линзой, основной проход, радуга из пяти проходов и дымка — только по кромке
-    if (typeof document.createElement('canvas').getContext !== 'function') { return null; }
-    var id = 'ios-lq-fx-' + (++fxN), svg = svgEl('svg', { width: '0', height: '0', 'aria-hidden': 'true', focusable: 'false' }), srgb = 'sRGB';
-    svg.style.position = 'absolute';
-    svg.style.pointerEvents = 'none';
-    var f = svgEl('filter', { id: id, x: '0', y: '0', width: '1', height: '1', 'color-interpolation-filters': srgb }, svgEl('defs', {}, svg));
-    var im = svgEl('feImage', { preserveAspectRatio: 'none', result: 'm0', 'color-interpolation-filters': srgb }, f);
-    var off = svgEl('feOffset', { 'in': 'm0', dx: '0', dy: '0', result: 'map', 'color-interpolation-filters': srgb }, f);
-    var dm = function (res) { return svgEl('feDisplacementMap', { 'in': 'SourceGraphic', in2: 'map', xChannelSelector: 'R', yChannelSelector: 'G', 'color-interpolation-filters': srgb, result: res }, f); };
-    var main = dm('main'), ghosts = [], mg;
-    svgEl('feColorMatrix', { 'in': 'map', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 ' + FX.ghost + ' 0 0', result: 'edge', 'color-interpolation-filters': srgb }, f);
-    FX.spectrum.forEach(function (g, k) { // каждый цвет — своя сила преломления: у кромки цвета расходятся веером, как у призмы
-      ghosts.push({ el: dm('g' + k + 'a'), k: g[0] });
-      svgEl('feColorMatrix', { 'in': 'g' + k + 'a', type: 'matrix', values: '0 0 0 0 ' + g[1] + '  0 0 0 0 ' + g[2] + '  0 0 0 0 ' + g[3] + '  0 0 0 1 0', result: 'g' + k + 'b', 'color-interpolation-filters': srgb }, f);
-      svgEl('feGaussianBlur', { 'in': 'g' + k + 'b', stdDeviation: String(FX.soft), result: 'g' + k + 'c', 'color-interpolation-filters': srgb }, f);
-      svgEl('feComposite', { 'in': 'g' + k + 'c', in2: 'edge', operator: 'in', result: 'g' + k, 'color-interpolation-filters': srgb }, f);
+      });
+      ctx.restore();
     });
-    var frost = svgEl('feFlood', { 'flood-color': '#fff', 'flood-opacity': '1', result: 'fr0', 'color-interpolation-filters': srgb }, f);
-    svgEl('feColorMatrix', { 'in': 'map', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 ' + FX.frost + ' 0 0', result: 'fe', 'color-interpolation-filters': srgb }, f);
-    svgEl('feComposite', { 'in': 'fr0', in2: 'fe', operator: 'in', result: 'fr', 'color-interpolation-filters': srgb }, f);
-    mg = svgEl('feMerge', {}, f);
-    FX.spectrum.forEach(function (g, k) { svgEl('feMergeNode', { 'in': 'g' + k }, mg); });
-    svgEl('feMergeNode', { 'in': 'main' }, mg);
-    svgEl('feMergeNode', { 'in': 'fr' }, mg);
-    host.appendChild(svg);
-    return { id: id, im: im, off: off, main: main, ghosts: ghosts, frost: frost, max: 0, key: '' };
+    var walk = document.createTreeWalker(copy, NodeFilter.SHOW_TEXT, null, false), t;
+    while ((t = walk.nextNode())) {
+      if (!t.nodeValue.trim() || (t.parentNode.closest && t.parentNode.closest('svg'))) { continue; }
+      var rg = document.createRange();
+      rg.selectNodeContents(t);
+      var rr = rg.getBoundingClientRect(), pcs = getComputedStyle(t.parentNode);
+      if (!rr.width) { continue; }
+      ctx.font = pcs.fontStyle + ' ' + pcs.fontWeight + ' ' + pcs.fontSize + ' ' + pcs.fontFamily;
+      ctx.fillStyle = pcs.color;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'center';
+      ctx.fillText(t.nodeValue.trim(), ox + rr.left - base.left + rr.width / 2, oy + rr.top - base.top + rr.height / 2);
+    }
   }
-  function fxMapFor(fx, RW, RH, lw, lh) { // карта пересчитывается только при смене размеров ряда или поднятой линзы
-    var key = [Math.round(RW), Math.round(RH), Math.round(lw), Math.round(lh)].join('x');
-    if (fx.key === key) { return true; }
-    var m = lensMap(RW, RH, lw, lh);
-    if (!m) { return false; }
-    fx.key = key;
-    fx.max = m.max;
-    fx.im.setAttribute('href', m.url);
-    fx.im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', m.url);
-    return true;
+  function makeGl(host) {
+    var cv = document.createElement('canvas'), gl = null;
+    try { gl = cv.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false }) || cv.getContext('experimental-webgl'); } catch (e) { gl = null; }
+    if (!gl || typeof Path2D === 'undefined') { return null; }
+    var sh = function (type, src) { var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return gl.getShaderParameter(s, gl.COMPILE_STATUS) ? s : null; };
+    var vs = sh(gl.VERTEX_SHADER, GL_VS), fs = sh(gl.FRAGMENT_SHADER, GL_FS);
+    if (!vs || !fs) { return null; }
+    var pr = gl.createProgram();
+    gl.attachShader(pr, vs);
+    gl.attachShader(pr, fs);
+    gl.linkProgram(pr);
+    if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) { return null; }
+    gl.useProgram(pr);
+    var buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    var loc = gl.getAttribLocation(pr, 'a');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+    var tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T].forEach(function (k) { gl.texParameteri(gl.TEXTURE_2D, k, gl.CLAMP_TO_EDGE); });
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    var u = {};
+    ['res', 'c', 'hs', 'R', 'lift', 's0', 'q', 'd1', 'rim', 'frost', 'frostA', 'dsp'].forEach(function (k) { u[k] = gl.getUniformLocation(pr, k); });
+    gl.uniform1f(u.s0, FX.s0);
+    gl.uniform1f(u.q, FX.q);
+    gl.uniform1f(u.d1, FX.d1);
+    gl.uniform1f(u.rim, FX.rim);
+    gl.uniform1f(u.frostA, FX.frost);
+    gl.uniform1fv(u.dsp, new Float32Array(FX.disp));
+    cv.className = 'ios-lq__gl';
+    cv.setAttribute('aria-hidden', 'true');
+    cv.style.cssText = 'position:absolute;z-index:3;left:0;top:0;pointer-events:none;visibility:hidden';
+    host.appendChild(cv);
+    return { cv: cv, gl: gl, u: u, tex: tex, dpr: 1, w: 0, h: 0 };
+  }
+  function glRaster(g, copy, RW, RH, ox, oy, hole) { // перерисовать картинку ряда и отдать в текстуру
+    var dpr = Math.min(3, window.devicePixelRatio || 1), W = Math.max(1, Math.round(RW * dpr)), H = Math.max(1, Math.round(RH * dpr));
+    var oc = document.createElement('canvas'), ctx;
+    oc.width = W;
+    oc.height = H;
+    ctx = oc.getContext('2d');
+    ctx.scale(dpr, dpr);
+    drawRow(ctx, copy, ox, oy, hole);
+    g.cv.width = W;
+    g.cv.height = H;
+    g.cv.style.width = RW + 'px';
+    g.cv.style.height = RH + 'px';
+    g.dpr = dpr;
+    g.w = W;
+    g.h = H;
+    var gl = g.gl;
+    gl.viewport(0, 0, W, H);
+    gl.bindTexture(gl.TEXTURE_2D, g.tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, oc);
+    gl.uniform2f(g.u.res, W, H);
+  }
+  function glDraw(g, cx, cy, hw, hh, lift, frost) {
+    var gl = g.gl, d = g.dpr;
+    gl.uniform2f(g.u.c, cx * d, cy * d);
+    gl.uniform2f(g.u.hs, hw * d, hh * d);
+    gl.uniform1f(g.u.R, hh * d);
+    gl.uniform1f(g.u.lift, lift);
+    gl.uniform3f(g.u.frost, frost[0], frost[1], frost[2]);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
   function liquid(el) {
     if (!el || el.liquid) { return; }
@@ -202,16 +282,9 @@
       rim.className += ' ios-lq__items--rim';
       el.insertBefore(rim, copy);
     }
-    var fx = tabbar && el.getAttribute('data-fx') !== 'off' ? makeFx(el) : null; // настоящее преломление; без холста — прежняя полоса rim
-    if (fx && rim) { el.removeChild(rim); rim = null; }
-    var win = null, RW = 0, RH = 0, pm = 0; // окошко во весь ряд с запасом (ничего из него не выступает — рамку фильтра Chrome и Safari считают одинаково); фильтр — на окошко
-    if (fx) {
-      win = document.createElement('div');
-      win.className = 'ios-lq__fxwin';
-      win.style.cssText = 'position:absolute;z-index:3;left:0;top:0;pointer-events:none;will-change:clip-path';
-      el.insertBefore(win, copy);
-      win.appendChild(copy);
-    }
+    var gl = tabbar && el.getAttribute('data-fx') !== 'off' ? makeGl(el) : null; // настоящее стекло (WebGL); без него — прежняя полоса rim
+    if (gl && rim) { el.removeChild(rim); rim = null; }
+    var RW = 0, RH = 0, pm = 0, frostRGB = [1, 1, 1], rasterKey = ''; // холст — ряд с запасом сбоку (не шире панели) и сверху/снизу
     var sel = 0;
     btns.forEach(function (b, k) { if (b.getAttribute('aria-selected') === 'true' || b.getAttribute('aria-pressed') === 'true') { sel = k; } });
     var X = new Spring(0, LQ.travel[0], LQ.travel[1], 0.2), W = new Spring(0, LQ.travel[0], 0, 0.2);
@@ -224,27 +297,39 @@
     function local(e) { var r = el.getBoundingClientRect(), sc = r.width / (el.offsetWidth || r.width || 1); return (e.clientX - r.left) / (sc || 1); } // панель может быть чуть увеличена касанием
     function place() {
       lens.style.height = '';
-      if (win) { pm = Math.min(FX.M, parseFloat(getComputedStyle(el).paddingLeft) || 0); } // сбоку окошко не шире панели: иначе у неё прокрутка вбок (e2e «крупно»)
+      if (gl) { pm = Math.min(FX.M, parseFloat(getComputedStyle(el).paddingLeft) || 0); } // сбоку окошко не шире панели: иначе у неё прокрутка вбок (e2e «крупно»)
       el.style.transform = '';   // свой сдвиг панели (например translateX(-50%)) сохраняется, разбухание — поверх него
       var bt = getComputedStyle(el).transform; baseT = bt && bt !== 'none' ? bt + ' ' : '';
       rest.top = lens.offsetTop;
       rest.h = lens.offsetHeight;
-      copy.style.left = (win ? pm : items.offsetLeft) + 'px';
-      copy.style.top = (win ? FX.V : items.offsetTop) + 'px';
-      if (win) {
-        RW = items.offsetWidth + 2 * pm;
-        RH = items.offsetHeight + 2 * FX.V;
-        win.style.left = (items.offsetLeft - pm) + 'px';
-        win.style.top = (items.offsetTop - FX.V) + 'px';
-        win.style.width = RW + 'px';
-        win.style.height = RH + 'px';
-        var sw = btns[sel] ? btns[sel].offsetWidth : 0; // карта — под поднятую линзу (тот же размер, что в render)
-        if (!fxMapFor(fx, RW, RH, sw * (1 + FX.gw), rest.h + FX.gh)) { win.style.filter = ''; fx = null; }
-        if (fx) { var bg = getComputedStyle(el).backgroundColor; fx.frost.setAttribute('flood-color', /^rgba?\(/.test(bg) ? bg.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, 'rgb($1,$2,$3)') : '#fff'); } // дымка — цвета панели (светлая или тёмная)
-      }
+      copy.style.left = items.offsetLeft + 'px';
+      copy.style.top = items.offsetTop + 'px';
       copy.style.width = items.offsetWidth + 'px';
       copy.style.height = items.offsetHeight + 'px';
+      if (gl) {
+        RW = items.offsetWidth + 2 * pm;
+        RH = items.offsetHeight + 2 * FX.V;
+        gl.cv.style.left = (items.offsetLeft - pm) + 'px';
+        gl.cv.style.top = (items.offsetTop - FX.V) + 'px';
+        var bg = getComputedStyle(el).backgroundColor, mm = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/.exec(bg) || [0, 255, 255, 255];
+        frostRGB = [mm[1] / 255, mm[2] / 255, mm[3] / 255]; // дымка у кромки — цвета панели (светлая или тёмная)
+        rasterKey = '';
+        raster();
+      }
       if (rim) { rim.style.cssText = copy.style.cssText; }
+    }
+    function raster() { // картинка ряда для стекла: по копии под линзой (цвет акцента), перерисовывается при смене размеров, темы, цвета
+      if (!gl) { return; }
+      var key = [RW, RH, getComputedStyle(copy).color, getComputedStyle(el).backgroundColor, document.documentElement.className, document.documentElement.getAttribute('data-theme'), document.documentElement.getAttribute('data-accent')].join('|');
+      if (key === rasterKey) { return; }
+      rasterKey = key;
+      var vis = copy.style.visibility, cp = copy.style.clipPath, tr = copy.style.transform;
+      copy.style.clipPath = 'none';
+      copy.style.transform = 'none';
+      glRaster(gl, copy, RW, RH, pm, FX.V, getComputedStyle(el).backgroundColor);
+      copy.style.clipPath = cp;
+      copy.style.transform = tr;
+      copy.style.visibility = vis;
     }
     function ringMask(x0, x1, t0, b0, rx, ry, bx, by) { // кольцо по кромке капсулы: у концов толщина bx (там главное преломление), сверху и снизу — by
       var cy = (t0 + b0) / 2, H = items.offsetHeight, mid = Math.max(0, x1 - x0 - 2 * rx), ex = Math.max(0.1, rx - bx), ey = Math.max(0.1, ry - by);
@@ -268,18 +353,13 @@
       var cx = X.x + W.x / 2 - items.offsetLeft, half = w / 2, cy = rest.top + rest.h / 2 - items.offsetTop, vh = h / 2;
       el.style.setProperty('--l', (cx - half).toFixed(1));
       el.style.setProperty('--r', (cx + half).toFixed(1));
-      if (fx) { // увеличение и кромку делает фильтр смещения на окошке во весь ряд; окошко обрезано по капсуле линзы, карта сдвинута за линзой
-        var on = l > 0.01, s = 2 * fx.max * l, lx = cx + pm, ly = cy + FX.V;
-        win.style.clipPath = 'inset(' + (ly - vh).toFixed(1) + 'px ' + (RW - lx - half).toFixed(1) + 'px ' + (RH - ly - vh).toFixed(1) + 'px ' + (lx - half).toFixed(1) + 'px round ' + vh.toFixed(1) + 'px)';
+      if (gl) { // стекло считает WebGL: копия ряда видна только в покое (серая подложка), поднятая линза — холст
+        var on = l > 0.01;
         copy.style.transform = 'none';
-        copy.style.clipPath = 'none';
-        if (on) {
-          fx.off.setAttribute('dx', (lx - RW / 2).toFixed(2));
-          fx.off.setAttribute('dy', (ly - RH / 2).toFixed(2));
-          fx.main.setAttribute('scale', s.toFixed(2));
-          for (var gi = 0; gi < fx.ghosts.length; gi++) { fx.ghosts[gi].el.setAttribute('scale', (s * fx.ghosts[gi].k).toFixed(2)); }
-        }
-        win.style.filter = on ? 'url(#' + fx.id + ')' : '';
+        copy.style.clipPath = 'inset(' + (cy - vh).toFixed(1) + 'px ' + (items.offsetWidth - cx - half).toFixed(1) + 'px ' + (items.offsetHeight - cy - vh).toFixed(1) + 'px ' + (cx - half).toFixed(1) + 'px round ' + vh.toFixed(1) + 'px)';
+        copy.style.visibility = on ? 'hidden' : '';
+        gl.cv.style.visibility = on ? '' : 'hidden';
+        if (on) { glDraw(gl, cx + pm, cy + FX.V, half, vh, l, frostRGB); }
         return;
       }
       var m = 1 + (mag - 1) * l; // увеличение только под поднятой линзой
@@ -399,6 +479,8 @@
         if (now >= 0 && now !== sel && !drag) { select(now, false); }
       }).observe(items, { attributes: true, subtree: true, attributeFilter: ['aria-pressed', 'aria-selected'] });
     }
+    if (gl && typeof MutationObserver !== 'undefined') { new MutationObserver(function () { if (el.isConnected !== false) { raster(); } }).observe(document.documentElement, { attributes: true }); }
+    if (gl && document.fonts && document.fonts.ready) { document.fonts.ready.then(function () { rasterKey = ''; raster(); }); }
     place();
     var t0 = slot(sel);
     X.jump(t0.x);
