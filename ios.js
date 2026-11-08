@@ -80,7 +80,8 @@
       if (h && (!w.isVersionAtLeast || w.isVersionAtLeast('6.1'))) { h.selectionChanged(); }
     } catch (e) { /* без отклика — не страшно */ }
   }
-  /* линзовое преломление поднятой линзы — WebGL (версия 4.0, 08.11.2026). Почему не SVG-фильтр: Telegram на iPhone не рисует CSS filter: url(#svg) с картой
+  /* линзовое преломление поднятой линзы — WebGL (версия 4.1, 08.11.2026: преломление от закругления капсулы — мазок дугой вдоль кромки; радуга из десяти полос спектра).
+     Версия 4.0: Почему не SVG-фильтр: Telegram на iPhone не рисует CSS filter: url(#svg) с картой
      смещения — разработчик видел на телефоне «старую линзу» при новой версии страницы, хотя Edge и WebKit под Windows рисовали. WebGL в WebView iOS и Android есть всегда.
      • Ряд вкладок (копия под линзой, в цвете акцента) один раз рисуется в картинку: значки — их же контурами (path, circle, rect, line, use → symbol), подписи — текстом
        тем же шрифтом; картинка уходит в текстуру. Перерисовка — при смене размеров, темы, цвета акцента и после загрузки шрифтов.
@@ -88,26 +89,42 @@
        s(u) = s0·u − (s0 − d1)·u^(q+1)/(q+1) — середина почти как есть, к краю всё крупнее, у кромки мазок до края.
      • Радуга — пять выборок с чуть разной силой преломления (красный → фиолетовый), веса цветов в сумме дают белый: посередине выборки совпадают и цвет чистый,
        у кромки расходятся веером — как пламя бейджа «43» на снимке Telegram. У кромки — дымка цвета панели. */
-  var FX = { s0: 1.0, q: 1.7, d1: 0.06, rim: 0.62, frost: 0.38, M: 18, V: 16, gw: 0.14, gh: 20, disp: [1.2, 1.1, 1.0, 0.91, 0.83] };
+  var FX = { s0: 1.0, q: 1.7, d1: 0.06, rim: 0.62, frost: 0.38, M: 18, V: 16, gw: 0.14, gh: 20 };
   var GL_VS = 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}';
   var GL_FS = [
     'precision mediump float;',
     'uniform sampler2D tex;uniform vec2 res;uniform vec2 c;uniform vec2 hs;uniform float R;uniform float lift;',
-    'uniform float s0;uniform float q;uniform float d1;uniform float rim;uniform vec3 frost;uniform float frostA;uniform float dsp[5];',
+    'uniform float s0;uniform float q;uniform float d1;uniform float rim;uniform vec3 frost;uniform float frostA;',
+    'uniform float dsp[10];uniform vec3 wt[10];uniform float wa[10];',
     'vec4 at(vec2 p){return texture2D(tex,vec2(p.x/res.x,1.-p.y/res.y));}',
     'void main(){',
-    ' vec2 p=vec2(gl_FragCoord.x,res.y-gl_FragCoord.y);vec2 d=p-c;',
-    ' float ex=max(abs(d.x)-(hs.x-R),0.);if(length(vec2(ex,d.y))>R){discard;}',
-    ' float u=clamp(length(d/hs),.0001,1.);',
+    ' vec2 p=vec2(gl_FragCoord.x,res.y-gl_FragCoord.y);',
+    // ближайшая точка оси капсулы: у концов лучи расходятся из центра закругления — мазок гнётся дугой вдоль кромки
+    ' vec2 sp=vec2(c.x+clamp(p.x-c.x,-(hs.x-R),hs.x-R),c.y);vec2 r=p-sp;float dist=length(r);if(dist>R){discard;}',
+    ' float u=clamp(dist/R,.0001,1.);',
     ' float s=s0*u-(s0-d1)*pow(u,q+1.)/(q+1.);float k=(s/u-1.)*lift;',
-    ' vec4 t0=at(c+d*(1.+k*dsp[0]));vec4 t1=at(c+d*(1.+k*dsp[1]));vec4 t2=at(c+d*(1.+k*dsp[2]));vec4 t3=at(c+d*(1.+k*dsp[3]));vec4 t4=at(c+d*(1.+k*dsp[4]));',
-    // веса пяти цветов спектра; суммы по R, G, B — по единице: где выборки совпадают, цвет не меняется
-    ' vec3 col=t0.rgb*vec3(.5,0.,0.)+t1.rgb*vec3(.35,.3,0.)+t2.rgb*vec3(.15,.4,.1)+t3.rgb*vec3(0.,.3,.45)+t4.rgb*vec3(0.,0.,.45);',
-    ' float al=t0.a*.167+t1.a*.217+t2.a*.217+t3.a*.25+t4.a*.149;',
+    ' vec3 col=vec3(0.);float al=0.;',
+    ' for(int i=0;i<10;i++){vec4 t=at(sp+r*(1.+k*dsp[i]));col+=t.rgb*wt[i];al+=t.a*wa[i];}',
     ' float e=clamp((u-rim)/(1.-rim),0.,1.);e=e*e*(3.-2.*e);float fa=e*e*frostA*lift;',
     ' gl_FragColor=vec4(col*(1.-fa)+frost*fa,al*(1.-fa)+fa);',
     '}'
   ].join('\n');
+  function spectrum(n) { // десять полос спектра (красный → фиолетовый): сила преломления растёт к фиолетовому, веса по R, G, B в сумме — единица
+    var d = [], w = [], wa = [], sum = [0, 0, 0], i, j;
+    for (i = 0; i < n; i++) {
+      var h = i / (n - 1) * 0.78, x = function (o) { var k = (o + h * 6) % 6; return Math.max(0, Math.min(1, Math.min(k, 4 - k))); };
+      var rgb = [x(5), x(3), x(1)];
+      d.push(1.22 - 0.42 * i / (n - 1));
+      w.push(rgb);
+      for (j = 0; j < 3; j++) { sum[j] += rgb[j]; }
+    }
+    var flat = [];
+    for (i = 0; i < n; i++) {
+      for (j = 0; j < 3; j++) { w[i][j] /= sum[j] || 1; flat.push(w[i][j]); }
+      wa.push((w[i][0] + w[i][1] + w[i][2]) / 3);
+    }
+    return { d: d, w: flat, a: wa };
+  }
   function svgShapes(node, out) { // фигуры значка, включая use → symbol
     var kids = node.children || [];
     for (var i = 0; i < kids.length; i++) {
@@ -204,13 +221,16 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     var u = {};
-    ['res', 'c', 'hs', 'R', 'lift', 's0', 'q', 'd1', 'rim', 'frost', 'frostA', 'dsp'].forEach(function (k) { u[k] = gl.getUniformLocation(pr, k); });
+    ['res', 'c', 'hs', 'R', 'lift', 's0', 'q', 'd1', 'rim', 'frost', 'frostA', 'dsp', 'wt', 'wa'].forEach(function (k) { u[k] = gl.getUniformLocation(pr, k); });
     gl.uniform1f(u.s0, FX.s0);
     gl.uniform1f(u.q, FX.q);
     gl.uniform1f(u.d1, FX.d1);
     gl.uniform1f(u.rim, FX.rim);
     gl.uniform1f(u.frostA, FX.frost);
-    gl.uniform1fv(u.dsp, new Float32Array(FX.disp));
+    var sp = spectrum(10);
+    gl.uniform1fv(u.dsp, new Float32Array(sp.d));
+    gl.uniform3fv(u.wt, new Float32Array(sp.w));
+    gl.uniform1fv(u.wa, new Float32Array(sp.a));
     cv.className = 'ios-lq__gl';
     cv.setAttribute('aria-hidden', 'true');
     cv.style.cssText = 'position:absolute;z-index:3;left:0;top:0;pointer-events:none;visibility:hidden';
