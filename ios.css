@@ -63,6 +63,7 @@
 .tabs.ios-tabbar:not(.is-live) .ios-lq__items > button[aria-selected="true"] { color: var(--acc-text); } /* без линзы (старый браузер) — выбранная в цвете акцента */
 .tabs.ios-tabbar .ios-lq__items--lens > span { color: var(--acc-text); filter: brightness(calc(1 + .16 * var(--press, 0))); } /* под линзой — в цвете акцента, как в iOS 26; под поднятой чуть светлее, как в iOS 27 */
 .tabs.ios-tabbar svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.9; }
+.tabs.ios-tabbar .ios-lq__items--lens svg { stroke-width: 2.6; } /* под линзой значок плотнее, как залитый символ выбранной вкладки в iOS: у кромки растекается пятном, а не ниткой (08.11.2026) */
 .tabs.ios-tabbar .ios-lq__lens { top: 4px; bottom: 4px; }
 
 /* поднятая линза — чёткий тонкий край и тень, как у стекла Apple (08.11.2026: «края более линзовидные»; был мягкий белый край на белой панели) */

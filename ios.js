@@ -89,26 +89,27 @@
        Chrome — по элементу только при обрезке; область не от угла Safari ещё и сдвигает). Окошко = ряд с запасом, ничего не выступает, область — весь элемент
        от угла; карта линзы двигается внутри фильтра сдвигом (feOffset) за линзой. Проверено опытом в Edge и WebKit. */
   // M, V — запас окошка вокруг ряда: ровно на поднятую и растянутую линзу у крайней вкладки; больше — окошко вылезает за экран и даёт прокрутку вбок (e2e «края», 08.11.2026)
-  var FX = { mag: 1.75, reach: 1.12, edgeY: 0.7, from: 0.42, fromY: 0.74, M: 18, V: 16, res: 0.5, warm: 1.3, cool: 0.74, ghost: 0.8, soft: 1.2, gw: 0.14, gh: 20 }, fxN = 0, SVGNS = 'http://www.w3.org/2000/svg';
+  var FX = { s0: 1.12, q: 1.7, d1: 0.06, rim: 0.62, M: 18, V: 16, res: 0.5, warm: 1.3, cool: 0.74, ghost: 0.8, soft: 1.2, gw: 0.14, gh: 20 }, fxN = 0, SVGNS = 'http://www.w3.org/2000/svg';
   function lensMap(RW, RH, lw, lh) { // карта на всю область окошка RW × RH (CSS px), линза lw × lh — посередине
     var cv = document.createElement('canvas'), ctx = cv.getContext && cv.getContext('2d');
     if (!ctx || RW < 2 || RH < 2) { return null; }
-    var TW = Math.max(2, Math.round(RW * FX.res)), TH = Math.max(2, Math.round(RH * FX.res)), R = lh / 2, k = 1 - 1 / FX.mag, o = [], es = [], max = 0.001, x, y, i;
+    // «толстая линза» (версия 3.6, подобрана на модели рядом со снимками Apple и Telegram): выборка по эллиптическому радиусу u от центра линзы,
+    // s(u) = s0·u − (s0 − d1)·u^(q+1)/(q+1), то есть наклон s'(u) = s0 − (s0 − d1)·u^q плавно падает от середины к краю: середина почти как есть,
+    // дальше всё крупнее, у самой кромки (наклон d1 ≈ 0) картинка растягивается мазком до края — значки соседних вкладок становятся большими дугами
+    var TW = Math.max(2, Math.round(RW * FX.res)), TH = Math.max(2, Math.round(RH * FX.res)), R = lh / 2, hw = lw / 2, o = [], es = [], max = 0.001, x, y, i;
     var x0 = (RW - lw) / 2, y0 = (RH - lh) / 2;
     cv.width = TW;
     cv.height = TH;
     for (y = 0; y < TH; y++) {
       for (x = 0; x < TW; x++) {
-        var px = (x + 0.5) / FX.res - x0, py = (y + 0.5) / FX.res - y0, dx = px - clamp(px, R, lw - R), dy = py - R, dist = Math.sqrt(dx * dx + dy * dy), rho = dist / R, ox = 0, oy = 0, e = 0;
-        if (rho < 1 && px > 0 && px < lw) {
-          e = clamp((rho - FX.from) / (1 - FX.from), 0, 1);
-          e = e * e * (3 - 2 * e); // гладкая ступень — никакой грани внутри
-          // середина — увеличение (выборка ближе к центру), к кромке оно сходит на нет, а точки берут картинку с самой границы линзы (чуть снаружи):
-          // у края всё растекается мазком вдоль кромки, как у стекла Apple и Telegram, а не сжимается в мелкую копию
-          var ux = dist ? dx / dist : 0, uy = dist ? dy / dist : 0, ev = clamp((rho - FX.fromY) / (1 - FX.fromY), 0, 1);
-          ev = ev * ev * (3 - 2 * ev); // по вертикали кромка только у самого края: подпись под линзой прямая и крупная, как у Apple
-          ox = -k * (px - lw / 2) * (1 - e) + ux * (R * FX.reach - dist) * e;
-          oy = -k * (py - R) * (1 - ev) + uy * (R * FX.reach - dist) * ev * FX.edgeY;
+        var px = (x + 0.5) / FX.res - x0, py = (y + 0.5) / FX.res - y0, dx = px - clamp(px, R, lw - R), dy = py - R, ox = 0, oy = 0, e = 0;
+        if (Math.sqrt(dx * dx + dy * dy) < R && px > 0 && px < lw) {
+          var cx0 = px - hw, cy0 = py - R, u = Math.min(1, Math.sqrt(cx0 * cx0 / (hw * hw) + cy0 * cy0 / (R * R))) || 1e-6;
+          var s = FX.s0 * u - (FX.s0 - FX.d1) * Math.pow(u, FX.q + 1) / (FX.q + 1), fk = s / u - 1;
+          ox = cx0 * fk;
+          oy = cy0 * fk;
+          e = clamp((u - FX.rim) / (1 - FX.rim), 0, 1);
+          e = e * e * (3 - 2 * e); // где радуга: только у кромки, плавно
         }
         o.push(ox, oy);
         es.push(e);
