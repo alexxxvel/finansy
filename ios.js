@@ -89,7 +89,8 @@
        Chrome — по элементу только при обрезке; область не от угла Safari ещё и сдвигает). Окошко = ряд с запасом, ничего не выступает, область — весь элемент
        от угла; карта линзы двигается внутри фильтра сдвигом (feOffset) за линзой. Проверено опытом в Edge и WebKit. */
   // M, V — запас окошка вокруг ряда: ровно на поднятую и растянутую линзу у крайней вкладки; больше — окошко вылезает за экран и даёт прокрутку вбок (e2e «края», 08.11.2026)
-  var FX = { s0: 1.12, q: 1.7, d1: 0.06, rim: 0.62, M: 18, V: 16, res: 0.5, warm: 1.3, cool: 0.74, ghost: 0.8, soft: 1.2, gw: 0.14, gh: 20 }, fxN = 0, SVGNS = 'http://www.w3.org/2000/svg';
+  var FX = { s0: 1.0, q: 1.7, d1: 0.06, rim: 0.62, M: 18, V: 16, res: 0.5, ghost: 0.85, frost: 0.38, soft: 0.9, gw: 0.14, gh: 20,
+    spectrum: [[1.26, 1, 0.12, 0.1], [1.13, 1, 0.82, 0.08], [0.94, 0.25, 0.95, 0.35], [0.86, 0.1, 0.65, 1], [0.76, 0.62, 0.22, 1]] }, fxN = 0, SVGNS = 'http://www.w3.org/2000/svg';
   function lensMap(RW, RH, lw, lh) { // карта на всю область окошка RW × RH (CSS px), линза lw × lh — посередине
     var cv = document.createElement('canvas'), ctx = cv.getContext && cv.getContext('2d');
     if (!ctx || RW < 2 || RH < 2) { return null; }
@@ -132,7 +133,7 @@
     if (parent) { parent.appendChild(n); }
     return n;
   }
-  function makeFx(host) { // фильтр на окошко: карта со сдвигом за линзой, основной проход, тёплый и холодный — только по кромке
+  function makeFx(host) { // фильтр на окошко: карта со сдвигом за линзой, основной проход, радуга из пяти проходов и дымка — только по кромке
     if (typeof document.createElement('canvas').getContext !== 'function') { return null; }
     var id = 'ios-lq-fx-' + (++fxN), svg = svgEl('svg', { width: '0', height: '0', 'aria-hidden': 'true', focusable: 'false' }), srgb = 'sRGB';
     svg.style.position = 'absolute';
@@ -141,20 +142,23 @@
     var im = svgEl('feImage', { preserveAspectRatio: 'none', result: 'm0', 'color-interpolation-filters': srgb }, f);
     var off = svgEl('feOffset', { 'in': 'm0', dx: '0', dy: '0', result: 'map', 'color-interpolation-filters': srgb }, f);
     var dm = function (res) { return svgEl('feDisplacementMap', { 'in': 'SourceGraphic', in2: 'map', xChannelSelector: 'R', yChannelSelector: 'G', 'color-interpolation-filters': srgb, result: res }, f); };
-    var main = dm('main'), warm = dm('w0'), cool = dm('c0');
+    var main = dm('main'), ghosts = [], mg;
     svgEl('feColorMatrix', { 'in': 'map', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 ' + FX.ghost + ' 0 0', result: 'edge', 'color-interpolation-filters': srgb }, f);
-    svgEl('feColorMatrix', { 'in': 'w0', type: 'matrix', values: '0 0 0 0 1  0 0 0 0 .3  0 0 0 0 .55  0 0 0 1 0', result: 'w2', 'color-interpolation-filters': srgb }, f);
-    svgEl('feGaussianBlur', { 'in': 'w2', stdDeviation: String(FX.soft), result: 'w1', 'color-interpolation-filters': srgb }, f); // радуга — мягким свечением, не резкой копией
-    svgEl('feColorMatrix', { 'in': 'c0', type: 'matrix', values: '0 0 0 0 .1  0 0 0 0 .78  0 0 0 0 1  0 0 0 1 0', result: 'c2', 'color-interpolation-filters': srgb }, f);
-    svgEl('feGaussianBlur', { 'in': 'c2', stdDeviation: String(FX.soft), result: 'c1', 'color-interpolation-filters': srgb }, f);
-    svgEl('feComposite', { 'in': 'w1', in2: 'edge', operator: 'in', result: 'w', 'color-interpolation-filters': srgb }, f);
-    svgEl('feComposite', { 'in': 'c1', in2: 'edge', operator: 'in', result: 'c', 'color-interpolation-filters': srgb }, f);
-    var mg = svgEl('feMerge', {}, f);
-    svgEl('feMergeNode', { 'in': 'w' }, mg);
-    svgEl('feMergeNode', { 'in': 'c' }, mg);
+    FX.spectrum.forEach(function (g, k) { // каждый цвет — своя сила преломления: у кромки цвета расходятся веером, как у призмы
+      ghosts.push({ el: dm('g' + k + 'a'), k: g[0] });
+      svgEl('feColorMatrix', { 'in': 'g' + k + 'a', type: 'matrix', values: '0 0 0 0 ' + g[1] + '  0 0 0 0 ' + g[2] + '  0 0 0 0 ' + g[3] + '  0 0 0 1 0', result: 'g' + k + 'b', 'color-interpolation-filters': srgb }, f);
+      svgEl('feGaussianBlur', { 'in': 'g' + k + 'b', stdDeviation: String(FX.soft), result: 'g' + k + 'c', 'color-interpolation-filters': srgb }, f);
+      svgEl('feComposite', { 'in': 'g' + k + 'c', in2: 'edge', operator: 'in', result: 'g' + k, 'color-interpolation-filters': srgb }, f);
+    });
+    var frost = svgEl('feFlood', { 'flood-color': '#fff', 'flood-opacity': '1', result: 'fr0', 'color-interpolation-filters': srgb }, f);
+    svgEl('feColorMatrix', { 'in': 'map', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 ' + FX.frost + ' 0 0', result: 'fe', 'color-interpolation-filters': srgb }, f);
+    svgEl('feComposite', { 'in': 'fr0', in2: 'fe', operator: 'in', result: 'fr', 'color-interpolation-filters': srgb }, f);
+    mg = svgEl('feMerge', {}, f);
+    FX.spectrum.forEach(function (g, k) { svgEl('feMergeNode', { 'in': 'g' + k }, mg); });
     svgEl('feMergeNode', { 'in': 'main' }, mg);
+    svgEl('feMergeNode', { 'in': 'fr' }, mg);
     host.appendChild(svg);
-    return { id: id, im: im, off: off, main: main, warm: warm, cool: cool, max: 0, key: '' };
+    return { id: id, im: im, off: off, main: main, ghosts: ghosts, frost: frost, max: 0, key: '' };
   }
   function fxMapFor(fx, RW, RH, lw, lh) { // карта пересчитывается только при смене размеров ряда или поднятой линзы
     var key = [Math.round(RW), Math.round(RH), Math.round(lw), Math.round(lh)].join('x');
@@ -236,6 +240,7 @@
         win.style.height = RH + 'px';
         var sw = btns[sel] ? btns[sel].offsetWidth : 0; // карта — под поднятую линзу (тот же размер, что в render)
         if (!fxMapFor(fx, RW, RH, sw * (1 + FX.gw), rest.h + FX.gh)) { win.style.filter = ''; fx = null; }
+        if (fx) { var bg = getComputedStyle(el).backgroundColor; fx.frost.setAttribute('flood-color', /^rgba?\(/.test(bg) ? bg.replace(/rgba\(([^,]+),([^,]+),([^,]+),[^)]+\)/, 'rgb($1,$2,$3)') : '#fff'); } // дымка — цвета панели (светлая или тёмная)
       }
       copy.style.width = items.offsetWidth + 'px';
       copy.style.height = items.offsetHeight + 'px';
@@ -272,8 +277,7 @@
           fx.off.setAttribute('dx', (lx - RW / 2).toFixed(2));
           fx.off.setAttribute('dy', (ly - RH / 2).toFixed(2));
           fx.main.setAttribute('scale', s.toFixed(2));
-          fx.warm.setAttribute('scale', (s * FX.warm).toFixed(2));
-          fx.cool.setAttribute('scale', (s * FX.cool).toFixed(2));
+          for (var gi = 0; gi < fx.ghosts.length; gi++) { fx.ghosts[gi].el.setAttribute('scale', (s * fx.ghosts[gi].k).toFixed(2)); }
         }
         win.style.filter = on ? 'url(#' + fx.id + ')' : '';
         return;
