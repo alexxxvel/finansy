@@ -73,12 +73,79 @@
      • вся панель на касание чуть растёт — до ×1,03 пружиной ω 17,6, ζ 0,59 (замер UIKit), свой сдвиг панели сохраняется;
      • за пальцем линза идёт своей пружиной 0,196 с, отскок 0,1; отпустили — вкладка ПОД ПАЛЬЦЕМ (быстрый бросок — соседняя по ходу), скорость не сбрасывается;
      • протянули линзу через вкладку — лёгкий щелчок (Telegram HapticFeedback), как в iOS. */
-  var LQ = { travel: [0.34, 0.12], follow: [0.26, 0.08], lift: 0.1, drop: 0.18, hold: 0.3, swell: [0.357, 0.41], gel: 0.1, gelK: 4000, gelMax: 0.15, fling: 800, rim: [0.78, 1.15], band: [12, 5] };
+  var LQ = { travel: [0.46, 0.12], follow: [0.32, 0.06], lift: 0.12, drop: 0.24, hold: 0.36, swell: [0.357, 0.41], gel: 0.1, gelK: 4000, gelMax: 0.15, fling: 800, rim: [0.78, 1.15], band: [12, 5] };
   function hapticTick() {
     try {
       var w = window.Telegram && window.Telegram.WebApp, h = w && w.HapticFeedback;
       if (h && (!w.isVersionAtLeast || w.isVersionAtLeast('6.1'))) { h.selectionChanged(); }
     } catch (e) { /* без отклика — не страшно */ }
+  }
+  /* линзовое преломление поднятой линзы — SVG-фильтр смещения (версия 3.4, 08.11.2026, слово разработчика: «граней быть не должно… плавные, как реально линза,
+     видно, как оно растекается по краям, разбегается, как радуга появляется»). Карта смещения капсулы считается один раз на холсте: середина плавно увеличена
+     (выборка ближе к центру), к кромке смещение так же плавно растёт наружу — то, что снаружи, втягивается внутрь и растекается по краю; два слабых цветных
+     прохода с чуть другой силой ложатся под основной и видны только у края, где смещение сильнее, — радуга. Без ступенек: одна непрерывная карта. */
+  var FX = { mag: 1.25, edge: 0.62, edgeY: 0.35, from: 0.5, W: 160, H: 96, MX: 0.15, MY: 0.25, warm: 1.09, cool: 0.92, ghost: 0.5 }, fxMap = null, fxN = 0, SVGNS = 'http://www.w3.org/2000/svg';
+  function lensMap() {
+    if (fxMap !== null) { return fxMap; }
+    fxMap = false;
+    var cv = document.createElement('canvas'), ctx = cv.getContext && cv.getContext('2d');
+    if (!ctx) { return fxMap; }
+    // карта = линза и нейтральный запас вокруг (MX, MY — доли размера линзы): картинка занимает всю область фильтра — так её одинаково кладут Chrome и Safari
+    var W = FX.W, H = FX.H, R = H / 2, k = 1 - 1 / FX.mag, o = [], max = 0, x, y, i, ox0 = Math.round(W * FX.MX), oy0 = Math.round(H * FX.MY), TW = W + 2 * ox0, TH = H + 2 * oy0;
+    cv.width = TW;
+    cv.height = TH;
+    for (y = 0; y < TH; y++) {
+      for (x = 0; x < TW; x++) {
+        var px = x - ox0 + 0.5, py = y - oy0 + 0.5, dx = px - clamp(px, R, W - R), dy = py - R, dist = Math.sqrt(dx * dx + dy * dy), rho = dist / R, ox = 0, oy = 0;
+        if (rho < 1 && px > 0 && px < W) {
+          var e = clamp((rho - FX.from) / (1 - FX.from), 0, 1);
+          e = e * e * (3 - 2 * e); // гладкая ступень — никакой грани внутри
+          e *= e;
+          ox = -k * (px - W / 2) + (dist ? dx / dist : 0) * FX.edge * R * e;
+          oy = -k * (py - R) + (dist ? dy / dist : 0) * FX.edge * FX.edgeY * R * e; // сверху и снизу кромка тоньше: подпись под линзой ровная, изгиб — у концов, как у Apple
+        }
+        o.push(ox, oy);
+        max = Math.max(max, Math.abs(ox), Math.abs(oy));
+      }
+    }
+    var img = ctx.createImageData(TW, TH);
+    for (i = 0; i < TW * TH; i++) {
+      img.data[i * 4] = Math.round(128 + 127 * o[i * 2] / max);
+      img.data[i * 4 + 1] = Math.round(128 + 127 * o[i * 2 + 1] / max);
+      img.data[i * 4 + 2] = 128;
+      img.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    try { fxMap = { url: cv.toDataURL('image/png'), max: max }; } catch (z) { fxMap = false; }
+    return fxMap;
+  }
+  function svgEl(name, attrs, parent) {
+    var n = document.createElementNS(SVGNS, name);
+    for (var a in attrs) { if (attrs.hasOwnProperty(a)) { n.setAttribute(a, attrs[a]); } }
+    if (parent) { parent.appendChild(n); }
+    return n;
+  }
+  function makeFx(host) { // фильтр на копию ряда под линзой: основной проход + тёплый и холодный «призраки» под ним
+    var map = lensMap();
+    if (!map) { return null; }
+    var id = 'ios-lq-fx-' + (++fxN), svg = svgEl('svg', { width: '0', height: '0', 'aria-hidden': 'true', focusable: 'false' });
+    svg.style.position = 'absolute';
+    svg.style.pointerEvents = 'none';
+    // область — весь элемент-окошко (доли его размера, от угла): Safari кладёт область со сдвигом и сдвигает картинку под ней, если она начинается не от угла
+    var f = svgEl('filter', { id: id, x: '0', y: '0', width: '1', height: '1', 'color-interpolation-filters': 'sRGB' }, svgEl('defs', {}, svg));
+    var im = svgEl('feImage', { href: map.url, preserveAspectRatio: 'none', result: 'map', 'color-interpolation-filters': 'sRGB' }, f);
+    im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', map.url);
+    var main = svgEl('feDisplacementMap', { 'in': 'SourceGraphic', in2: 'map', xChannelSelector: 'R', yChannelSelector: 'G', 'color-interpolation-filters': 'sRGB', result: 'main' }, f);
+    var warm = svgEl('feDisplacementMap', { 'in': 'SourceGraphic', in2: 'map', xChannelSelector: 'R', yChannelSelector: 'G', 'color-interpolation-filters': 'sRGB', result: 'w0' }, f);
+    svgEl('feColorMatrix', { 'in': 'w0', type: 'matrix', values: '0 0 0 0 1  0 0 0 0 .28  0 0 0 0 .42  0 0 0 ' + FX.ghost + ' 0', result: 'w' }, f);
+    var cool = svgEl('feDisplacementMap', { 'in': 'SourceGraphic', in2: 'map', xChannelSelector: 'R', yChannelSelector: 'G', 'color-interpolation-filters': 'sRGB', result: 'c0' }, f);
+    svgEl('feColorMatrix', { 'in': 'c0', type: 'matrix', values: '0 0 0 0 .16  0 0 0 0 .66  0 0 0 0 1  0 0 0 ' + FX.ghost + ' 0', result: 'c' }, f);
+    var mg = svgEl('feMerge', {}, f);
+    svgEl('feMergeNode', { 'in': 'w' }, mg);
+    svgEl('feMergeNode', { 'in': 'c' }, mg);
+    svgEl('feMergeNode', { 'in': 'main' }, mg);
+    host.appendChild(svg);
+    return { id: id, f: f, im: im, main: main, warm: warm, cool: cool, max: map.max };
   }
   function liquid(el) {
     if (!el || el.liquid) { return; }
@@ -111,6 +178,16 @@
       rim.className += ' ios-lq__items--rim';
       el.insertBefore(rim, copy);
     }
+    var fx = tabbar && el.getAttribute('data-fx') !== 'off' ? makeFx(el) : null; // настоящее преломление; без холста — прежняя полоса rim
+    if (fx && rim) { el.removeChild(rim); rim = null; }
+    var win = null; // окошко размером с линзу (и запасом): ездит вместе с ней, внутри — копия ряда на своём месте; фильтр — на окошко целиком
+    if (fx) {
+      win = document.createElement('div');
+      win.className = 'ios-lq__fxwin';
+      win.style.cssText = 'position:absolute;z-index:3;left:0;top:0;pointer-events:none;will-change:transform,clip-path';
+      el.insertBefore(win, copy);
+      win.appendChild(copy);
+    }
     var sel = 0;
     btns.forEach(function (b, k) { if (b.getAttribute('aria-selected') === 'true' || b.getAttribute('aria-pressed') === 'true') { sel = k; } });
     var X = new Spring(0, LQ.travel[0], LQ.travel[1], 0.2), W = new Spring(0, LQ.travel[0], 0, 0.2);
@@ -127,8 +204,9 @@
       var bt = getComputedStyle(el).transform; baseT = bt && bt !== 'none' ? bt + ' ' : '';
       rest.top = lens.offsetTop;
       rest.h = lens.offsetHeight;
-      copy.style.left = items.offsetLeft + 'px';
-      copy.style.top = items.offsetTop + 'px';
+      copy.style.left = (win ? 0 : items.offsetLeft) + 'px';
+      copy.style.top = (win ? 0 : items.offsetTop) + 'px';
+      if (win) { win.style.left = items.offsetLeft + 'px'; win.style.top = items.offsetTop + 'px'; }
       copy.style.width = items.offsetWidth + 'px';
       copy.style.height = items.offsetHeight + 'px';
       if (rim) { rim.style.cssText = copy.style.cssText; }
@@ -155,6 +233,22 @@
       var cx = X.x + W.x / 2 - items.offsetLeft, half = w / 2, cy = rest.top + rest.h / 2 - items.offsetTop, vh = h / 2;
       el.style.setProperty('--l', (cx - half).toFixed(1));
       el.style.setProperty('--r', (cx + half).toFixed(1));
+      if (fx) { // увеличение и кромку делает фильтр смещения на окошке линзы; копия внутри стоит на своём месте, окошко обрезано по капсуле
+        var on = l > 0.01, s = 2 * fx.max * (h / FX.H) * l, px0 = w * FX.MX, py0 = h * FX.MY, wx = cx - half - px0, wy = cy - vh - py0;
+        win.style.width = (w + 2 * px0).toFixed(1) + 'px';
+        win.style.height = (h + 2 * py0).toFixed(1) + 'px';
+        win.style.transform = 'translate3d(' + wx.toFixed(2) + 'px,' + wy.toFixed(2) + 'px,0)';
+        win.style.clipPath = 'inset(' + py0.toFixed(1) + 'px ' + px0.toFixed(1) + 'px round ' + vh.toFixed(1) + 'px)';
+        copy.style.transform = 'translate3d(' + (-wx).toFixed(2) + 'px,' + (-wy).toFixed(2) + 'px,0)';
+        copy.style.clipPath = 'none';
+        if (on) {
+          fx.main.setAttribute('scale', s.toFixed(2));
+          fx.warm.setAttribute('scale', (s * FX.warm).toFixed(2));
+          fx.cool.setAttribute('scale', (s * FX.cool).toFixed(2));
+        }
+        win.style.filter = on ? 'url(#' + fx.id + ')' : '';
+        return;
+      }
       var m = 1 + (mag - 1) * l; // увеличение только под поднятой линзой
       copy.style.transformOrigin = cx.toFixed(1) + 'px ' + cy.toFixed(1) + 'px';
       copy.style.transform = 'scale(' + m.toFixed(4) + ')';
