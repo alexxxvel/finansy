@@ -80,31 +80,38 @@
       if (h && (!w.isVersionAtLeast || w.isVersionAtLeast('6.1'))) { h.selectionChanged(); }
     } catch (e) { /* без отклика — не страшно */ }
   }
-  /* линзовое преломление поднятой линзы — SVG-фильтр смещения (версия 3.4, 08.11.2026, слово разработчика: «граней быть не должно… плавные, как реально линза,
-     видно, как оно растекается по краям, разбегается, как радуга появляется»). Карта смещения капсулы считается один раз на холсте: середина плавно увеличена
-     (выборка ближе к центру), к кромке смещение так же плавно растёт наружу — то, что снаружи, втягивается внутрь и растекается по краю; два слабых цветных
-     прохода с чуть другой силой ложатся под основной и видны только у края, где смещение сильнее, — радуга. Без ступенек: одна непрерывная карта. */
-  var FX = { mag: 1.25, edge: 0.62, edgeY: 0.35, from: 0.5, W: 160, H: 96, MX: 0.15, MY: 0.25, warm: 1.09, cool: 0.92, ghost: 0.5 }, fxMap = null, fxN = 0, SVGNS = 'http://www.w3.org/2000/svg';
-  function lensMap() {
-    if (fxMap !== null) { return fxMap; }
-    fxMap = false;
+  /* линзовое преломление поднятой линзы — SVG-фильтр смещения (версия 3.5, 08.11.2026, слово разработчика: «граней быть не должно… плавные, как реально линза,
+     видно, как оно растекается по краям, разбегается, как радуга появляется»; снимки Apple и Telegram рядом с нашим: «две совершенно разные кнопки»).
+     • Карта смещения капсулы — на холсте: середина плавно увеличена ×1,6 (как значки под линзой у Apple), к кромке смещение так же плавно растёт наружу —
+       то, что снаружи, втягивается внутрь и растекается вдоль края; в синем канале карты — сила края: по нему тёплый и холодный проходы с другой силой
+       ложатся только у кромки — радуга там, где у Apple, а не двоение посередине.
+     • Почему окошко во весь ряд: рамку фильтра Chrome и Safari считают по-разному, если из элемента что-то выступает (Safari — всегда по всему содержимому,
+       Chrome — по элементу только при обрезке; область не от угла Safari ещё и сдвигает). Окошко = ряд с запасом, ничего не выступает, область — весь элемент
+       от угла; карта линзы двигается внутри фильтра сдвигом (feOffset) за линзой. Проверено опытом в Edge и WebKit. */
+  // M, V — запас окошка вокруг ряда: ровно на поднятую и растянутую линзу у крайней вкладки; больше — окошко вылезает за экран и даёт прокрутку вбок (e2e «края», 08.11.2026)
+  var FX = { mag: 1.75, reach: 1.12, edgeY: 0.7, from: 0.42, fromY: 0.74, M: 18, V: 16, res: 0.5, warm: 1.3, cool: 0.74, ghost: 0.8, soft: 1.2, gw: 0.14, gh: 20 }, fxN = 0, SVGNS = 'http://www.w3.org/2000/svg';
+  function lensMap(RW, RH, lw, lh) { // карта на всю область окошка RW × RH (CSS px), линза lw × lh — посередине
     var cv = document.createElement('canvas'), ctx = cv.getContext && cv.getContext('2d');
-    if (!ctx) { return fxMap; }
-    // карта = линза и нейтральный запас вокруг (MX, MY — доли размера линзы): картинка занимает всю область фильтра — так её одинаково кладут Chrome и Safari
-    var W = FX.W, H = FX.H, R = H / 2, k = 1 - 1 / FX.mag, o = [], max = 0, x, y, i, ox0 = Math.round(W * FX.MX), oy0 = Math.round(H * FX.MY), TW = W + 2 * ox0, TH = H + 2 * oy0;
+    if (!ctx || RW < 2 || RH < 2) { return null; }
+    var TW = Math.max(2, Math.round(RW * FX.res)), TH = Math.max(2, Math.round(RH * FX.res)), R = lh / 2, k = 1 - 1 / FX.mag, o = [], es = [], max = 0.001, x, y, i;
+    var x0 = (RW - lw) / 2, y0 = (RH - lh) / 2;
     cv.width = TW;
     cv.height = TH;
     for (y = 0; y < TH; y++) {
       for (x = 0; x < TW; x++) {
-        var px = x - ox0 + 0.5, py = y - oy0 + 0.5, dx = px - clamp(px, R, W - R), dy = py - R, dist = Math.sqrt(dx * dx + dy * dy), rho = dist / R, ox = 0, oy = 0;
-        if (rho < 1 && px > 0 && px < W) {
-          var e = clamp((rho - FX.from) / (1 - FX.from), 0, 1);
+        var px = (x + 0.5) / FX.res - x0, py = (y + 0.5) / FX.res - y0, dx = px - clamp(px, R, lw - R), dy = py - R, dist = Math.sqrt(dx * dx + dy * dy), rho = dist / R, ox = 0, oy = 0, e = 0;
+        if (rho < 1 && px > 0 && px < lw) {
+          e = clamp((rho - FX.from) / (1 - FX.from), 0, 1);
           e = e * e * (3 - 2 * e); // гладкая ступень — никакой грани внутри
-          e *= e;
-          ox = -k * (px - W / 2) + (dist ? dx / dist : 0) * FX.edge * R * e;
-          oy = -k * (py - R) + (dist ? dy / dist : 0) * FX.edge * FX.edgeY * R * e; // сверху и снизу кромка тоньше: подпись под линзой ровная, изгиб — у концов, как у Apple
+          // середина — увеличение (выборка ближе к центру), к кромке оно сходит на нет, а точки берут картинку с самой границы линзы (чуть снаружи):
+          // у края всё растекается мазком вдоль кромки, как у стекла Apple и Telegram, а не сжимается в мелкую копию
+          var ux = dist ? dx / dist : 0, uy = dist ? dy / dist : 0, ev = clamp((rho - FX.fromY) / (1 - FX.fromY), 0, 1);
+          ev = ev * ev * (3 - 2 * ev); // по вертикали кромка только у самого края: подпись под линзой прямая и крупная, как у Apple
+          ox = -k * (px - lw / 2) * (1 - e) + ux * (R * FX.reach - dist) * e;
+          oy = -k * (py - R) * (1 - ev) + uy * (R * FX.reach - dist) * ev * FX.edgeY;
         }
         o.push(ox, oy);
+        es.push(e);
         max = Math.max(max, Math.abs(ox), Math.abs(oy));
       }
     }
@@ -112,12 +119,11 @@
     for (i = 0; i < TW * TH; i++) {
       img.data[i * 4] = Math.round(128 + 127 * o[i * 2] / max);
       img.data[i * 4 + 1] = Math.round(128 + 127 * o[i * 2 + 1] / max);
-      img.data[i * 4 + 2] = 128;
+      img.data[i * 4 + 2] = Math.round(255 * es[i]); // сила края — для радуги
       img.data[i * 4 + 3] = 255;
     }
     ctx.putImageData(img, 0, 0);
-    try { fxMap = { url: cv.toDataURL('image/png'), max: max }; } catch (z) { fxMap = false; }
-    return fxMap;
+    try { return { url: cv.toDataURL('image/png'), max: max }; } catch (z) { return null; }
   }
   function svgEl(name, attrs, parent) {
     var n = document.createElementNS(SVGNS, name);
@@ -125,27 +131,40 @@
     if (parent) { parent.appendChild(n); }
     return n;
   }
-  function makeFx(host) { // фильтр на копию ряда под линзой: основной проход + тёплый и холодный «призраки» под ним
-    var map = lensMap();
-    if (!map) { return null; }
-    var id = 'ios-lq-fx-' + (++fxN), svg = svgEl('svg', { width: '0', height: '0', 'aria-hidden': 'true', focusable: 'false' });
+  function makeFx(host) { // фильтр на окошко: карта со сдвигом за линзой, основной проход, тёплый и холодный — только по кромке
+    if (typeof document.createElement('canvas').getContext !== 'function') { return null; }
+    var id = 'ios-lq-fx-' + (++fxN), svg = svgEl('svg', { width: '0', height: '0', 'aria-hidden': 'true', focusable: 'false' }), srgb = 'sRGB';
     svg.style.position = 'absolute';
     svg.style.pointerEvents = 'none';
-    // область — весь элемент-окошко (доли его размера, от угла): Safari кладёт область со сдвигом и сдвигает картинку под ней, если она начинается не от угла
-    var f = svgEl('filter', { id: id, x: '0', y: '0', width: '1', height: '1', 'color-interpolation-filters': 'sRGB' }, svgEl('defs', {}, svg));
-    var im = svgEl('feImage', { href: map.url, preserveAspectRatio: 'none', result: 'map', 'color-interpolation-filters': 'sRGB' }, f);
-    im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', map.url);
-    var main = svgEl('feDisplacementMap', { 'in': 'SourceGraphic', in2: 'map', xChannelSelector: 'R', yChannelSelector: 'G', 'color-interpolation-filters': 'sRGB', result: 'main' }, f);
-    var warm = svgEl('feDisplacementMap', { 'in': 'SourceGraphic', in2: 'map', xChannelSelector: 'R', yChannelSelector: 'G', 'color-interpolation-filters': 'sRGB', result: 'w0' }, f);
-    svgEl('feColorMatrix', { 'in': 'w0', type: 'matrix', values: '0 0 0 0 1  0 0 0 0 .28  0 0 0 0 .42  0 0 0 ' + FX.ghost + ' 0', result: 'w' }, f);
-    var cool = svgEl('feDisplacementMap', { 'in': 'SourceGraphic', in2: 'map', xChannelSelector: 'R', yChannelSelector: 'G', 'color-interpolation-filters': 'sRGB', result: 'c0' }, f);
-    svgEl('feColorMatrix', { 'in': 'c0', type: 'matrix', values: '0 0 0 0 .16  0 0 0 0 .66  0 0 0 0 1  0 0 0 ' + FX.ghost + ' 0', result: 'c' }, f);
+    var f = svgEl('filter', { id: id, x: '0', y: '0', width: '1', height: '1', 'color-interpolation-filters': srgb }, svgEl('defs', {}, svg));
+    var im = svgEl('feImage', { preserveAspectRatio: 'none', result: 'm0', 'color-interpolation-filters': srgb }, f);
+    var off = svgEl('feOffset', { 'in': 'm0', dx: '0', dy: '0', result: 'map', 'color-interpolation-filters': srgb }, f);
+    var dm = function (res) { return svgEl('feDisplacementMap', { 'in': 'SourceGraphic', in2: 'map', xChannelSelector: 'R', yChannelSelector: 'G', 'color-interpolation-filters': srgb, result: res }, f); };
+    var main = dm('main'), warm = dm('w0'), cool = dm('c0');
+    svgEl('feColorMatrix', { 'in': 'map', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 ' + FX.ghost + ' 0 0', result: 'edge', 'color-interpolation-filters': srgb }, f);
+    svgEl('feColorMatrix', { 'in': 'w0', type: 'matrix', values: '0 0 0 0 1  0 0 0 0 .3  0 0 0 0 .55  0 0 0 1 0', result: 'w2', 'color-interpolation-filters': srgb }, f);
+    svgEl('feGaussianBlur', { 'in': 'w2', stdDeviation: String(FX.soft), result: 'w1', 'color-interpolation-filters': srgb }, f); // радуга — мягким свечением, не резкой копией
+    svgEl('feColorMatrix', { 'in': 'c0', type: 'matrix', values: '0 0 0 0 .1  0 0 0 0 .78  0 0 0 0 1  0 0 0 1 0', result: 'c2', 'color-interpolation-filters': srgb }, f);
+    svgEl('feGaussianBlur', { 'in': 'c2', stdDeviation: String(FX.soft), result: 'c1', 'color-interpolation-filters': srgb }, f);
+    svgEl('feComposite', { 'in': 'w1', in2: 'edge', operator: 'in', result: 'w', 'color-interpolation-filters': srgb }, f);
+    svgEl('feComposite', { 'in': 'c1', in2: 'edge', operator: 'in', result: 'c', 'color-interpolation-filters': srgb }, f);
     var mg = svgEl('feMerge', {}, f);
     svgEl('feMergeNode', { 'in': 'w' }, mg);
     svgEl('feMergeNode', { 'in': 'c' }, mg);
     svgEl('feMergeNode', { 'in': 'main' }, mg);
     host.appendChild(svg);
-    return { id: id, f: f, im: im, main: main, warm: warm, cool: cool, max: map.max };
+    return { id: id, im: im, off: off, main: main, warm: warm, cool: cool, max: 0, key: '' };
+  }
+  function fxMapFor(fx, RW, RH, lw, lh) { // карта пересчитывается только при смене размеров ряда или поднятой линзы
+    var key = [Math.round(RW), Math.round(RH), Math.round(lw), Math.round(lh)].join('x');
+    if (fx.key === key) { return true; }
+    var m = lensMap(RW, RH, lw, lh);
+    if (!m) { return false; }
+    fx.key = key;
+    fx.max = m.max;
+    fx.im.setAttribute('href', m.url);
+    fx.im.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', m.url);
+    return true;
   }
   function liquid(el) {
     if (!el || el.liquid) { return; }
@@ -180,11 +199,11 @@
     }
     var fx = tabbar && el.getAttribute('data-fx') !== 'off' ? makeFx(el) : null; // настоящее преломление; без холста — прежняя полоса rim
     if (fx && rim) { el.removeChild(rim); rim = null; }
-    var win = null; // окошко размером с линзу (и запасом): ездит вместе с ней, внутри — копия ряда на своём месте; фильтр — на окошко целиком
+    var win = null, RW = 0, RH = 0, pm = 0; // окошко во весь ряд с запасом (ничего из него не выступает — рамку фильтра Chrome и Safari считают одинаково); фильтр — на окошко
     if (fx) {
       win = document.createElement('div');
       win.className = 'ios-lq__fxwin';
-      win.style.cssText = 'position:absolute;z-index:3;left:0;top:0;pointer-events:none;will-change:transform,clip-path';
+      win.style.cssText = 'position:absolute;z-index:3;left:0;top:0;pointer-events:none;will-change:clip-path';
       el.insertBefore(win, copy);
       win.appendChild(copy);
     }
@@ -200,13 +219,23 @@
     function local(e) { var r = el.getBoundingClientRect(), sc = r.width / (el.offsetWidth || r.width || 1); return (e.clientX - r.left) / (sc || 1); } // панель может быть чуть увеличена касанием
     function place() {
       lens.style.height = '';
+      if (win) { pm = Math.min(FX.M, parseFloat(getComputedStyle(el).paddingLeft) || 0); } // сбоку окошко не шире панели: иначе у неё прокрутка вбок (e2e «крупно»)
       el.style.transform = '';   // свой сдвиг панели (например translateX(-50%)) сохраняется, разбухание — поверх него
       var bt = getComputedStyle(el).transform; baseT = bt && bt !== 'none' ? bt + ' ' : '';
       rest.top = lens.offsetTop;
       rest.h = lens.offsetHeight;
-      copy.style.left = (win ? 0 : items.offsetLeft) + 'px';
-      copy.style.top = (win ? 0 : items.offsetTop) + 'px';
-      if (win) { win.style.left = items.offsetLeft + 'px'; win.style.top = items.offsetTop + 'px'; }
+      copy.style.left = (win ? pm : items.offsetLeft) + 'px';
+      copy.style.top = (win ? FX.V : items.offsetTop) + 'px';
+      if (win) {
+        RW = items.offsetWidth + 2 * pm;
+        RH = items.offsetHeight + 2 * FX.V;
+        win.style.left = (items.offsetLeft - pm) + 'px';
+        win.style.top = (items.offsetTop - FX.V) + 'px';
+        win.style.width = RW + 'px';
+        win.style.height = RH + 'px';
+        var sw = btns[sel] ? btns[sel].offsetWidth : 0; // карта — под поднятую линзу (тот же размер, что в render)
+        if (!fxMapFor(fx, RW, RH, sw * (1 + FX.gw), rest.h + FX.gh)) { win.style.filter = ''; fx = null; }
+      }
       copy.style.width = items.offsetWidth + 'px';
       copy.style.height = items.offsetHeight + 'px';
       if (rim) { rim.style.cssText = copy.style.cssText; }
@@ -222,7 +251,7 @@
     }
     function render() {
       var l = clamp(L.x, 0, 1), g = clamp(G.x, 0, LQ.gelMax);
-      var gx = tabbar ? 14 : W.x * (press - 1), gy = tabbar ? 2 * rest.top + 2 : rest.h * (press - 1);
+      var gx = tabbar ? W.x * FX.gw : W.x * (press - 1), gy = tabbar ? FX.gh : rest.h * (press - 1); // как у Apple и Telegram: выше панели (выходит сверху и снизу), шире своей высоты ≈ ×1,35
       var w = (W.x + gx * l) * (1 + g), h = (rest.h + gy * l) * (1 - g * 0.12); // поднятая — шире и выше панели; в пути вытягивается по ходу
       lens.style.width = w.toFixed(2) + 'px';
       lens.style.height = h.toFixed(2) + 'px';
@@ -233,15 +262,14 @@
       var cx = X.x + W.x / 2 - items.offsetLeft, half = w / 2, cy = rest.top + rest.h / 2 - items.offsetTop, vh = h / 2;
       el.style.setProperty('--l', (cx - half).toFixed(1));
       el.style.setProperty('--r', (cx + half).toFixed(1));
-      if (fx) { // увеличение и кромку делает фильтр смещения на окошке линзы; копия внутри стоит на своём месте, окошко обрезано по капсуле
-        var on = l > 0.01, s = 2 * fx.max * (h / FX.H) * l, px0 = w * FX.MX, py0 = h * FX.MY, wx = cx - half - px0, wy = cy - vh - py0;
-        win.style.width = (w + 2 * px0).toFixed(1) + 'px';
-        win.style.height = (h + 2 * py0).toFixed(1) + 'px';
-        win.style.transform = 'translate3d(' + wx.toFixed(2) + 'px,' + wy.toFixed(2) + 'px,0)';
-        win.style.clipPath = 'inset(' + py0.toFixed(1) + 'px ' + px0.toFixed(1) + 'px round ' + vh.toFixed(1) + 'px)';
-        copy.style.transform = 'translate3d(' + (-wx).toFixed(2) + 'px,' + (-wy).toFixed(2) + 'px,0)';
+      if (fx) { // увеличение и кромку делает фильтр смещения на окошке во весь ряд; окошко обрезано по капсуле линзы, карта сдвинута за линзой
+        var on = l > 0.01, s = 2 * fx.max * l, lx = cx + pm, ly = cy + FX.V;
+        win.style.clipPath = 'inset(' + (ly - vh).toFixed(1) + 'px ' + (RW - lx - half).toFixed(1) + 'px ' + (RH - ly - vh).toFixed(1) + 'px ' + (lx - half).toFixed(1) + 'px round ' + vh.toFixed(1) + 'px)';
+        copy.style.transform = 'none';
         copy.style.clipPath = 'none';
         if (on) {
+          fx.off.setAttribute('dx', (lx - RW / 2).toFixed(2));
+          fx.off.setAttribute('dy', (ly - RH / 2).toFixed(2));
           fx.main.setAttribute('scale', s.toFixed(2));
           fx.warm.setAttribute('scale', (s * FX.warm).toFixed(2));
           fx.cool.setAttribute('scale', (s * FX.cool).toFixed(2));
