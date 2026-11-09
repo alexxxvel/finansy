@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '394e83b097'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '37bbde4155'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -172,6 +172,9 @@
       Android сжимает само окно. Поэтому лист поднимается ровно на ту часть страницы, которая осталась под клавиатурой: нижний край страницы минус нижний край видимой области.
       11.10.2026 обе поправки применялись сразу, и от листа цели на iPhone оставалась полоска. */
   function fit() {
+    // заметка вверху листа «Добавить»: клавиатура телефона ложится поверх клавиш и меток, лист не пересобирается (запись разработчика 09.11.2026:
+    // «всё резко прыгает, уменьшается» — Telegram уменьшал высоту окна, лист сжимался, а после клавиатуры прыгал обратно)
+    if (entry && entry.noteInput && document.activeElement === entry.noteInput && document.documentElement.style.getPropertyValue('--vh')) { return; }
     var inner = window.innerHeight, vv = window.visualViewport;
     var visible = vv ? vv.offsetTop + vv.height : inner;
     var stable = inTg && tg.viewportStableHeight ? tg.viewportStableHeight : inner;
@@ -3637,12 +3640,50 @@
     setTimeout(function () { if (input.parentNode && !p.parentNode) { input.parentNode.insertBefore(p, input.nextSibling); show(); } }, 0);
   }
   document.addEventListener('focusin', function (ev) { var t = ev.target; if (t && t.tagName === 'INPUT' && t.maxLength === 24 && !t.lenHint) { t.lenHint = 1; lenHint(t); } }); // все поля названия (цель, кредит, платёж, человек, категория)
+  /** выпадающее меню валюты у кнопки «BYN ⌄», как pull-down в iOS: три строки, галочка у выбранной, у валют курс; касание мимо или Esc закрывает */
+  function curMenuClose() {
+    var m = modal.querySelector('#curMenu'), v = modal.querySelector('.curmenu__veil');
+    if (v) { v.remove(); }
+    if (entry && entry.curBtn) { entry.curBtn.setAttribute('aria-expanded', 'false'); }
+    if (!m) { return; }
+    m.classList.remove('is-on');
+    setTimeout(function () { m.remove(); }, reduce ? 0 : 160);
+  }
+  function curMenu() {
+    if (modal.querySelector('#curMenu')) { curMenuClose(); return; }
+    var b = entry.curBtn, mr = modal.getBoundingClientRect(), br = b.getBoundingClientRect(), menu = el('div', 'curmenu'), veil = el('div', 'curmenu__veil');
+    menu.id = 'curMenu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'Валюта');
+    [['BYN', 'белорусский рубль'], ['USD', 'доллар'], ['EUR', 'евро']].forEach(function (c) {
+      var it = btn('curmenu__it'), on = entry.cur === c[0], tx = el('span', 'curmenu__t');
+      it.setAttribute('role', 'menuitemradio');
+      it.setAttribute('aria-checked', String(on));
+      it.setAttribute('data-cur', c[0]);
+      add(tx, el('b', '', c[0]), el('small', '', c[0] === 'BYN' ? c[1] : c[1] + ' · ' + F.fmtRate(F.RATES[c[0]]) + F.NB + 'BYN'));
+      add(it, on ? icon('check', 'curmenu__ok') : el('i', 'curmenu__ok'), tx);
+      it.addEventListener('click', function () {
+        if (entry && entry.cur !== c[0]) { entry.cur = c[0]; haptic(); paintEntry(); }
+        curMenuClose();
+      });
+      menu.appendChild(it);
+    });
+    veil.addEventListener('click', curMenuClose);
+    modal.appendChild(veil);
+    modal.appendChild(menu);
+    var w = menu.offsetWidth, left = Math.max(12, Math.min((br.left - mr.left) / K, mr.width / K - w - 12));
+    menu.style.left = left + 'px';
+    menu.style.top = ((br.bottom - mr.top) / K + 6) + 'px';
+    menu.style.transformOrigin = Math.round((br.left - mr.left) / K - left + br.width / K / 2) + 'px 0';
+    b.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(function () { menu.classList.add('is-on'); });
+  }
   /** Telegram на компьютере (QA М25): в листе записи цифры, запятая или точка, Backspace и Enter с клавиатуры; Esc закрывает лист */
   document.addEventListener('keydown', function (ev) {
     if (ev.ctrlKey || ev.metaKey || ev.altKey || !ui.open) { return; }
     var t = ev.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
     if (window.FINTOUR && window.FINTOUR.isOpen && window.FINTOUR.isOpen()) { return; } // у обучения свои клавиши
-    if (ev.key === 'Escape') { ev.preventDefault(); if (typing) { t.blur(); } goBack(); return; }
+    if (ev.key === 'Escape') { ev.preventDefault(); if (modal.querySelector('#curMenu')) { curMenuClose(); return; } if (typing) { t.blur(); } goBack(); return; }
     if (typing || !entry) { return; }
     var k = /^\d$/.test(ev.key) ? ev.key : ev.key === ',' || ev.key === '.' ? ',' : ev.key === 'Backspace' ? 'back' : '';
     if (k) { var b = modal.querySelector('.keys button[data-key="' + k + '"]'); if (b) { ev.preventDefault(); b.click(); } return; }
@@ -3834,12 +3875,9 @@
       entry.curBtn.id = 'curBtn';
       entry.curText = el('span');
       add(entry.curBtn, entry.curText, icon('down'));
-      entry.curBtn.addEventListener('click', function () { // валюта меняется по кругу: BYN, USD, EUR
-        if (!entry) { return; }
-        entry.cur = F.CURS[(F.CURS.indexOf(entry.cur) + 1) % F.CURS.length];
-        haptic();
-        paintEntry();
-      });
+      entry.curBtn.setAttribute('aria-haspopup', 'menu');
+      entry.curBtn.setAttribute('aria-expanded', 'false');
+      entry.curBtn.addEventListener('click', function () { if (entry) { haptic(); curMenu(); } }); // стрелка вниз — меню выбора, а не смена по кругу (запись разработчика 09.11.2026)
       add(row, entry.sum, entry.curBtn);
       entry.hint = el('p', 'entry__conv'); // под суммой: пересчёт валюты или сколько останется после этой записи
       entry.hint.id = 'entryHint';

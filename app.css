@@ -1167,3 +1167,16 @@ html[data-size="text"] .stat-step { font-size: 12.5px; }
 .op .op__date--wrap { flex-wrap: wrap; } /* QA М2: категория целиком, дата — на вторую строку, если не влезла */
 .op .op__date--wrap .op__cat { flex: 0 1 auto; max-width: 100%; }
 #goMore { text-wrap: balance; line-height: 1.15; } /* QA М21: «Добавить и / сразу ещё» ровно, слова разработчика те же */
+/* меню валюты у «BYN ⌄» (запись разработчика 09.11.2026): pull-down как в iOS — появляется из кнопки, галочка слева у выбранной */
+.curmenu__veil { position: absolute; inset: 0; z-index: 7; }
+.curmenu { position: absolute; z-index: 8; min-width: 232px; padding: 6px 0; border-radius: 16px; background: var(--surface); box-shadow: 0 12px 40px rgba(20, 20, 40, .22), 0 0 0 .5px rgba(0, 0, 0, .06);
+  opacity: 0; transform: scale(.82); transition: opacity 160ms var(--ease-out), transform 260ms var(--spring-snappy, cubic-bezier(.2, .9, .3, 1.1)); }
+.curmenu.is-on { opacity: 1; transform: none; }
+.curmenu__it { display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 8px; width: 100%; min-height: 50px; padding: 0 16px 0 12px; text-align: left; color: var(--ink); }
+.curmenu__it + .curmenu__it { border-top: .5px solid var(--line); }
+.curmenu__it:active { background: var(--fill); }
+.curmenu__ok { width: 18px; height: 18px; color: var(--ink); stroke-width: 2.4; }
+.curmenu__t { display: grid; gap: 1px; }
+.curmenu__t b { font: 600 17px/1.2 var(--font); letter-spacing: -.01em; }
+.curmenu__t small { font: 500 13px/1.25 var(--font); color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .curmenu { transition: none; } }
