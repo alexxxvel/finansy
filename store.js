@@ -151,6 +151,21 @@
   }
 
   function Store(ad) {
+    /** одна запись хранилища за раз: каждое изменение читает и переписывает кусок месяца целиком, два одновременных затирали друг друга
+        (QA 08.11.2026: «Отменить» и сразу новая запись при медленной связи — отменённая возвращалась). Чтение очереди не ждёт */
+    var queue = [], busy = false;
+    function pump() { if (busy || !queue.length) { return; } busy = true; queue.shift()(); }
+    function serial(fn) {
+      return function () {
+        var args = [].slice.call(arguments), cb = typeof args[args.length - 1] === 'function' ? args.pop() : function () {}, self = this;
+        queue.push(function () {
+          var done = false;
+          args.push(function () { if (done) { return; } done = true; busy = false; cb.apply(null, arguments); pump(); });
+          try { fn.apply(self, args); } catch (e) { if (!done) { done = true; busy = false; cb('error'); pump(); } }
+        });
+        pump();
+      };
+    }
     /** куски месяца: [{i, ops}] по возрастанию номера */
     function chunks(month, cb) {
       ad.keys(function (err, keys) {
@@ -210,6 +225,7 @@
     }
 
     return {
+      serial: serial,
       kind: ad.kind,
       /** месяцы, в которых есть записи, свежие сверху */
       months: function (cb) {
@@ -454,6 +470,12 @@
             });
             if (mergeLists(cur, inc, 'cats', 'e', used.e)) { changed = true; }
             if (mergeLists(cur, inc, 'srcs', 'i', used.i)) { changed = true; }
+            if (inc.colors) { // свои цвета не затираются: из копии — только для тех, у кого своего нет (QA З15)
+              var col = cur.colors || {};
+              Object.keys(inc.colors).forEach(function (k) { if (!col[k]) { col[k] = inc.colors[k]; changed = true; } });
+              cur.colors = col;
+            }
+            if (inc.ntf && !cur.ntf) { cur.ntf = inc.ntf; changed = true; } // напоминания из копии, если на этом телефоне их ещё не настраивали
             var text = JSON.stringify(readCfg(JSON.stringify(cur)));
             if (!changed || F.utf8len(text) > 4096) { credits(); return; }
             ad.set('cfg', text, function () { credits(); });
@@ -521,5 +543,14 @@
     };
   }
 
-  g.STORE = { create: Store, localAdapter: localAdapter, cloudAdapter: cloudAdapter, chunkKey: chunkKey, parseKey: parseKey };
+  function Serial(ad) { // те же методы, изменения — через очередь
+    var api = Store(ad);
+    ['add', 'update', 'remove', 'addOps', 'removeOps', 'setLastImport', 'patchCfg', 'patchPays', 'setLimit', 'setBudget', 'patchCredits', 'patchDebts', 'importAll'].forEach(function (k) {
+      if (typeof api[k] === 'function') { api[k] = api.serial(api[k]); }
+    });
+    delete api.serial;
+    return api;
+  }
+
+  g.STORE = { create: Serial, localAdapter: localAdapter, cloudAdapter: cloudAdapter, chunkKey: chunkKey, parseKey: parseKey };
 })(window);

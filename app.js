@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '73dad18d2d'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'afb9aef601'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -317,8 +317,8 @@
   }
   /** крупная сумма не помещается в ширину (узкий телефон, крупный шрифт системы) — уменьшается ещё на ступень. Мерится готовая строка, а не число цифр */
   function fitSum(p) {
-    var steps = ['', ' is-m', ' is-s'], i = p.className.indexOf('is-s') >= 0 ? 2 : p.className.indexOf('is-m') >= 0 ? 1 : 0;
-    while (i < 2 && p.scrollWidth > p.clientWidth + 1) { i++; p.className = 'spent__sum' + steps[i]; }
+    var steps = ['', ' is-m', ' is-s', ' is-xs'], i = p.className.indexOf('is-xs') >= 0 ? 3 : p.className.indexOf('is-s') >= 0 ? 2 : p.className.indexOf('is-m') >= 0 ? 1 : 0;
+    while (i < 3 && p.scrollWidth > p.clientWidth + 1) { i++; p.className = 'spent__sum' + steps[i]; } // is-xs: 10-значная сумма с «BYN» на 320 px (QA М15)
   }
   function setSum(node, minor) {
     var p = F.fmtParts(minor);
@@ -436,7 +436,13 @@
         add(incBtn, document.createTextNode((avail === s.income ? 'из дохода' : 'из доступных') + F.NB + F.fmt(avail)), icon('right'));
         incBtn.addEventListener('click', function () { barInfo(); });
         legend.appendChild(incBtn);
-      } else { add(legend, el('span', '', s.income ? 'из' + F.NB + F.fmt(s.income) : 'доход ещё не внесён')); }
+      } else if (s.income) { // минус с прошлых месяцев съел доход: строка ведёт к разбору «Как считается полоса» (QA М16)
+        var incBtn2 = btn('spent__base');
+        incBtn2.id = 'baseLine';
+        add(incBtn2, document.createTextNode('из дохода' + F.NB + F.fmt(s.income)), icon('right'));
+        incBtn2.addEventListener('click', function () { barInfo(); });
+        legend.appendChild(incBtn2);
+      } else { add(legend, el('span', '', 'доход ещё не внесён')); }
       add(legend, left < 0 ? el('span', 'is-over', 'перерасход ' + F.fmt(-left)) : el('span', 'is-left', 'осталось ' + F.fmt(left)));
     }
     add(spent, noBase ? null : bar, tip ? budgetTip() : legend);
@@ -514,7 +520,7 @@
     var catsHead = el('div', 'cats__head');
     catsHead.appendChild(el('h2', '', 'Куда ушло'));
     if (st.prev.spent) { // для сравнения: сколько ушло за весь прошлый месяц
-      var pv = el('span', '', F.inMonth(F.prevMonth(st.month)) + ' ' + F.fmt(st.prev.spent));
+      var pv = el('span', '', F.inMonth(F.prevMonth(st.month)) + ' ушло ' + F.fmt(st.prev.spent)); // число со словом: без него было непонятно, что это (QA М7)
       pv.id = 'prevTotal';
       catsHead.appendChild(pv);
     }
@@ -530,10 +536,12 @@
     } else {
       var all = s.cats.length <= 5 || st.more;
       var list = el('ul', 'shares');
-      (all ? s.cats : s.cats.slice(0, 4)).forEach(function (c, n) { list.appendChild(shareRow('e', c, c.sum / s.spent, n)); });
+      var over = function (c) { return st.limits[c.id] && c.sum > st.limits[c.id]; }; // превышенный лимит всегда на виду, не под «Ещё» (QA 08.11.2026)
+      var shown = all ? s.cats : s.cats.filter(function (c, i) { return i < 4 || over(c); });
+      shown.forEach(function (c, n) { list.appendChild(shareRow('e', c, c.sum / s.spent, n)); });
       cats.appendChild(list);
-      if (s.cats.length > 5) {
-        var rest = s.cats.slice(4), restSum = 0;
+      if (s.cats.length > 5 && (st.more || shown.length < s.cats.length)) {
+        var rest = s.cats.filter(function (c) { return shown.indexOf(c) < 0; }), restSum = 0;
         rest.forEach(function (c) { restSum += c.sum; });
         var more = btn('more');
         more.id = 'moreBtn';
@@ -586,7 +594,7 @@
   function payItems() {
     var now = F.monthOf(F.today()), ops = st.all[now] || [], out = [];
     (st.pays.list || []).forEach(function (p) {
-      var hit = F.payPaid(p, ops);
+      var hit = F.payPaid(p, ops, st.pays.list);
       out.push({ id: p[0], name: p[1], a: p[2], cat: p[3], day: p[4], paid: hit ? hit.d : '', raw: p });
     });
     if (out.length) {
@@ -744,7 +752,7 @@
       go.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
       go.addEventListener('click', function () {
         if (busy) { return; }
-        var name = F.cleanNote(nameEl.value).slice(0, 24).replace(/ $/, ''), a = F.parseAmount(sum.value), d = day.value.replace(/\s/g, '') ? parseInt(day.value, 10) : 0;
+        var name = F.cut(F.cleanNote(nameEl.value), 24).replace(/ $/, ''), a = F.parseAmount(sum.value), d = day.value.replace(/\s/g, '') ? parseInt(day.value, 10) : 0;
         var why = !name ? 'Введите название платежа.' : !a ? 'Введите сумму цифрами, например 30.' : !cat ? 'Выберите категорию.' : (isNaN(d) || d < 0 || d > 31) ? 'Число — от 1 до 31 или пусто.' : '';
         if (why) { info.textContent = why; haptic('err'); return; }
         var id = p ? p[0] : F.catId(idsOf((st.pays.list || []).map(function (x) { return [x[0]]; })));
@@ -962,8 +970,9 @@
   function savingsBlock(P, now) {
     var month = F.monthOf(P.from), curMonth = F.monthOf(now), current = month === curMonth, s = F.savingsOf(st.all, month, current ? now : null);
     if (s.pct === null) { return null; } // без дохода доли нет (так живёт мама — только траты)
-    var box = el('div', 'save'), top = el('div', 'save-top'), cmp = el('p', 'save-top__cmp');
+    var box = el('div', 'save'), top = el('div', 'save-top'), cmp = el('p', 'save-top__cmp'), mon = F.inMonth(month);
     cmp.id = 'saveCmp';
+    top.appendChild(el('p', 'save-top__lab', mon.charAt(0).toUpperCase() + mon.slice(1) + (current ? ', пока' : ''))); // за какой месяц крупное число: на плитке — среднее (QA М6)
     if (s.saved < 0) { // траты больше дохода: не процент, а сколько сверх
       var neg = el('p', 'save-neg', nb('Траты больше дохода на ' + F.fmt(-s.saved)));
       neg.id = 'saveNeg';
@@ -1620,7 +1629,7 @@
     var noteTop = !!op.n && r.hit.cat === undefined;
     b.setAttribute('data-id', op.id);
     top.appendChild(noteTop ? findMark(op.n, q, r.hit.note === undefined ? -1 : r.hit.note) : findMark(r.d.name, q, r.hit.cat === undefined ? -1 : r.hit.cat));
-    if (noteTop) { add(low, el('span', 'op__cat', r.d.name), el('span', 'op__when', F.NB + '·' + F.NB + F.dayLabel(op.d))); }
+    if (noteTop) { low.className = 'op__date op__date--wrap'; add(low, el('span', 'op__cat', r.d.name + F.NB + '·' + F.NB), el('span', 'op__when', F.dayLabel(op.d))); } // не влезло — дата на вторую строку, категория целиком (QA М2)
     else { add(low, el('span', 'op__when', F.dayLabel(op.d))); if (op.n) { add(low, el('span', 'op__cat', F.NB + '·' + F.NB + op.n)); } }
     add(two, top, low);
     add(b, icon(r.d.icon), two, el('data', (plus ? 'is-plus' : '') + (r.hit.amount ? ' is-hit' : ''), (plus ? '+' : '') + F.fmt(F.bynOf(op))), icon('right', 'share__go'));
@@ -1657,22 +1666,31 @@
   }
   function findCount(n, a, b, c) { return n + F.NB + F.plural(n, a, b, c); }
   /** тело «Истории»: записи месяца по дням или, в режиме поиска, ответ и найденное по месяцам */
+  /** длинный список рисуется частями (QA З14: тысяча записей — кадр 1,3 с при ×4): first строк сразу, остальные по 150 за кадр; новая отрисовка обрывает прежнюю */
+  var listPaint = 0;
+  function inParts(items, first, put, box) {
+    var my = ++listPaint, k = 0;
+    (function part(n) {
+      var end = Math.min(items.length, k + n);
+      for (; k < end; k++) { put(items[k]); }
+      if (k < items.length) { setTimeout(function () { if (my === listPaint && box.isConnected) { part(150); } }, 16); }
+    })(first);
+  }
   function paintFindBody(body) {
     clear(body);
     if (!find.on) {
-      var sheet = el('div', 'sheet sheet--full'), days = F.byDays(st.ops);
+      var sheet = el('div', 'sheet sheet--full'), days = F.byDays(st.ops), flat = [], list = null;
       if (!days.length) { sheet.appendChild(el('p', 'empty', 'В этом месяце записей нет.')); }
       else { sheet.appendChild(el('p', 'hint', 'Нажмите на запись, чтобы изменить или удалить её.')); }
-      days.forEach(function (day) {
-        var sec = el('section', 'day'), list = el('ul', 'ops');
-        sec.appendChild(el('h2', '', F.dayLabel(day.date)));
-        day.ops.forEach(function (op) { var li = el('li'); li.appendChild(opRow(op, false)); list.appendChild(li); });
-        sec.appendChild(list);
-        sheet.appendChild(sec);
-      });
+      days.forEach(function (day) { flat.push({ day: day }); day.ops.forEach(function (op) { flat.push({ op: op }); }); });
       body.appendChild(sheet);
+      inParts(flat, 80, function (it) {
+        if (it.day) { var sec = el('section', 'day'); list = el('ul', 'ops'); add(sec, el('h2', '', F.dayLabel(it.day.date)), list); sheet.appendChild(sec); return; }
+        var li = el('li'); li.appendChild(opRow(it.op, false)); list.appendChild(li);
+      }, sheet);
       return;
     }
+    listPaint++; // режим поиска: недорисованный список месяца больше не дописывается
     var q = findNorm(find.q).trim(), sheet2 = el('div', 'sheet sheet--full sheet--find');
     if (!q) {
       sheet2.appendChild(el('p', 'hint', nb('Ищем в заметках, названиях категорий и суммах за всё время.')));
@@ -1717,19 +1735,20 @@
     if (line) { var ln = el('p', 'spent__day', line); ln.id = 'findLine'; hero.appendChild(ln); }
     var month = '', ul = null, shown = list.slice(0, 300);
     sheet2.id = 'findList';
-    shown.forEach(function (r) {
+    var more = list.length > shown.length ? el('p', 'hint', nb('Показаны первые 300. Уточните слово, чтобы увидеть остальные.')) : null;
+    add(body, hero, sheet2);
+    inParts(shown, 60, function (r) { // найденное тоже частями (QA З13)
       var m = F.monthOf(r.op.d);
       if (m !== month) {
         month = m;
         var sec = el('section', 'day day--month');
         ul = el('ul', 'ops');
         add(sec, el('h2', '', F.monthLabel(m)), ul);
-        sheet2.appendChild(sec);
+        if (more && more.parentNode) { sheet2.insertBefore(sec, more); } else { sheet2.appendChild(sec); }
       }
       ul.appendChild(findRow(r, q));
-    });
-    if (list.length > shown.length) { sheet2.appendChild(el('p', 'hint', nb('Показаны первые 300. Уточните слово, чтобы увидеть остальные.'))); }
-    add(body, hero, sheet2);
+    }, sheet2);
+    if (more) { sheet2.appendChild(more); }
   }
   function findClose() {
     find.on = false;
@@ -1745,7 +1764,7 @@
     input.id = 'findInput';
     input.type = 'text';
     input.maxLength = 40;
-    input.placeholder = 'Заметка, категория или сумма';
+    input.placeholder = 'Заметка, категория, сумма'; // на 320 px прежняя подсказка обрезалась (QA М4)
     input.value = find.q;
     input.setAttribute('inputmode', 'search');
     input.setAttribute('enterkeyhint', 'search');
@@ -1764,7 +1783,11 @@
       if (!find.on) { find.on = true; view.classList.add('is-find'); paintFindBody(body); }
     });
     input.addEventListener('blur', function () { stage.classList.remove('is-finding'); });
-    input.addEventListener('input', function () { find.q = input.value; x.hidden = !input.value; paintFindBody(body); });
+    input.addEventListener('input', function () { // поиск после паузы в наборе: буквы печатаются без задержки (QA З13: до 470 мс на букву)
+      find.q = input.value; x.hidden = !input.value;
+      clearTimeout(find.t);
+      find.t = setTimeout(function () { if (body.isConnected) { paintFindBody(body); } }, 120);
+    });
     input.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { input.blur(); } });
     x.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // поле не теряет фокус: клавиатура не закрывается
     x.addEventListener('click', function () { input.value = ''; find.q = ''; x.hidden = true; paintFindBody(body); input.focus(); });
@@ -2238,7 +2261,7 @@
       go.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
       go.addEventListener('click', function () {
         if (busy) { return; }
-        var name = F.cleanNote(nameEl.value).slice(0, 24).replace(/ $/, ''), key = name.toLowerCase();
+        var name = F.cut(F.cleanNote(nameEl.value), 24).replace(/ $/, ''), key = name.toLowerCase();
         var same = null;
         F.DEBTS.forEach(function (x) { if (!same && x.name.toLowerCase() === key && (!p || x.id !== p.id)) { same = x; } });
         if (!name) { info.textContent = 'Введите имя.'; haptic('err'); return; }
@@ -2294,7 +2317,7 @@
   /** под суммой долга: каким он станет; при возврате — «Вся сумма» одним касанием */
   function debtHints(e, minor, byn) {
     var p = F.debtOf(e.cat);
-    if (!p) { e.hint.textContent = nb(e.kind === 'give' ? 'Это не трата: в «Потрачено» не войдёт' : 'Это не доход: в доходы не войдёт'); return; }
+    if (!p) { e.hint.textContent = nb(e.kind === 'give' ? 'Вам вернут · в «Потрачено» не войдёт' : 'Вы вернёте · в доходы не войдёт'); return; } // кто кому вернёт — сразу под суммой (QA М11)
     var bal = F.debtState(p, st.all, e.edit ? e.edit.id : null).bal, will = bal + (minor ? (e.kind === 'give' ? byn : -byn) : 0);
     if (will > 0) { add(e.hint, document.createTextNode('Вернёт вам '), el('b', '', F.fmt(will))); }
     else if (will < 0) { add(e.hint, document.createTextNode('Вы вернёте '), el('b', '', F.fmt(-will))); }
@@ -2501,7 +2524,7 @@
       function plain(minor) { return minor ? F.fmt(minor).replace(/,00$/, '') : ''; }
       function num(f) { var raw = f.value.replace(/\s/g, ''); return raw ? F.parseAmount(f.value) : 0; }
       function bad(f) { var raw = f.value.replace(/\s/g, ''); return !!raw && !F.parseAmount(f.value) && !/^0+([.,]0+)?$/.test(raw); }
-      nameEl = field('creditName', k ? k.name : '', 'Например, рассрочка на телефон', '', 24);
+      nameEl = field('creditName', k ? k.name : '', 'Например, рассрочка', '', 24); // на 320 px прежняя подсказка обрезалась (QA М4)
       var sum = field('creditSum', k ? plain(k.a) : '', 'например, 900', 'decimal', 14), start = field('creditStart', k ? plain(k.s) : '', '0', 'decimal', 14), pay = field('creditPayIn', k ? plain(k.p) : '', 'например, 150', 'decimal', 14);
       var startLbl = label('', 'creditStart'), payLbl = label('', 'creditPayIn'), info = el('p', 'pick__info');
       info.id = 'creditMsg';
@@ -2570,7 +2593,7 @@
       go.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // нажатие не снимает фокус с поля: лист не прыгает под пальцем
       go.addEventListener('click', function () {
         if (busy) { return; }
-        var name = F.cleanNote(nameEl.value).slice(0, 24).replace(/ $/, ''), a = F.parseAmount(sum.value), s0 = num(start), p = num(pay);
+        var name = F.cut(F.cleanNote(nameEl.value), 24).replace(/ $/, ''), a = F.parseAmount(sum.value), s0 = num(start), p = num(pay);
         var same = F.CREDITS.some(function (x) { return x.name.toLowerCase() === name.toLowerCase() && (!k || x.id !== k.id); });
         var why = !name ? 'Введите название кредита.' : same ? 'Кредит с таким названием уже есть.' : !a ? 'Введите сумму кредита цифрами: например 900.' : bad(start) ? 'Введите, сколько уже погашено, цифрами.' : bad(pay) ? 'Введите платёж в месяц цифрами или оставьте пустым.' : '';
         if (why) { info.textContent = why; haptic('err'); return; }
@@ -2698,7 +2721,7 @@
       go.addEventListener('mousedown', function (ev) { ev.preventDefault(); }); // нажатие не снимает фокус с поля: лист не прыгает под пальцем
       go.addEventListener('click', function () {
         if (busy) { return; }
-        var name = F.cleanNote(nameEl.value).slice(0, 24).replace(/ $/, ''), a = F.parseAmount(sum.value), s0 = start.value.replace(/\s/g, '') ? F.parseAmount(start.value) : 0;
+        var name = F.cut(F.cleanNote(nameEl.value), 24).replace(/ $/, ''), a = F.parseAmount(sum.value), s0 = start.value.replace(/\s/g, '') ? F.parseAmount(start.value) : 0;
         var same = F.GOALS.some(function (x) { return x.name.toLowerCase() === name.toLowerCase() && (!g || x.id !== g.id); });
         var bad = !name ? 'Введите название цели.' : same ? 'Цель с таким названием уже есть.' : !a ? 'Введите, сколько накопить, цифрами: например 2000.' : (start.value.replace(/\s/g, '') && !s0 && !/^0+([.,]0+)?$/.test(start.value.replace(/\s/g, ''))) ? 'Введите, сколько уже накоплено, цифрами.' : '';
         if (bad) { info.textContent = bad; haptic('err'); return; }
@@ -3154,7 +3177,8 @@
   /** самый дорогой день отрезка */
   function maxDay(cur) { var best = '', v = 0; Object.keys(cur.days).forEach(function (d) { if (cur.days[d] > v) { v = cur.days[d]; best = d; } }); return best ? { d: best, v: v } : null; }
 
-  var FLOW = { left: { word: 'Осталось', name: 'Остаток' }, 'in': { word: 'Получено', name: 'Доход' }, out: { word: 'Потрачено', name: 'Траты' } };
+  var FLOW = { left: { word: 'Сбережено', name: 'Сбережено' }, // решение разработчика 09.11.2026 (QA М18, вариант А): «Осталось» на главной — другое число (с остатком прошлого месяца)
+      'in': { word: 'Получено', name: 'Доход' }, out: { word: 'Потрачено', name: 'Траты' } };
   /** плитки в порядке выбранного потока: блок этого потока первым (он и шире) */
   var TILE_ORDER = { left: ['left', 'where', 'from', 'days', 'months', 'notes', 'changes'], 'in': ['months', 'from', 'left', 'where', 'days', 'notes', 'changes'], out: ['days', 'where', 'changes', 'notes', 'left', 'from', 'months'] };
   var statsCtx = null; // данные открытой «Аналитики»: из них строятся плитки и их листы
@@ -3211,7 +3235,7 @@
     /** строка под суммой: с чем сравнить (траты и доход — с тем же отрезком прошлого периода), у остатка — доля дохода */
     function compareText(f, i) {
       if (!cur.spent && !cur.income) { return 'Записей за этот период нет.'; }
-      if (f === 'left') { var inc = i === null ? cur.income : chart.incAt(i), lft = inc - (i === null ? cur.spent : chart.outAt(i)); return lft >= 0 ? pctOf(lft, inc) + ' дохода осталось' : 'траты больше дохода'; }
+      if (f === 'left') { var inc = i === null ? cur.income : chart.incAt(i), lft = inc - (i === null ? cur.spent : chart.outAt(i)); return lft >= 0 ? pctOf(lft, inc) + ' дохода сбережено' : 'траты больше дохода'; }
       var key = f === 'in' ? 'income' : 'spent', now0 = i === null ? cur[key] : (f === 'in' ? chart.incAt(i) : chart.outAt(i));
       if (i === null) {
         if (prev && prev[key]) { var d = now0 - prev[key]; return d ? 'на' + F.NB + F.fmt(Math.abs(d)) + (d > 0 ? ' больше' : ' меньше') + ', чем ' + prevText(P) : 'столько же, сколько ' + prevText(P); }
@@ -3222,13 +3246,13 @@
     }
     function paintHero(i) {
       var inc = i === null ? cur.income : chart.incAt(i), out = i === null ? cur.spent : chart.outAt(i), v = value(focus, inc, out);
-      lab.textContent = FLOW[focus].word + (i === null ? '' : ' к' + F.NB + rangeText(F.shiftDay(P.from, i), F.shiftDay(P.from, i)).replace(/ \d{4}$/, ''));
+      lab.textContent = (focus === 'left' && v < 0 ? 'Перерасход' : FLOW[focus].word) + (i === null ? '' : ' к' + F.NB + rangeText(F.shiftDay(P.from, i), F.shiftDay(P.from, i)).replace(/ \d{4}$/, ''));
       hero.setAttribute('data-f', focus);
       if (i === null) { tweenSum(node, hero.shown === undefined ? v : hero.shown, v); } else { setSum(node, v); }
       hero.shown = v;
       sumEl.className = sumClass(v);
       cmp.textContent = nb(compareText(focus, i));
-      chips.forEach(function (c) { var w = value(c.k, inc, out); c.val.textContent = (c.k === 'left' && w > 0 ? '+' : '') + whole(w); });
+      chips.forEach(function (c) { var w = value(c.k, inc, out); c.val.textContent = (c.k === 'left' && w > 0 ? '+' : '') + (Math.abs(w) < 1000000 ? F.fmt(w) : whole(w)); }); // копейки не теряются (QA М19); валюта — в подписи плашки (QA М8)
     }
 
     // две другие величины мягкими плашками; касание делает величину главной
@@ -3238,7 +3262,7 @@
       clear(duo);
       chips = [];
       ['left', 'in', 'out'].filter(function (k) { return k !== focus; }).forEach(function (k) {
-        var b = btn('duo__b'), s = el('small', '', FLOW[k].name), val = el('b');
+        var b = btn('duo__b'), s = el('small', '', FLOW[k].name + ', BYN'), val = el('b');
         b.setAttribute('data-k', k);
         add(b, s, val);
         b.addEventListener('click', function () {
@@ -3575,6 +3599,8 @@
     })(last);
   }
 
+  /** край прокрутки (QA М24): лист прокручен — у верхнего края дымка, крестик не лежит на тексте */
+  modal.addEventListener('scroll', function (e) { var t = e.target; if (t && t.nodeType === 1) { modal.classList.toggle('is-scrolled', t.scrollTop > 4); } }, true);
   function fillModal(kind, full, build, back) {
     ui.kind = kind;
     ui.back = back || null;
@@ -3602,7 +3628,28 @@
     build(modal);
     return grab;
   }
+  /** поле названия у предела: «ещё N знаков» / «длиннее нельзя» вместо молчаливой обрезки (QA М22). Строка встаёт сразу под полем */
+  function lenHint(input) {
+    var max = input.maxLength, p = el('p', 'lenhint');
+    p.setAttribute('aria-live', 'polite');
+    function show() { var n = input.value.length, left = max - n; p.textContent = left <= 0 ? 'Длиннее нельзя: ' + max + ' ' + F.plural(max, 'знак', 'знака', 'знаков') : left <= 6 ? 'Ещё ' + left + ' ' + F.plural(left, 'знак', 'знака', 'знаков') : ''; p.hidden = !p.textContent; }
+    input.addEventListener('input', show);
+    setTimeout(function () { if (input.parentNode && !p.parentNode) { input.parentNode.insertBefore(p, input.nextSibling); show(); } }, 0);
+  }
+  document.addEventListener('focusin', function (ev) { var t = ev.target; if (t && t.tagName === 'INPUT' && t.maxLength === 24 && !t.lenHint) { t.lenHint = 1; lenHint(t); } }); // все поля названия (цель, кредит, платёж, человек, категория)
+  /** Telegram на компьютере (QA М25): в листе записи цифры, запятая или точка, Backspace и Enter с клавиатуры; Esc закрывает лист */
+  document.addEventListener('keydown', function (ev) {
+    if (ev.ctrlKey || ev.metaKey || ev.altKey || !ui.open) { return; }
+    var t = ev.target, typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    if (window.FINTOUR && window.FINTOUR.isOpen && window.FINTOUR.isOpen()) { return; } // у обучения свои клавиши
+    if (ev.key === 'Escape') { ev.preventDefault(); if (typing) { t.blur(); } goBack(); return; }
+    if (typing || !entry) { return; }
+    var k = /^\d$/.test(ev.key) ? ev.key : ev.key === ',' || ev.key === '.' ? ',' : ev.key === 'Backspace' ? 'back' : '';
+    if (k) { var b = modal.querySelector('.keys button[data-key="' + k + '"]'); if (b) { ev.preventDefault(); b.click(); } return; }
+    if (ev.key === 'Enter' && entry.go) { ev.preventDefault(); entry.go.click(); }
+  });
   function goBack() {
+    if (window.FINTOUR && window.FINTOUR.isOpen && window.FINTOUR.isOpen()) { window.FINTOUR.back(); return; } // обучение поверх настроек: «Назад» листает его, настройки не трогает (QA З17)
     if (ui.open && ui.back) { ui.back(); }
     else if (!ui.open && st.first && st.first.manual) { closePicker(); } // экран выбора категорий, открытый из настроек: «Назад» ничего не меняет
     else { closeModal(0); }
@@ -3627,6 +3674,7 @@
     var grab = fillModal(kind, full, build, back);
     modal.style.display = 'flex';
     scrim.style.display = 'block';
+    scrim.style.pointerEvents = '';
     modal.setAttribute('aria-hidden', 'false');
     ui.open = true;
     ui.h = modal.offsetHeight;
@@ -3641,6 +3689,8 @@
     ui.back = null;
     entry = null;
     modal.setAttribute('aria-hidden', 'true');
+    scrim.style.pointerEvents = 'none'; // уезжающий лист не забирает касания: «Добавить» и вкладки нажимаются сразу (QA 08.11.2026)
+    if (toastEl.className.indexOf('toast--dock') >= 0) { toastEl.className = toastEl.className.replace(' toast--dock', ''); } // сообщение листа категорий не ложится на «Добавить»
     tgTry(function () { tg.BackButton.hide(); });
     springTo(ui.h, velocity || 0, 1, 0.3, function () {
       modal.style.display = 'none';
@@ -3699,7 +3749,7 @@
       cat: op ? op.c : pre.cat || '',
       date: op ? op.d : pre.date || F.today(),
       note: op && op.n ? op.n : pre.note || '',
-      busy: false,
+      busy: false, pick: !!op, // правка: сумма «выделена» — первая цифра заменяет её, а не дописывается (QA 08.11.2026: 5 → 57)
       series: 0, done: null, doneUntil: 0 // записи подряд: сколько записано в этом листе, последняя запись и до какого времени показывать «Записано»
     };
     haptic();
@@ -3734,7 +3784,7 @@
         way = el('div', 'seg seg--way');
         way.setAttribute('role', 'group');
         way.setAttribute('aria-label', 'Кто кому');
-        entry.segBtns = [['give', 'Дать'], ['get', 'Получить']].map(function (k) {
+        entry.segBtns = [['give', 'Дать в долг'], ['get', 'Взять в долг']].map(function (k) { // решение разработчика 09.11.2026 (QA М11, вариант В): «Получить» читалось как «вернуть»
           var b = btn('', k[1]);
           b.setAttribute('data-kind', k[0]);
           b.addEventListener('click', function () { if (!entry || entry.kind === k[0]) { return; } entry.kind = k[0]; haptic(); paintEntry(); });
@@ -3810,8 +3860,14 @@
         else { b.textContent = k; if (k === ',') { b.setAttribute('aria-label', 'Запятая'); } }
         b.addEventListener('click', function () {
           if (!entry || entry.busy) { return; }
-          var next = F.press(entry.digits, k);
+          var next = entry.pick ? (k === 'back' ? '' : F.press('', k)) : F.press(entry.digits, k);
+          entry.pick = false;
           if (next !== entry.digits) { entry.digits = next; entry.done = null; haptic(); paintEntry(); }
+          else if (/^\d$/.test(k) && entry.digits) { // цифра не встала: сказать почему, а не молчать (QA М20)
+            haptic('err');
+            entry.hint.textContent = entry.digits.indexOf(',') >= 0 ? 'Копеек — не больше двух цифр' : nb('Сумма — не больше 9 999 999');
+            entry.hint.className = 'entry__conv entry__conv--warn';
+          }
         });
         keys.appendChild(b);
       });
@@ -3862,7 +3918,7 @@
   function paintChips() {
     var goalKind = entry.kind === 's' || entry.kind === 't', pay = entry.kind === 'p', debt = entry.kind === 'give' || entry.kind === 'get';
     var credits = activeCredits().map(function (k) { return { id: 'k_' + k.id, name: k.name, wide: k.name.length > 11, full: k.name.length > 18 }; }); // в платеже метки по половине ряда, во весь ряд только длинные
-    var list = debt ? (entry.fresh ? F.DEBTS.map(function (p) { return { id: 'd_' + p.id, name: p.name, wide: p.name.length > 11, full: p.name.length > 18 }; }).concat([{ id: '+', name: 'Человек', fresh: true, person: true }]) : []) : entry.kind === 'e' ? F.CATS.concat(credits) : entry.kind === 'i' ? F.SRCS : pay ? credits : F.GOALS.map(function (g) { return { id: 'g_' + g.id, name: g.name, wide: false, full: g.name.length > 13 }; }), cols = entry.kind === 'e' || debt ? 3 : 2; // длинное название занимает весь ряд; кредиты стоят и в конце категорий трат
+    var list = debt ? (entry.fresh ? F.DEBTS.map(function (p) { return { id: 'd_' + p.id, name: p.name, wide: p.name.length > 11, full: p.name.length > 18 }; }).concat([{ id: '+', name: 'Новый человек', fresh: true, person: true, wide: true }]) : []) : entry.kind === 'e' ? F.CATS.concat(credits) : entry.kind === 'i' ? F.SRCS : pay ? credits : F.GOALS.map(function (g) { return { id: 'g_' + g.id, name: g.name, wide: false, full: g.name.length > 13 }; }), cols = entry.kind === 'e' || debt ? 3 : 2; // длинное название занимает весь ряд; кредиты стоят и в конце категорий трат
     if (entry.kind === 's' && !entry.edit) { list = list.concat([{ id: '+', name: 'Новая цель', fresh: true }]); } // снять можно только из цели, которая уже есть
     if (pay) { list = list.concat([{ id: '+', name: 'Новый кредит', fresh: true, credit: true }]); }
     var pages = chipPages(list, cols);
@@ -3876,7 +3932,7 @@
     entry.chips.setAttribute('aria-label', debt ? 'Кто' : goalKind ? 'Цель' : pay ? 'Кредит' : entry.kind === 'e' ? 'Категория' : 'Источник');
     entry.chipBtns = pages[entry.page].map(function (c) {
       if (c.fresh) { // «Новая цель» прямо с листа: набранная сумма не теряется
-        var nl = el('li', 'chips__new'), nbn = btn('');
+        var nl = el('li', 'chips__new' + (c.wide && cols === 3 ? ' chips__wide' : '')), nbn = btn('');
         nbn.id = c.person ? 'chipNewPerson' : c.credit ? 'chipNewCredit' : 'chipNewGoal';
         add(nbn, icon('plus'), document.createTextNode(c.name));
         nbn.addEventListener('click', function () {
@@ -3933,6 +3989,15 @@
       navLi.appendChild(nav);
       entry.chips.appendChild(navLi);
     }
+    fitChips(entry.chips);
+  }
+  /** метка не влезла («Трансп…» на 320 px, QA З18): мельче, а если и так не влезла — в две строки. Меряется после вёрстки листа */
+  function fitChips(box) {
+    var go = function () { [].forEach.call(box.querySelectorAll('button'), function (b) {
+      if (b.scrollWidth > b.clientWidth + 1) { b.classList.add('is-tight'); }
+      if (b.scrollWidth > b.clientWidth + 1) { b.classList.add('is-two'); }
+    }); };
+    if (box.isConnected && box.clientWidth) { go(); } else { requestAnimationFrame(function () { requestAnimationFrame(go); }); }
   }
 
   /** обновляет лист на месте: поля не пересоздаются */
@@ -3943,7 +4008,7 @@
 
     var shown = F.typed(e.digits), len = shown.replace(/\s/g, '').length;
     e.sum.textContent = shown;
-    e.sum.className = 'entry__sum' + (e.digits ? ' is-on' : '') + (len > 7 ? ' is-s' : len > 5 ? ' is-m' : '');
+    e.sum.className = 'entry__sum' + (e.digits ? ' is-on' : '') + (len > 7 ? ' is-s' : len > 5 ? ' is-m' : '') + (e.pick && e.digits ? ' is-pick' : '');
     e.curText.textContent = e.cur;
     e.curBtn.setAttribute('aria-label', 'Валюта: ' + e.cur + '. Нажмите, чтобы сменить');
     e.dateText.textContent = F.dayLabel(e.date);
@@ -3978,7 +4043,10 @@
     else if (e.kind === 'give' || e.kind === 'get') { debtHints(e, minor, byn); }
     else if (e.kind === 's' || e.kind === 't') { goalHints(e, minor, byn); }
     else if (e.kind !== 'i' && F.creditOf(e.cat)) { creditHints(e, minor, byn); }
-    else if (e.cur !== 'BYN') {
+    else if (e.kind === 'e' && minor && e.cur !== 'BYN' && st.limits[e.cat] && F.monthOf(e.date) === st.month && limitOver(e, byn) > 0) { // трата в USD/EUR тоже предупреждает о лимите (QA 08.11.2026)
+      add(e.hint, document.createTextNode(nb('Это ' + F.fmt(byn) + ' BYN — больше лимита на') + F.NB), el('b', '', F.fmt(limitOver(e, byn))));
+      e.hint.className = 'entry__conv entry__conv--warn';
+    } else if (e.cur !== 'BYN') {
       e.hint.textContent = minor ? 'это ' + F.fmt(byn) + F.NB + 'BYN по' + F.NB + 'курсу ' + F.fmtRate(F.RATES[e.cur]) : 'курс ' + F.fmtRate(F.RATES[e.cur]) + F.NB + 'BYN за' + F.NB + '1' + F.NB + e.cur;
     } else if (e.kind === 'e' && minor && st.limits[e.cat] && F.monthOf(e.date) === st.month && limitOver(e, byn) > 0) { // запись выйдет за лимит категории — предупреждение вместо «Останется»
       add(e.hint, document.createTextNode(nb('Будет больше лимита на') + F.NB), el('b', '', F.fmt(limitOver(e, byn)))); // категория уже выделена меткой ниже: длинное название не обрезает строку
@@ -4030,6 +4098,7 @@
     var will = was + (take ? -delta : delta), tail = g.u === 0 ? '' : F.NB + cur;
     if (take && minor && will < 0) { e.over = nb('В цели только ' + gmCur(Math.max(0, was), g)); }
     if (!minor) { add(e.hint, document.createTextNode(nb((take ? 'В цели ' : 'Сейчас накоплено ') + gm(was, g) + tail + ' из ' + gm(g.a, g)))); }
+    else if (take && will < 0) { add(e.hint, document.createTextNode(nb('Больше, чем есть: в цели ')), el('b', '', gm(Math.max(0, was), g))); e.hint.className = 'entry__conv entry__conv--warn'; } // не «останется 0,00» (QA М17)
     else if (take) { add(e.hint, document.createTextNode(nb('В цели останется ')), el('b', '', gm(Math.max(0, will), g)), document.createTextNode(nb(' из ' + gm(g.a, g) + tail))); }
     else if (e.cur === cur) { add(e.hint, document.createTextNode('Сейчас ' + gm(was, g) + ', станет '), el('b', '', gm(will, g))); }
     else { // цель в одной валюте, откладывают в другой: пересчёт виден до сохранения
@@ -4059,12 +4128,14 @@
       e.hint2.hidden = false;
     }
   }
-  function afterWrite(err, date, said) {
-    if (!entry) { return; }
-    if (err) { entry.busy = false; paintEntry(); haptic('err'); toast(explain(err)); return; }
+  /** from — лист, из которого шла запись: дописалась, когда лист уже закрыли («Назад») — экран всё равно обновляется и «Отменить» показан;
+      открыт уже другой лист — его не закрывает (QA 08.11.2026: запись была не видна, а новый лист закрывался с набранной суммой) */
+  function afterWrite(err, date, said, from) {
+    var e = from === undefined ? entry : from;
+    if (err) { if (e && entry === e) { e.busy = false; paintEntry(); } haptic('err'); toast(explain(err)); return; }
     haptic('ok');
     st.month = date ? F.monthOf(date) : st.month;
-    closeModal(0);
+    if (e && entry === e) { closeModal(0); }
     reload(true, said);
   }
   function undone(err) { if (err) { toast(explain(err)); } else { haptic(); reload(true); } }
@@ -4078,7 +4149,7 @@
     if (e.edit && e.edit.u === e.cur && e.edit.r) { op.r = e.edit.r; } // правка не меняет курс, по которому запись была внесена
     e.busy = true;
     paintEntry();
-    if (e.edit) { store.update(op, F.monthOf(e.edit.d), function (err) { afterWrite(err, op.d); }); return; }
+    if (e.edit) { store.update(op, F.monthOf(e.edit.d), function (err) { afterWrite(err, op.d, null, e); }); return; }
     if (more === true || e.series) { seriesAdd(op, more === true); return; } // серия: и последняя трата серии с главной кнопкой записывается так же, потом лист закрывается
     addOp(op);
   }
@@ -4139,11 +4210,12 @@
     node.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.04)' }, { transform: 'scale(1)' }], { duration: 250, easing: 'cubic-bezier(.2,.8,.2,1.2)' });
   }
   function addOp(op) {
+    var from = entry;
     store.add(op, function (err) {
       if (!err && !F.isMoveOp(op)) { track('add'); }
       afterWrite(err, op.d, function () { // случайную запись можно убрать сразу, не заходя в «Историю»
         toast(F.isGoalOp(op) ? (op.k === 'e' ? 'Отложено на цель' : 'Снято из накоплений') : F.isDebtOp(op) ? (op.k === 'e' ? 'Записано: отдано' : 'Записано: получено') : F.isCreditOp(op) ? 'Платёж внесён' : op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), undone); });
-      });
+      }, from);
     });
   }
   function quickAdd(it) { // частая запись целиком: категория, сумма, валюта и заметка те же, дата из листа
@@ -4164,7 +4236,7 @@
       entry.busy = true;
       paintEntry();
       store.remove(old.id, F.monthOf(old.d), function (err) {
-        afterWrite(err, null, function () { toast('Запись удалена', 'Вернуть', function () { store.add(old, undone); }); });
+        afterWrite(err, null, function () { toast('Запись удалена', 'Вернуть', function () { store.add(old, undone); }, 10000); }, e); // «Вернуть» — 10 с: медленному человеку 7 с мало (QA 08.11.2026)
       });
     }
     if (inTg && tg.showConfirm) { try { tg.showConfirm('Удалить эту запись?', go); return; } catch (x) { /* спросим обычным окном */ } }
@@ -4349,7 +4421,7 @@
       back.appendChild(icon('left'));
       back.addEventListener('click', closePicker);
     }
-    var lead = el('p', 'first__lead', nb('Тёмные уже выбраны. Нажмите, чтобы добавить или убрать.'));
+    var lead = el('p', 'first__lead', nb((isDark() ? 'Светлые' : 'Тёмные') + ' уже выбраны. Нажмите, чтобы добавить или убрать.')); // в тёмной теме выбранные метки светлые (QA З16)
     if (!f.manual) { // настройку прислал близкий: вставить её вместо выбора. Внутри подзаголовка, а не строкой: на iPhone SE строка выталкивала метки за экран (18.10.2026)
       var code = btn('first__code', 'Есть код настройки');
       code.id = 'firstCode';
@@ -4507,7 +4579,8 @@
     var k = sizePref() === 'big' ? Math.min(1.22, window.innerWidth / 320, hh / 580) : 1, html = document.documentElement; // и не ниже 580 px: на 533 сумма наезжала на «Заметку» (18.10.2026)
     if (k < 1.02) { k = 1; }
     K = Math.round(k * 1000) / 1000;
-    if (K === 1) { html.removeAttribute('data-size'); html.style.removeProperty('--k'); }
+    if (K === 1 && sizePref() === 'big') { html.setAttribute('data-size', 'text'); html.style.removeProperty('--k'); } // маленький экран: целиком не увеличить — крупнее сам текст (QA 08.11.2026)
+    else if (K === 1) { html.removeAttribute('data-size'); html.style.removeProperty('--k'); }
     else { html.setAttribute('data-size', 'big'); html.style.setProperty('--k', String(K)); }
   }
   function openSize(back) {
@@ -5053,7 +5126,7 @@
       l1.setAttribute('for', 'catName');
       go.id = 'catSave';
       function state() {
-        var n = F.cleanNote(name.value).slice(0, 24).replace(/ $/, ''), dup = !!n && !!taken[n.toLowerCase()], off = !n || dup;
+        var n = F.cut(F.cleanNote(name.value), 24).replace(/ $/, ''), dup = !!n && !!taken[n.toLowerCase()], off = !n || dup;
         go.textContent = !n ? 'Введите название' : (dup ? 'Такое название уже есть' : 'Сохранить');
         go.className = 'btn' + (off ? ' btn--off' : '');
         go.setAttribute('aria-disabled', String(off));
@@ -5818,7 +5891,14 @@
     scrim.addEventListener('click', function () {
       if (typing()) { document.activeElement.blur(); return; } // первое касание мимо поля только убирает клавиатуру, лист не закрывает
       if (Date.now() - lastBlur < 700) { return; } // телефон снимает фокус с поля раньше, чем сообщает о касании: это то же самое касание
-      if (!entry || !entry.busy) { closeModal(0); }
+      if (entry && entry.busy) { return; }
+      if (entry && !entry.edit && (entry.digits || entry.note)) { // набранное молча не пропадает (QA 08.11.2026): лист вздрагивает, подсказка — как закрыть
+        haptic('err');
+        if (modal.animate && !reduce) { modal.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(10px)' }, { transform: 'translateY(0)' }], { duration: 260, easing: 'ease-out' }); }
+        toast('Сумма не сохранена. Закрыть без записи — потяните лист вниз');
+        return;
+      }
+      closeModal(0);
     });
     document.addEventListener('focusout', function (e) {
       var f = e.target;

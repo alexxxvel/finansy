@@ -105,6 +105,14 @@
 .modal--round .pick > h2:first-child, .modal--round .pick > .pick__title:first-child, .modal--round .pick__head .pick__title { font: 600 17px/22px var(--font); letter-spacing: -.015em; color: var(--ink); }
 .modal--round .modal__round { top: 17px; } /* одна ось с заголовком: строка 22 px начинается на 28 px от верха листа, центр — 39 px */
 .modal--round .pick__head { justify-content: center; }
+/* QA 08.11.2026 З8: заголовок листа ростом с крестик — его центр на оси крестика, содержимое начинается ниже кнопки (на 320 px «Деньги» уходила под ×) */
+.modal--round .pick > :first-child + .menu__cap { padding-top: 8px; } /* заголовок на оси крестика как был; подпись раздела под ним ниже кнопки (на 320 px «Деньги» заходила под ×) */
+.modal--round .goal__top { min-height: 44px; padding-top: 10px; } /* вторая строка названия начинается ниже крестика */
+.modal--round .goal__top .pick__title::before { content: ""; float: left; width: 52px; height: 1em; } /* цель, кредит, долг: первая строка длинного названия отступает от крестика, следующие — во всю ширину */
+/* М24: прокрученное содержимое уходит под дымку в цвет листа, а не под голый крестик */
+.modal--round > .grab { position: relative; z-index: 2; }
+.modal--round::before { content: ""; position: absolute; z-index: 1; left: 0; right: 0; top: 0; height: 84px; border-radius: 28px 28px 0 0; background: linear-gradient(var(--bg) 62%, transparent); pointer-events: none; opacity: 0; transition: opacity 160ms var(--ease-out); }
+.modal--round.is-scrolled::before { opacity: 1; }
 .stage { transition: border-radius 300ms var(--ease-out); }
 
 /* ---------- выбор цвета акцента в «Оформлении» ---------- */
@@ -115,6 +123,7 @@
 .accents button[aria-pressed="true"] i { transform: scale(.78); }
 :root[data-theme="dark"] .accents [data-accent-pick="graphite"] i { background: #F5F5F7 !important; } /* графит в тёмной — светлый, как его цвет в тёмной теме */
 :root[data-theme="dark"] .accents [data-accent-pick="graphite"][aria-pressed="true"] { box-shadow: 0 0 0 2.5px #F5F5F7; }
+@media (max-width: 379px) { .accents { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 6px; } } /* QA М9: на 320–375 px семь кружков стояли вплотную, касания наезжали */
 .accents-cap { margin-top: 22px; font: 600 15px/1.3 var(--font); color: var(--muted); }
 
 @media (prefers-reduced-motion: reduce) { .ios-lq__lens::after { display: none; } .stage { transition: none; } }

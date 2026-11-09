@@ -46,7 +46,11 @@
   function iso(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function today() { return iso(new Date()); }
   function monthOf(date) { return String(date).slice(0, 7); }
-  function isDate(s) { return typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s); }
+  function isDate(s) { // число сверяется с календарём: 30 февраля и 31 ноября — не даты (QA М14)
+    if (typeof s !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(s)) { return false; }
+    var p = s.split('-');
+    return +p[2] <= new Date(+p[0], +p[1], 0).getDate();
+  }
   function isMonth(s) { return typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s); }
   function shiftDay(date, by) { var p = date.split('-'); return iso(new Date(+p[0], +p[1] - 1, +p[2] + by)); }
 
@@ -99,8 +103,14 @@
   function bynOf(op) { return toByn(op.a, op.u, op.r || RATES[op.u] || 1); }
 
   /** заметка к записи: одна строка до 40 знаков, без переводов строк и служебных символов */
-  function cleanNote(s) {
-    return String(s === undefined || s === null ? '' : s).replace(/[\u0000-\u001F\u007F\u200B-\u200D\uFEFF]/g, ' ').replace(/\s+/g, ' ').replace(/^ | $/g, '').slice(0, 40);
+  /** первые n знаков, не разрезая эмодзи: половинка суррогатной пары и висящий соединитель отбрасываются (QA М13: «�» на 40-м знаке) */
+  function cut(s, n) {
+    var r = String(s).slice(0, n);
+    if (r.length < String(s).length) { r = r.replace(/[\uD800-\uDBFF]$/, '').replace(/[\u200D\uFE0F]+$/, ''); }
+    return r;
+  }
+  function cleanNote(s) { // соединитель U+200D остаётся: на нём держатся эмодзи из нескольких частей 👨‍👩‍👧 (QA М12)
+    return cut(String(s === undefined || s === null ? '' : s).replace(/[\u0000-\u001F\u007F\u200B\u200C\uFEFF]/g, ' ').replace(/\s+/g, ' ').replace(/^ | $/g, ''), 40).replace(/ $/, '');
   }
   /** длина строки в байтах UTF-8: по ней считается предел хранилища (кириллица занимает два байта) */
   function utf8len(s) {
@@ -116,7 +126,7 @@
     for (var i = 0; i < list.length; i++) {
       var c = list[i];
       if (!c || typeof c.length !== 'number' || typeof c[0] !== 'string' || !/^[a-z0-9_]{1,12}$/.test(c[0]) || seen[c[0]]) { return null; }
-      var name = cleanNote(c[1]).slice(0, 24), ic = typeof c[2] === 'string' && /^[a-z-]{1,16}$/.test(c[2]) ? c[2] : 'dots';
+      var name = cut(cleanNote(c[1]), 24), ic = typeof c[2] === 'string' && /^[a-z-]{1,16}$/.test(c[2]) ? c[2] : 'dots';
       if (!name) { return null; }
       seen[c[0]] = 1;
       out.push([c[0], name, ic]);
@@ -177,7 +187,7 @@
     for (var i = 0; i < list.length; i++) {
       var g = list[i];
       if (!g || typeof g.length !== 'number' || typeof g[0] !== 'string' || !/^[a-z0-9]{1,10}$/.test(g[0]) || seen[g[0]]) { return null; }
-      var name = cleanNote(g[1]).slice(0, 24), a = g[2], u = g[3], s = g[4] === undefined ? 0 : g[4];
+      var name = cut(cleanNote(g[1]), 24), a = g[2], u = g[3], s = g[4] === undefined ? 0 : g[4];
       if (!name || typeof a !== 'number' || a !== Math.round(a) || a <= 0 || a >= 1e12 || !CURS[u] || typeof s !== 'number' || s !== Math.round(s) || s < 0 || s >= 1e12) { return null; }
       seen[g[0]] = 1;
       out.push([g[0], name, a, u, s]);
@@ -234,7 +244,7 @@
     for (var i = 0; i < list.length; i++) {
       var k = list[i];
       if (!k || typeof k.length !== 'number' || typeof k[0] !== 'string' || !/^[a-z0-9]{1,10}$/.test(k[0]) || seen[k[0]]) { return null; }
-      var name = cleanNote(k[1]).slice(0, 24), s = k[4] === undefined ? 0 : k[4], p = k[5] === undefined ? 0 : k[5], f = k[6] === undefined ? 0 : k[6];
+      var name = cut(cleanNote(k[1]), 24), s = k[4] === undefined ? 0 : k[4], p = k[5] === undefined ? 0 : k[5], f = k[6] === undefined ? 0 : k[6];
       if (!name || !whole(k[2], 1) || !CURS[k[3]] || !whole(s, 0) || !whole(p, 0) || (f !== 0 && f !== 1 && f !== 2 && f !== 3)) { return null; }
       seen[k[0]] = 1;
       out.push([k[0], name, k[2], k[3], s, p, f]);
@@ -270,18 +280,31 @@
     for (var i = 0; i < o.list.length; i++) {
       var p = o.list[i];
       if (!p || typeof p.length !== 'number' || typeof p[0] !== 'string' || !/^[a-z0-9]{1,10}$/.test(p[0]) || seen[p[0]]) { return null; }
-      var name = cleanNote(p[1]).slice(0, 24), a = p[2], c = p[3], d = p[4] === undefined ? 0 : p[4];
+      var name = cut(cleanNote(p[1]), 24), a = p[2], c = p[3], d = p[4] === undefined ? 0 : p[4];
       if (!name || !whole(a, 1) || typeof c !== 'string' || !/^[a-z0-9_]{1,12}$/.test(c) || typeof d !== 'number' || d !== Math.round(d) || d < 0 || d > 31) { return null; }
       seen[p[0]] = 1;
       out.push([p[0], name, a, c, d]);
     }
     return { list: out, hide: isMonth(o.hide) ? o.hide : '' };
   }
-  /** внесён ли платёж в этом месяце: есть трата той же категории с такой же заметкой или на ту же сумму */
-  function payPaid(p, ops) {
-    var key = p[1].toLowerCase(), hit = null;
-    (ops || []).forEach(function (op) { if (!hit && op.k === 'e' && op.c === p[3] && ((op.n || '').toLowerCase() === key || bynOf(op) === p[2])) { hit = op; } });
-    return hit;
+  /** внесён ли платёж в этом месяце: трата той же категории с такой же заметкой или на ту же сумму.
+      list — все платежи месяца: каждая трата засчитывается только одному платежу — сначала по названию, потом по сумме
+      (QA 08.11.2026: «Внести» у Netflix 15,00 отмечал внесённым и Spotify 15,00 той же категории) */
+  function payPaid(p, ops, list) {
+    list = list && list.length ? list : [p];
+    var used = [], hits = {}, names = {};
+    list.forEach(function (q) { names[q[3] + '|' + q[1].toLowerCase()] = true; });
+    var pick = function (q, test) {
+      var found = null;
+      (ops || []).forEach(function (op, i) { if (!found && used.indexOf(i) < 0 && op.k === 'e' && op.c === q[3] && test(op)) { found = op; used.push(i); } });
+      return found;
+    };
+    list.forEach(function (q) { var key = q[1].toLowerCase(); hits[q[0]] = pick(q, function (op) { return (op.n || '').toLowerCase() === key; }); });
+    list.forEach(function (q) {
+      if (hits[q[0]]) { return; }
+      hits[q[0]] = pick(q, function (op) { return bynOf(op) === q[2] && !names[q[3] + '|' + (op.n || '').toLowerCase()]; }); // трата с названием другого платежа — его, не этого
+    });
+    return hits[p[0]] || null;
   }
   // ---------- «Поделиться настройкой» (пункт 13): категории, источники, по желанию бюджет, лимиты, платежи — без записей ----------
   /** известные категории (стартовые и встроенные) уходят одним id: код короче и помещается в ссылку Telegram (startapp — до 512 знаков) */
@@ -335,7 +358,7 @@
     for (var i = 0; i < list.length; i++) {
       var p = list[i];
       if (!p || typeof p.length !== 'number' || typeof p[0] !== 'string' || !/^[a-z0-9]{1,10}$/.test(p[0]) || seen[p[0]]) { return null; }
-      var name = cleanNote(p[1]).slice(0, 24);
+      var name = cut(cleanNote(p[1]), 24);
       if (!name) { return null; }
       seen[p[0]] = 1;
       out.push([p[0], name]);
@@ -586,13 +609,15 @@
 
   /** текст копии → записи по месяцам. Терпит то, что делает с текстом телефон и мессенджеры: «умные» кавычки, невидимые символы, лишний текст вокруг */
   function parseBackup(text) {
-    var s = String(text || '').replace(/[\u200B-\u200D\uFEFF]/g, ''), data = null;
+    var s = String(text || '').replace(/[\u200B\u200C\uFEFF]/g, ''), data = null; // U+200D не вырезается: он внутри эмодзи заметок (QA М12)
     var i = s.indexOf('{'), j = s.lastIndexOf('}');
     if (i < 0 || j <= i) { return null; }
     s = s.slice(i, j + 1);
     try { data = JSON.parse(s); } catch (e) {
       // телефон или мессенджер заменил прямые кавычки «умными» и пробелы неразрывными: чиним и пробуем ещё раз
-      try { data = JSON.parse(s.replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB\u2033]/g, '"').replace(/\u00A0/g, ' ')); } catch (e2) { return null; }
+      try { data = JSON.parse(s.replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB\u2033]/g, '"').replace(/\u00A0/g, ' ')); } catch (e2) {
+        try { data = JSON.parse(s.replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB\u2033]/g, '"').replace(/\u00A0/g, ' ').replace(/\u200D/g, '')); } catch (e3) { return null; } // соединитель вне строк от мессенджера
+      }
     }
     if (!data || data.app !== 'finansy' || !data.months || typeof data.months !== 'object') { return null; }
     var months = {}, count = 0, seen = {};
@@ -613,6 +638,8 @@
       if (validList(data.cfg.catsOff)) { cfg.catsOff = validList(data.cfg.catsOff); }
       if (validList(data.cfg.srcsOff)) { cfg.srcsOff = validList(data.cfg.srcsOff); }
       if (validGoals(data.cfg.goals)) { cfg.goals = validGoals(data.cfg.goals); }
+      if (validColors(data.cfg.colors)) { cfg.colors = validColors(data.cfg.colors); } // свои цвета категорий и целей (QA З15: терялись)
+      if (validNtf(data.cfg.ntf)) { cfg.ntf = validNtf(data.cfg.ntf); } // напоминания в чате (QA З15: терялись)
       if (!Object.keys(cfg).length) { cfg = null; }
     }
     var credits = validCredits(data.credits), budget = validBudget(data.budget), limits = validLimits(data.limits), pays = validPays(data.pays), debts = validDebts(data.debts); // у этих настроек в хранилище свои ключи
@@ -895,7 +922,7 @@
     NB: NB, CATS: CATS, SRCS: SRCS, CURS: CURS, RATES: RATES,
     today: today, monthOf: monthOf, isDate: isDate, isMonth: isMonth, shiftDay: shiftDay,
     fmt: fmt, fmtParts: fmtParts, fmtShort: fmtShort, fmtRate: fmtRate, parseTyped: parseTyped, typed: typed, press: press,
-    toByn: toByn, bynOf: bynOf, find: find, makeOp: makeOp, validOp: validOp, pack: pack, unpack: unpack, cleanNote: cleanNote, utf8len: utf8len, parseBackup: parseBackup,
+    toByn: toByn, bynOf: bynOf, find: find, makeOp: makeOp, validOp: validOp, pack: pack, unpack: unpack, cleanNote: cleanNote, cut: cut, utf8len: utf8len, parseBackup: parseBackup,
     plural: plural, summarize: summarize, byDays: byDays, dayLabel: dayLabel, monthLabel: monthLabel,
     prevMonth: prevMonth, inMonth: inMonth, daysLeft: daysLeft, perDay: perDay, fmtDay: fmtDay, frequent: frequent, validGoal: validGoal, parseAmount: parseAmount, balance: balance, table: table,
     validList: validList, useCfg: useCfg, validColors: validColors, colorOf: colorOf, validNtf: validNtf, COLORS: COLORS, PICK_COLORS: PICK_COLORS, dict: dict, OFF: OFF, STARTER: STARTER, STARTER_ON: STARTER_ON, LIST_MAX: LIST_MAX, packList: packList, builtin: builtin, catId: catId,

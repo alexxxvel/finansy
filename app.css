@@ -67,6 +67,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .spent__sum.is-m i { font-size: 28px; }
 .spent__sum.is-s { font-size: 44px; }
 .spent__sum.is-s i { font-size: 24px; }
+.spent__sum.is-xs { font-size: 34px; }
+.spent__sum.is-xs i { font-size: 19px; }
+.spent__sum.is-xs abbr { margin-left: 6px; font-size: 15px; }
 .spent__sum abbr { margin-left: 10px; font: 600 17px/1 var(--font); letter-spacing: 0; color: var(--muted); text-decoration: none; }
 /* шкала: вся дорожка = доход; сегментов не больше трёх: две крупнейшие категории и остальное */
 .spent__bar { height: 10px; margin-top: 20px; border-radius: 5px; background: var(--fill); overflow: hidden; }
@@ -957,7 +960,7 @@ html { overflow: hidden; }
 .live { position: relative; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 .live svg { display: block; width: 100%; height: auto; overflow: visible; }
 .live__ax line { stroke: var(--line); stroke-width: 1; }
-.live__ax text { font: 500 11px/1 var(--font); fill: var(--gray); stroke: none; text-anchor: end; }
+.live__ax text { font: 500 12.5px/1 var(--font); fill: var(--muted); stroke: none; text-anchor: end; } /* QA М8: было 11 px бледно-серым */
 .live__ax .live__base { stroke: var(--axis); }
 .live__in, .live__out, .live__prev { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; transition: stroke-width 360ms var(--spring-snappy), opacity 260ms var(--ease-out); }
 .live__in { stroke: var(--f-in); }
@@ -1137,3 +1140,30 @@ html { overflow: hidden; }
 :root[data-theme="dark"] [data-c="red"] { --c: #FF4245; --ci: #FF6165; --cb: #DB393B; --con: #FFFFFF; }
 :root[data-theme="dark"] [data-c="gray"] { --c: #8E8E93; --ci: #AEAEB2; --cb: #8E8E93; --con: #000000; }
 /* HUES:конец */
+
+/* крупный текст на маленьком экране (QA 08.11.2026: на 320×568 переключатель ничего не менял — раскладка уже минимальной ширины):
+   «только текст» — крупнее мелкие подписи, нижнее меню и период; в обычном крупном режиме подписи меню и период тоже чуть крупнее */
+html[data-size="text"] .tabs.ios-tabbar .ios-lq__items > button, html[data-size="text"] .tabs.ios-tabbar .ios-lq__items--lens > span { font-size: 12.5px; }
+html[data-size="big"] .tabs.ios-tabbar .ios-lq__items > button, html[data-size="big"] .tabs.ios-tabbar .ios-lq__items--lens > span { font-size: 12px; }
+html[data-size="text"] .range button, html[data-size="text"] .range.ios-seg .ios-lq__items--lens > span { min-height: 42px; font-size: 15px; }
+html[data-size="big"] .range button, html[data-size="big"] .range.ios-seg .ios-lq__items--lens > span { min-height: 40px; font-size: 14px; }
+html[data-size="text"] .menu__row--switch > span small, html[data-size="text"] .remind--home small, html[data-size="text"] .sbar__v, html[data-size="text"] .sbar__m,
+html[data-size="text"] .duo__b small, html[data-size="text"] .live__ticks, html[data-size="text"] .tile__sub, html[data-size="text"] .mcols__ticks,
+html[data-size="text"] .stat-only, html[data-size="text"] .stat-cap, html[data-size="text"] .stat-legend, html[data-size="text"] .stat-bar em { font-size: 14.5px; }
+html[data-size="text"] .tile__more, html[data-size="text"] .stat-bar span { font-size: 13.5px; }
+html[data-size="text"] .live__ax text { font-size: 12.5px; }
+html[data-size="text"] .stat-step { font-size: 12.5px; }
+/* правка записи: сумма выделена — первая цифра заменит её (QA 08.11.2026) */
+.entry__sum.is-pick { border-radius: 12px; background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent); }
+/* обрезанные надписи (QA 08.11.2026) */
+.chips button.is-tight { padding: 0 5px; font-size: 13px; letter-spacing: -.01em; } /* З18: «Транспорт» на 320 px */
+.chips button.is-two { white-space: normal; line-height: 1.1; text-overflow: clip; overflow-wrap: anywhere; }
+.tile { container-type: inline-size; }
+.tile__head > span { white-space: normal; text-overflow: clip; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-height: 1.2; text-wrap: balance; } /* З7: «Куда ушло», «Что изменилось» — две строки, а не «Куд…» */
+@container (max-width: 150px) { .tile__head .badge { display: none; } .tile__head { gap: 4px; font-size: 14px !important; letter-spacing: -.01em; } } /* узкая плитка: место под слово, значок не нужен */
+.plain__carry > span { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.25; } /* М3: «Остаток на начало месяца» переносится */
+.lenhint { margin: 6px 4px 0; font: 500 13px/1.3 var(--font); color: var(--muted); text-align: right; } /* QA М22: у предела названия */
+.save-top__lab { margin: 0 0 2px; font: 600 15px/1.3 var(--font); color: var(--muted); } /* QA М6: «В ноябре, пока» над крупным процентом */
+.op .op__date--wrap { flex-wrap: wrap; } /* QA М2: категория целиком, дата — на вторую строку, если не влезла */
+.op .op__date--wrap .op__cat { flex: 0 1 auto; max-width: 100%; }
+#goMore { text-wrap: balance; line-height: 1.15; } /* QA М21: «Добавить и / сразу ещё» ровно, слова разработчика те же */

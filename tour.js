@@ -33,7 +33,7 @@
         '<div class="tour__wallet" aria-hidden="true"><span class="tour__floor"></span><div class="tour__bob"><img class="tour__hero" src="tour/hero.png?r=' + REV + '" alt="" width="1400" height="1400"><img class="tour__cards" src="tour/cards-strict.png?r=' + REV + '" alt="" width="1400" height="1400"></div></div>' +
         '<div class="tour__dev" aria-hidden="true"><div class="tour__win"><div class="tour__cam"><div class="tour__shots"></div><span class="tour__aim"><i></i></span><span class="tour__finger"><i></i></span></div><span class="tour__glass"></span></div></div>' +
         '<div class="tour__pop tour__pop--add" data-pop="add"><div class="tour__prow"><span class="tour__pic" data-c="orange">' + ICON_CART + '</span><span class="tour__pt"><b>Продукты</b><small>трата добавлена</small></span><span class="tour__psum">−12<i>,00</i></span></div></div>' +
-        '<div class="tour__pop tour__pop--goals" data-pop="goals"><div class="tour__prow"><span class="tour__pic" data-c="purple">' + ICON_WALLET + '</span><span class="tour__pt"><b>Подушка</b><small>1 690 из 5 000 · +150</small></span><span class="tour__psum">34<i>%</i></span></div><div class="tour__pbar"><b></b></div></div>' +
+        '<div class="tour__pop tour__pop--goals" data-pop="goals"><div class="tour__prow"><span class="tour__pic" data-c="purple">' + ICON_WALLET + '</span><span class="tour__pt"><b>Подушка</b><small>1\u00a0690 из 5\u00a0000 ·\u00a0+150</small></span><span class="tour__psum">33<i>%</i></span></div><div class="tour__pbar"><b></b></div></div>' +
         '<div class="tour__pop tour__pop--stats" data-pop="stats"><div class="tour__phead"><span>Куда ушло</span><span>октябрь</span></div><div class="tour__plist">' +
           '<div class="tour__prow"><span class="tour__pic" data-c="indigo">' + ICON_CAR + '</span><span>Авто</span><data>200,00</data></div>' +
           '<div class="tour__prow"><span class="tour__pic" data-c="mint">' + ICON_SHIRT + '</span><span>Одежда</span><data>130,00</data></div>' +
@@ -50,6 +50,7 @@
       '<div class="tour__foot"><button type="button" class="tour__back" aria-label="Назад" hidden>‹</button><button type="button" class="tour__next"><span>Начать</span></button></div>';
   }
 
+  var active = null; // открытое обучение: { back } — для кнопки «Назад» Telegram (QA З17)
   function open(opts) {
     opts = opts || {};
     if (document.getElementById("tour")) { return; }
@@ -160,6 +161,7 @@
     function close(kind) {
       if (closed) { return; }
       closed = true; run++;
+      active = null;
       root.classList.remove("is-open");
       window.removeEventListener("resize", measure);
       document.removeEventListener("keydown", onKey);
@@ -192,10 +194,11 @@
     root.addEventListener("pointercancel", function () { x0 = null; root.classList.remove("is-drag"); root.style.setProperty("--dx", "0px"); });   // отмену браузера (у pointercancel clientX = 0) за смахивание не считаем
     root.addEventListener("dragstart", function (e) { e.preventDefault(); });   // картинку мышью браузер тянет как своё: на компьютере это обрывало смахивание
 
+    active = { back: function () { if (cur > 0) { go(cur - 1); } else { close("skip"); } } };
     preload("add");   // остальные сценарии подгружаются следом, пока человек читает первый лист: на медленной сети экран телефона не пустой
     setTimeout(function () { preload("goals"); }, 900); setTimeout(function () { preload("stats"); }, 1800);
     window.requestAnimationFrame(function () { root.classList.add("is-open"); measure(); go(0); });
   }
 
-  window.FINTOUR = { open: open, scenes: SCENES };
+  window.FINTOUR = { open: open, scenes: SCENES, isOpen: function () { return !!active; }, back: function () { if (active) { active.back(); } } };
 })();
