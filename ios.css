@@ -82,7 +82,7 @@
 .ios-seg .ios-lq__lens::after { display: none; }
 .ios-seg .ios-lq__items--lens { color: var(--ink); }
 .range.ios-seg { padding: 3px; }
-.range.ios-seg .ios-lq__items > button, .range.ios-seg .ios-lq__items--lens > span { min-height: 36px; padding: 0 13px; font: 600 13px/1 var(--font); }
+.range.ios-seg .ios-lq__items > button, .range.ios-seg .ios-lq__items--lens > span { min-height: 40px; padding: 0 13px; font: 600 13px/1 var(--font); }
 
 /* ---------- ручка тумблера iOS 26: дорожка в цвете акцента, ручка на касание — стекло, растёт и вытягивается ---------- */
 .ios-switch { position: relative; flex: none; display: block; width: 52px; height: 31px; border-radius: 999px; background: var(--fill); transition: background-color 260ms var(--ease-out); }

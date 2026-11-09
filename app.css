@@ -982,7 +982,7 @@ html { overflow: hidden; }
 .ctl { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; margin-top: 14px; }
 .ctl .period--row { margin-left: auto; } /* на узком экране листание уходит на свою строку справа */
 .range { display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: var(--fill); }
-.range button { min-height: 36px; padding: 0 13px; border-radius: 999px; font: 600 13px/1 var(--font); color: var(--muted); transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out); }
+.range button { min-height: 40px; padding: 0 13px; border-radius: 999px; font: 600 13px/1 var(--font); color: var(--muted); transition: background-color 160ms var(--ease-out), color 160ms var(--ease-out); }
 .range button[aria-pressed="true"] { background: var(--thumb, var(--surface)); color: var(--ink); box-shadow: var(--thumb-shadow, 0 1px 2px rgba(60,60,80,.12), 0 2px 6px rgba(60,60,80,.08)); }
 .period--row { display: flex; align-items: center; margin: 0 -12px 0 0; }
 .period--row p { min-width: 0; font: 600 15px/1.2 var(--font); text-align: center; white-space: nowrap; }
