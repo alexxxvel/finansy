@@ -43,14 +43,14 @@
   -webkit-mask-image: linear-gradient(to right, #000 calc(var(--l, 0) * 1px), transparent calc(var(--l, 0) * 1px), transparent calc(var(--r, 0) * 1px), #000 calc(var(--r, 0) * 1px));
   mask-image: linear-gradient(to right, #000 calc(var(--l, 0) * 1px), transparent calc(var(--l, 0) * 1px), transparent calc(var(--r, 0) * 1px), #000 calc(var(--r, 0) * 1px)); }
 .ios-lq__items--lens { position: absolute; z-index: 3; pointer-events: none; color: var(--acc-text); will-change: transform, clip-path; }
-.ios-lq__lens { position: absolute; z-index: 2; left: 0; top: 0; bottom: 0; border-radius: 999px; pointer-events: none; will-change: transform;
+.ios-lq__lens { position: absolute; z-index: 2; left: 0; top: 0; bottom: 0; border-radius: 999px; pointer-events: none; will-change: transform;/* Chrome до 111 */
   background: color-mix(in srgb, var(--gray) calc((1 - var(--press, 0)) * 20%), rgba(255, 255, 255, calc(.04 * var(--press, 0))));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, calc(var(--lg-rim) + .3 * var(--press, 0))), inset 0 0 0 1px rgba(255, 255, 255, calc(.85 * var(--press, 0))), inset 0 10px 16px -10px rgba(255, 255, 255, calc(.95 * var(--press, 0))), inset 0 -10px 18px -10px rgba(0, 0, 0, calc(.14 * var(--press, 0))), 0 calc(6px + 10px * var(--press, 0)) calc(18px + 20px * var(--press, 0)) -10px rgba(0, 0, 0, calc(.18 + .12 * var(--press, 0))); }
 /* радужная кромка преломления — видна, пока линзу держат (как у Telegram на iOS 26) */
-.ios-lq__lens::after { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: calc(var(--lg-chroma) * 1px);
+.ios-lq__lens::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; padding: calc(var(--lg-chroma) * 1px);
   background: conic-gradient(from 200deg, var(--lg-chromaWarm), rgba(255, 255, 255, 0) 18%, var(--lg-chromaCool) 34%, rgba(255, 255, 255, 0) 52%, var(--lg-chromaCool) 68%, var(--lg-chromaWarm));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: calc(var(--press, 0) * .35); } /* радуга на кромке — едва, как у стекла Apple; яркая синяя обводка выглядела дёшево (06.11.2026) */
-.ios-lq__lens::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+.ios-lq__lens::before { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: inherit; pointer-events: none;
   background: radial-gradient(90% 70% at 30% 0%, rgba(255, 255, 255, calc(.5 * var(--press, 0) + .15)), rgba(255, 255, 255, 0) 60%); }
 
 /* ---------- панель вкладок iOS 26: стеклянная, со значками; список уходит под неё ---------- */
@@ -183,7 +183,7 @@
 .ios-onboard__page--ask .ios-onboard__art { place-items: center stretch; }   /* содержимое вопроса — по центру между заголовком и кнопкой */
 .ios-onboard__hint { margin: 0; color: var(--c-secondary); font-size: 15px; }
 .ios-onboard__next:disabled { opacity: .35; cursor: default; }
-.ios-onboard:has(.ios-onboard__progress) .ios-onboard__dots { display: none; }   /* на листах-вопросах прогресс показывает полоса сверху, точки не дублируют */
+.ios-onboard.has-progress .ios-onboard__dots { display: none; }   /* листы-вопросы: прогресс полосой сверху, точки не нужны (класс вместо :has — Chrome до 105) */
 
 /* выбор списком и плитками */
 .ios-choice { display: grid; gap: 8px; align-content: start; }
@@ -192,9 +192,9 @@
   transition: background-color 200ms var(--ease-out), transform 120ms var(--ease-out); }
 .ios-choice > button:active { transform: scale(.98); }
 .ios-choice > button > svg:first-child { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
-.ios-choice > button::after { content: ""; display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c-ink) 30%, transparent);
+.ios-choice > button::after { content: ""; display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; box-shadow: inset 0 0 0 1.5px rgba(128, 128, 128, .5);
   color: #000000; font: 800 14px/1 var(--font); transition: background-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out); }
-.ios-choice > button[aria-pressed="true"] { background: color-mix(in srgb, var(--brand) 26%, transparent); }   /* выбранное — заливка одним цветом приложения, без рамки */
+.ios-choice > button[aria-pressed="true"] { background: var(--acc-soft, rgba(0, 118, 222, .2)); }   /* выбранное — заливка одним цветом приложения, без рамки */
 .ios-choice > button[aria-pressed="true"]::after { content: "\2713"; background-color: var(--brand); color: var(--brand-ink); box-shadow: none; }   /* галочка символом: картинка в стилях не пройдёт строгую CSP сайта */
 .ios-choice--grid { grid-template-columns: 1fr 1fr; }
 .ios-choice--grid > button { grid-template-columns: 1fr auto; grid-template-rows: auto 1fr; align-items: start; min-height: 108px; padding: 14px; }
@@ -209,11 +209,11 @@
 .ios-pick::-webkit-scrollbar { display: none; }
 .ios-pick > [data-value] { display: grid; flex: 0 0 62%; gap: 10px; align-content: space-between; min-height: 260px; padding: 20px; border: 0; border-radius: 28px; scroll-snap-align: center; text-align: left;
   background: var(--ob-fill); color: var(--c-ink); font: inherit; cursor: pointer; transform-origin: center bottom; }
-.ios-pick > [aria-pressed="true"] { background: color-mix(in srgb, var(--brand) 22%, var(--ob-fill)); box-shadow: 0 30px 50px -30px color-mix(in srgb, var(--brand) 60%, transparent); }
+.ios-pick > [aria-pressed="true"] { background: var(--acc-soft, rgba(0, 118, 222, .2)); box-shadow: 0 30px 50px -30px rgba(0, 0, 0, .35); }
 
 /* утверждения: стопка карточек, смахнуть «да» вправо, «нет» влево */
 .ios-swipe { --swipe: 0; position: relative; display: grid; min-height: 280px; touch-action: pan-y; user-select: none; }
-.ios-swipe::before { content: ""; position: absolute; inset: -20% -24px; z-index: -1; border-radius: 40px;
+.ios-swipe::before { content: ""; position: absolute; top: -20%; right: -24px; bottom: -20%; left: -24px; z-index: -1; border-radius: 40px;
   background: radial-gradient(70% 80% at 105% 50%, rgb(48 209 88 / calc(max(var(--swipe), 0) * .6)), transparent 72%), radial-gradient(70% 80% at -5% 50%, rgb(255 69 58 / calc(max(var(--swipe) * -1, 0) * .6)), transparent 72%); }
 .ios-swipe__card { grid-area: 1 / 1; display: grid; align-content: center; padding: 28px 24px; border-radius: 28px; background: var(--c-surface); cursor: grab;
   box-shadow: 0 0 0 .5px var(--c-separator), 0 30px 50px -30px rgb(0 0 0 / .8); font-size: 24px; font-weight: 600; line-height: 1.22; letter-spacing: -.015em; text-wrap: balance; touch-action: none; }
@@ -225,11 +225,11 @@
 .ios-swipe-btns button { min-height: 48px; border: 0; border-radius: 24px; background: var(--ob-glass); color: var(--c-ink); font: 600 16px/1 var(--font); cursor: pointer; box-shadow: var(--ob-glass-edge); }
 
 /* награда в конце: объёмный значок с бликом, который проходит один раз */
-.ios-reward { position: relative; display: grid; width: 184px; aspect-ratio: 1; place-items: center; border-radius: 50%; overflow: hidden;
+.ios-reward { position: relative; display: grid; width: 184px; height: 184px; place-items: center; border-radius: 50%; overflow: hidden;
   background: radial-gradient(circle at 34% 28%, #FFF1CF 0%, #F2C46B 22%, #C98A2E 52%, #8A5512 78%, #D9A04A 100%);
   box-shadow: inset 0 0 0 7px rgb(255 236 190 / .55), inset 0 0 0 9px rgb(110 64 10 / .55), inset 0 0 0 14px rgb(255 225 160 / .35), inset 0 -14px 26px rgb(70 38 0 / .45),
-    inset 0 6px 10px rgb(255 255 255 / .45), 0 40px 70px -28px color-mix(in srgb, var(--brand) 80%, transparent); transform: rotateX(12deg) rotateY(-16deg); }   /* медаль: обод из колец, выпуклость светом сверху */
-.ios-reward::after { content: ""; position: absolute; inset: -40%; background: linear-gradient(115deg, transparent 42%, rgb(255 255 255 / .55) 50%, transparent 58%); transform: translateX(-70%); }
+    inset 0 6px 10px rgb(255 255 255 / .45), 0 40px 70px -28px rgba(138, 85, 18, .6); transform: rotateX(12deg) rotateY(-16deg); }   /* медаль: обод из колец, выпуклость светом сверху */
+.ios-reward::after { content: ""; position: absolute; top: -40%; right: -40%; bottom: -40%; left: -40%; background: linear-gradient(115deg, transparent 42%, rgb(255 255 255 / .55) 50%, transparent 58%); transform: translateX(-70%); }
 .ios-reward.is-on::after { transform: translateX(70%); transition: transform 1100ms var(--ease-out) 200ms; }
 .ios-reward svg { width: 44%; height: 44%; fill: none; stroke: #7A4A0C; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round;
   filter: drop-shadow(0 1.5px 0 rgb(255 240 200 / .8)) drop-shadow(0 -1px 0 rgb(80 45 0 / .5)); }   /* знак выбит: светлая кромка снизу, тень сверху */
@@ -237,4 +237,11 @@
 @media (prefers-reduced-motion: reduce) {
   .ios-choice.is-full, .ios-swipe.is-full { animation: none; }
   .ios-onboard__progress i::after, .ios-reward.is-on::after { transition: none; }
+}
+/* old: запасные значения для старых телефонов (tools/_compat_supports_patch.py): только старые движки читают эти блоки — значения с var()/env() они иначе сбрасывают */
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+  .ios-lq__lens { background: rgba(142, 142, 147, .2); }
+  .tabs.ios-tabbar { background: rgba(255, 255, 255, .72); }
+  :root[data-theme="dark"] .tabs.ios-tabbar { background: rgba(28, 28, 30, .7); }
+  .ios-onboard__progress i { background: rgba(128, 128, 128, .25); }
 }

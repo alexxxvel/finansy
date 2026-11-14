@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '37bbde4155'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'e8f551f70b'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -3178,6 +3178,8 @@
     return g;
   }
   /** самый дорогой день отрезка */
+  /** год: самый дорогой месяц { m: 'ГГГГ-ММ', v } — плитка «По месяцам» говорит о месяце, а не о дне (11.11.2026) */
+  function maxMonth(cur) { var best = '', v = 0; Object.keys(cur.months).forEach(function (m) { if (cur.months[m].spent > v) { v = cur.months[m].spent; best = m; } }); return best ? { m: best, v: v } : null; }
   function maxDay(cur) { var best = '', v = 0; Object.keys(cur.days).forEach(function (d) { if (cur.days[d] > v) { v = cur.days[d]; best = d; } }); return best ? { d: best, v: v } : null; }
 
   var FLOW = { left: { word: 'Сбережено', name: 'Сбережено' }, // решение разработчика 09.11.2026 (QA М18, вариант А): «Осталось» на главной — другое число (с остатком прошлого месяца)
@@ -3332,8 +3334,8 @@
       var sp = spendParts(cur);
       list.push({ key: 'where', flow: 'out', title: 'Куда ушло', badge: 'bag', big: sp[0].name, sub: pctOf(sp[0].sum, cur.spent) + ' трат',
         more: sp.length > 1 ? sp.slice(1, 3).map(function (p) { return p.name + F.NB + pctOf(p.sum, cur.spent); }).join('\n') : '', mini: function () { return miniShares(sp); } });
-      var md = maxDay(cur);
-      list.push({ key: 'days', flow: 'out', title: P.kind === 'year' ? 'По месяцам' : 'По дням', badge: 'cal', big: whole(md.v) + ' <small>BYN</small>', sub: 'самый дорогой день\n' + rangeText(md.d, md.d),
+      var md = maxDay(cur), mm = P.kind === 'year' ? maxMonth(cur) : null;
+      list.push({ key: 'days', flow: 'out', title: P.kind === 'year' ? 'По месяцам' : 'По дням', badge: 'cal', big: whole(mm ? mm.v : md.v) + ' <small>BYN</small>', sub: mm ? 'самый дорогой месяц\n' + F.monthLabel(mm.m) : 'самый дорогой день\n' + rangeText(md.d, md.d),
         mini: function () { return P.kind === 'month' ? miniHeat(P, cur) : miniCols(P.kind === 'week' ? [0, 1, 2, 3, 4, 5, 6].map(function (i) { return cur.days[F.shiftDay(P.from, i)] || 0; }) : Object.keys(cur.months).sort().map(function (m) { return cur.months[m].spent; })); } });
       var tn = F.topNotes(cur.notes, 1);
       if (tn.length) { list.push({ key: 'notes', flow: 'out', title: 'Чаще всего', badge: 'note', big: tn[0].n, sub: tn[0].count + F.NB + F.plural(tn[0].count, 'раз', 'раза', 'раз') + ' · ' + whole(tn[0].sum) + F.NB + 'BYN' }); }
@@ -3423,9 +3425,9 @@
           say.appendChild(el('small', '', p ? F.fmt(p.sum) + ' BYN · ' + pctOf(p.sum, total) : pctOf(ip[0].sum, cur.income) + ' дохода · ' + rangeText(P.from, P.end)));
         }));
       } else if (key === 'days') {
-        var md = maxDay(cur);
-        say.appendChild(document.createTextNode(rangeText(md.d, md.d) + ' '));
-        say.appendChild(el('small', '', 'самый дорогой день · ' + whole(md.v) + F.NB + 'BYN'));
+        var md = maxDay(cur), mm = P.kind === 'year' ? maxMonth(cur) : null;
+        say.appendChild(document.createTextNode((mm ? F.monthLabel(mm.m) : rangeText(md.d, md.d)) + ' '));
+        say.appendChild(el('small', '', (mm ? 'самый дорогой месяц · ' + whole(mm.v) : 'самый дорогой день · ' + whole(md.v)) + F.NB + 'BYN'));
         box.appendChild(say);
         if (P.kind === 'month') { var cal = calendarBlock(P, cur, function (d) { var v = cur.days[d] || 0, cnt = F.inRange(st.all, d, d).filter(function (op) { return op.k === 'e'; }).length; line.textContent = nb(F.dayLabel(d) + ' · ' + F.fmt(v) + ' BYN · ' + cnt + F.NB + F.plural(cnt, 'трата', 'траты', 'трат')); }); add(box, cal, line); cal.pick(md.d); }
         else if (P.kind === 'week') { var wv = []; for (var i = 0; i < 7; i++) { wv.push(cur.days[F.shiftDay(P.from, i)] || 0); } box.appendChild(barsBlock(wv, F.WEEKDAYS_SHORT, 'statsWeekDays', function (i) { openStatDay(F.shiftDay(P.from, i), again); })); }
@@ -3785,7 +3787,7 @@
       edit: op || null,
       kind: op ? (goalOp ? (op.k === 'e' ? 's' : 't') : debtOp ? (op.k === 'e' ? 'give' : 'get') : op.k) : pre.kind || 'e', fresh: !op && !!pre.fresh, // долг: 'give' отдано, 'get' получено; fresh — новый долг с выбором человека
       // 'e' трата, 'i' доход, 's' отложить на цель, 't' снять с цели, 'p' платёж (хранится тратой)
-      digits: op ? F.fmt(op.a).replace(/\s/g, '').replace(/,00$/, '').replace(/(,\d)0$/, '$1') : pre.digits || '',
+      digits: op ? F.fmt(op.a).replace(/\s/g, '').replace(/,00$/, '') : pre.digits || '', // 12,50 так и показывается (11.11.2026: было «12,5»)
       cur: op ? op.u : pre.cur || 'BYN',
       cat: op ? op.c : pre.cat || '',
       date: op ? op.d : pre.date || F.today(),
