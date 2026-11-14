@@ -1083,6 +1083,35 @@ html { overflow: hidden; }
 .stat-bar em { margin-bottom: 4px; font: 600 13px/1 var(--font); font-style: normal; color: var(--ink); }
 .stat-bar span { margin-top: 6px; font: 500 12px/1 var(--font); color: var(--gray); white-space: nowrap; }
 .stat-funnel { display: grid; gap: 5px; }
+/* ---------- люди под номерами (14.11.2026): строка — номер, телефон и когда был, «N дн. из 30», полоска за 30 дней; касание — подробности ---------- */
+.ppl { padding-bottom: 28px; }
+.ppl__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ppl__note { font: 500 13px/1.2 var(--font); color: var(--muted); }
+.ppl__sort { margin: 2px 0 10px; }
+.ppl__list { margin: 0; padding: 0; list-style: none; border-radius: 16px; background: var(--bg); overflow: hidden; }
+.ppl__item + .ppl__item { border-top: .5px solid var(--line); }
+.ppl__row { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; grid-template-areas: "n main k" "n spark spark"; column-gap: 12px; row-gap: 8px;
+  align-items: center; width: 100%; padding: 12px 14px; text-align: left; color: var(--ink); }
+.ppl__n { grid-area: n; align-self: start; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--fill);
+  font: 600 14px/1 var(--font); font-style: normal; font-variant-numeric: tabular-nums; color: var(--muted); }
+.ppl__n.is-on { background: var(--f-in-soft); color: var(--f-in-ink); }
+.ppl__n.is-week { background: var(--f-in-soft); color: var(--f-in-ink); opacity: .75; }
+.ppl__n.is-gone { opacity: .5; }
+.ppl__main { grid-area: main; display: grid; gap: 2px; min-width: 0; }
+.ppl__main b { font: 600 16px/1.25 var(--font); }
+.ppl__main small { font: 500 13px/1.3 var(--font); color: var(--muted); }
+.ppl__k { grid-area: k; display: grid; justify-items: end; gap: 1px; }
+.ppl__k b { font: 700 17px/1.1 var(--font); font-variant-numeric: tabular-nums; }
+.ppl__k small { font: 500 12px/1.2 var(--font); color: var(--muted); white-space: nowrap; }
+.ppl__spark { grid-area: spark; display: flex; align-items: flex-end; gap: 2px; height: 22px; }
+.ppl__spark i { flex: 1; min-width: 0; height: 2px; border-radius: 2px; background: var(--line); }
+.ppl__spark i.is-open { background: var(--soft); }
+.ppl__spark i.is-add { background: var(--f-in); }
+.ppl__more { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; margin: 0; padding: 0 14px 14px 62px; font: 500 14px/1.35 var(--font); }
+.ppl__more[hidden] { display: none; }
+.ppl__more dt { color: var(--muted); }
+.ppl__more dd { margin: 0; color: var(--ink); }
+.ppl__all { width: 100%; margin-top: 10px; }
 .stat-step { display: grid; grid-template-columns: 1fr 38px; grid-template-rows: auto 6px; column-gap: 6px; font: 500 11px/1.2 var(--font); color: var(--muted); }
 .stat-step span { grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stat-step em { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; font-style: normal; font-weight: 600; color: var(--ink); }
@@ -1179,3 +1208,36 @@ html[data-size="text"] .stat-step { font-size: 12.5px; }
 .curmenu__t b { font: 600 17px/1.2 var(--font); letter-spacing: -.01em; }
 .curmenu__t small { font: 500 13px/1.25 var(--font); color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .curmenu { transition: none; } }
+
+/* ---------- статистика: разделы вместо стены плиток (14.11.2026) — переключатель, пара крупных цифр, карточки во всю ширину с одинаковыми полосками ---------- */
+.stat-tabs { margin: 12px 0 0; }
+.stat-period { margin: 8px 0 0; }
+.stat-period[hidden] { display: none; }
+.stat-pane { padding-bottom: 32px; }
+.stat-pane > .stat-hero { padding-top: 18px; }
+.scard { --c: var(--ink); --c-soft: var(--fill); --c-bar: var(--ink); margin-top: 10px; padding: 14px 16px 16px; border-radius: 18px; background: var(--surface); } /* карточка светлее листа, как в «Здоровье» */
+.scard.is-in { --c: var(--f-in-ink); --c-soft: var(--f-in-soft); --c-bar: var(--f-in); }
+.scard.is-out { --c: var(--f-out-ink); --c-soft: var(--f-out-soft); --c-bar: var(--f-out); }
+.scard.is-tech { --c: var(--acc-text, #1C68E8); --c-soft: var(--acc-soft, rgba(0, 136, 255, .12)); --c-bar: var(--acc, #0088FF); }
+.kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.kpis .scard { margin-top: 0; }
+.scard__h { display: flex; align-items: center; gap: 8px; margin: 0; font: 600 15px/1.2 var(--font); color: var(--c); }
+.scard__h .badge { display: grid; flex: none; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--c-soft); color: var(--c); }
+.scard__h .badge svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.scard__big { margin: 10px 0 0; font: 700 30px/1.05 var(--font); letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); overflow-wrap: anywhere; }
+.scard__big small { font: 600 15px/1.2 var(--font); letter-spacing: 0; color: var(--muted); }
+.scard__cap { margin: 4px 0 0; font: 500 13px/1.35 var(--font); color: var(--muted); white-space: pre-line; }
+.scard__h + .scard__cap { margin-top: 6px; }
+.scard .stat-funnel { gap: 10px; margin-top: 14px; }
+.scard .stat-step { grid-template-columns: minmax(0, 1fr) 46px; grid-template-rows: auto 6px; row-gap: 5px; font: 500 14px/1.25 var(--font); color: var(--ink); }
+.scard .stat-step em { font-size: 14px; }
+.scard .stat-step b { background: var(--fill); }
+.scard .stat-step b i { background: var(--c-bar); }
+.scard .stat-bars { margin-top: 14px; }
+.scard .stat-bar.is-pick b { background: var(--c-bar); }
+.srows { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; margin: 12px 0 0; font: 500 15px/1.3 var(--font); }
+.srows dt { color: var(--ink); }
+.srows dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.stat-pane .ppl { padding-top: 6px; }
+.pick--stats .stat-only { justify-content: center; } /* под заголовком по центру: слева её закрывала кнопка «Назад» */
+.stat-pane .ppl__list { background: var(--surface); }

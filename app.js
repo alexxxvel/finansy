@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'e34d64afbf'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'd077da1fbe'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -1125,6 +1125,33 @@
     statT = setTimeout(statFlush, 2500);
   }
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') { statFlush(); } });
+  // поведение без сумм (14.11.2026): встроенные категории и источники — по id, свои — «own» (их названия могут быть личными); сумма и заметка не уходят
+  var BUILT = {};
+  F.STARTER.concat(F.CATS.map(function (c) { return [c.id]; })).forEach(function (c) { BUILT['cat:' + c[0]] = 1; });
+  F.SRCS.forEach(function (c) { BUILT['src:' + c.id] = 1; });
+  function trackAdd(op) {
+    track('add');
+    if (F.isCreditOp(op)) { return; }
+    var key = (op.k === 'i' ? 'src:' : 'cat:') + op.c;
+    track(BUILT[key] ? key : (op.k === 'i' ? 'src:own' : 'cat:own'));
+    if (op.n) { track('add:note'); }
+    if (op.u && op.u !== 'BYN') { track('add:fx'); }
+    var h = new Date().getHours(), today = F.today();
+    track(h >= 5 && h < 11 ? 'hr:morning' : h >= 11 && h < 17 ? 'hr:day' : h >= 17 && h < 23 ? 'hr:evening' : 'hr:night'); // когда вносят: время записи, не время траты
+    track(op.d >= today ? 'when:today' : op.d === F.shiftDay(today, -1) ? 'when:yday' : 'when:older'); // сразу или задним числом
+  }
+  /** результат функции — только при переходе черты (цель набралась, долг закрыт, лимит превышен этой записью); считается ДО записи */
+  function resultOf(op) {
+    try {
+      var g = F.goalOf(op.c);
+      if (g) { var have = F.goalState(g, st.all).have, after = have + (op.k === 'e' ? 1 : -1) * F.goalAmount(g, op.a, op.u, op.r); return have < g.a && after >= g.a ? 'goal:done' : ''; }
+      var p = F.debtOf(op.c);
+      if (p) { var bal = F.debtState(p, st.all).bal, nb2 = bal + (op.k === 'e' ? 1 : -1) * F.bynOf(op); return bal !== 0 && Math.abs(nb2) < 1 ? 'debt:closed' : ''; }
+      var lim = op.k === 'e' && st.limits ? st.limits[op.c] : 0;
+      if (lim && F.monthOf(op.d) === st.month) { var spent = 0; st.ops.forEach(function (o) { if (o.k === 'e' && o.c === op.c) { spent += F.bynOf(o); } }); return spent <= lim && spent + F.bynOf(op) > lim ? 'limit:over' : ''; }
+    } catch (x) { /* статистика не должна мешать записи */ }
+    return '';
+  }
   /** открытие приложения: само открытие и какими функциями человек пользуется (по тому, что у него заведено) — раз за запуск */
   function statOpen() {
     if (statSent) { return; }
@@ -1140,6 +1167,14 @@
     if ((st.pays.list || []).length) { track('feat:pays'); }
     if (document.documentElement.getAttribute('data-theme') === 'dark') { track('feat:dark'); }
     if (sizePref() === 'big') { track('feat:big'); }
+    track(innerWidth < 360 ? 'scr:s' : innerWidth < 400 ? 'scr:m' : 'scr:l');
+    var sp = inTg && tg.initDataUnsafe ? tg.initDataUnsafe.start_param || '' : '';
+    track(/[?&]go=/.test(location.search) ? 'from:remind' : sp ? (F.decodeShare(sp) ? 'from:share' : 'from:link') : 'from:direct'); // откуда открыли: тип ссылки, без её кода
+    var lc = inTg && tg.initDataUnsafe && tg.initDataUnsafe.user ? String(tg.initDataUnsafe.user.language_code || '').slice(0, 2) : '';
+    if (lc) { track('lang:' + (['ru', 'en', 'uk', 'be'].indexOf(lc) >= 0 ? lc : 'other')); }
+    var cm = /Chrome\/(\d+)/.exec(navigator.userAgent), cv = cm ? +cm[1] : 0; // движок страниц: граница старых телефонов — Chrome 106
+    track(cv ? (cv < 106 ? 'eng:old' : cv < 111 ? 'eng:106' : cv < 120 ? 'eng:111' : 'eng:120') : /AppleWebKit/.test(navigator.userAgent) ? 'eng:webkit' : 'eng:other');
+    if (window.performance && performance.now) { var ms = performance.now(); track(ms < 1500 ? 'perf:fast' : ms < 4000 ? 'perf:mid' : 'perf:slow'); } // до первого экрана
     if (location.hash === '#stats') { statIsOwner(function (yes) { if (yes) { openStats(); } }); } // кнопка «Открыть статистику» из сообщения бота
   }
   /** автор ли это — спрашиваем сервер (он проверяет подпись); ответ запоминаем до перезапуска */
@@ -1170,6 +1205,7 @@
       add(only, icon('lock'), document.createTextNode('видно только вам'));
       add(head, el('h2', 'pick__title', 'Статистика'));
       body.appendChild(el('p', 'pick__info', 'Загружаем цифры…'));
+      statPeople = null; // список людей — свежий на каждое открытие
       add(box, head, only, body);
       m.appendChild(box);
       statPost({ t: 'view', range: statsRange }, function (j) {
@@ -1180,29 +1216,14 @@
       });
     }, back || null);
   }
+  var statTab = 'over'; // раздел статистики (14.11.2026): обзор, поведение, техника, люди — переживает смену периода
   function paintStatsBody(body, j) {
-    var hero = el('section', 'spent spent--sum stat-hero'), lab = el('p', 'spent__label', 'Пользователей'), sum = el('p', 'spent__sum'), num = el('span', '', String(j.total)), line = el('p', 'spent__day');
-    sum.id = 'statTotal';
-    add(sum, num);
-    add(hero, lab, sum, line);
-    function rest() { lab.textContent = 'Пользователей'; num.textContent = String(j.total); line.textContent = nb('+' + j.new7 + ' за неделю · +' + j.new30 + ' за месяц'); }
-    rest();
-    var cap = el('p', 'stat-cap', 'Активных'), duo = el('div', 'duo duo--3');
-    duo.id = 'statActive';
-    [['сегодня', j.active.day], ['за неделю', j.active.week], ['за месяц', j.active.month]].forEach(function (d) { var b = el('div', 'duo__b'); add(b, el('small', '', d[0]), el('b', '', String(d[1]))); duo.appendChild(b); });
-    add(body, hero, cap, duo);
-    if (!j.total) {
-      body.appendChild(el('p', 'pick__info stat-empty', nb('Пока никого. Как только кто-то откроет приложение, здесь появятся цифры, а вам придёт сообщение от бота.')));
-    } else {
-      body.appendChild(statChart(j.series, function (p) {
-        if (!p) { duo.classList.remove('is-dim'); rest(); return; }
-        duo.classList.add('is-dim');
-        lab.textContent = 'Пользователей к' + F.NB + rangeText(p.d, p.d);
-        num.textContent = String(p.total);
-        line.textContent = 'активных ' + p.active + ' · новых ' + p['new'];
-      }));
-    }
-    var range = el('div', 'range');
+    var nav = el('div', 'range stat-tabs'), pane = el('div', 'stat-pane');
+    nav.id = 'statTabs';
+    nav.setAttribute('role', 'group');
+    nav.setAttribute('aria-label', 'Раздел');
+    pane.id = 'statPane';
+    var range = el('div', 'range stat-period');
     range.id = 'statRange';
     range.setAttribute('role', 'group');
     range.setAttribute('aria-label', 'Период');
@@ -1219,46 +1240,205 @@
       });
       range.appendChild(b);
     });
+    [['over', 'Обзор'], ['how', 'Поведение'], ['tech', 'Техника'], ['ppl', 'Люди']].forEach(function (s) {
+      var b = btn('', s[1]);
+      b.setAttribute('data-tab', s[0]);
+      b.setAttribute('aria-pressed', String(statTab === s[0]));
+      b.addEventListener('click', function () {
+        if (statTab === s[0]) { return; }
+        statTab = s[0];
+        haptic();
+        [].forEach.call(nav.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        show();
+      });
+      nav.appendChild(b);
+    });
+    add(body, nav, range, pane);
+    lq(nav);
     lq(range);
-    var ctl = el('div', 'ctl');
-    ctl.appendChild(range);
-    body.appendChild(ctl);
-    if (!j.total) { return; }
-    var tiles = el('div', 'tiles tiles--stat');
-    tiles.id = 'statTiles';
-    function tile(cls, glyph, title, big, sub, mini, wide) {
-      var t = el('div', 'tile ' + cls + (wide ? ' tile--wide' : '')), h = el('h2', 'tile__head'), badge = el('i', 'badge'), b = el('b', 'tile__big');
+
+    var bh = j.behavior || {}, NBP = F.NB + '%';
+    function card(cls, glyph, title, big, cap, extra, id) {
+      var c = el('section', 'scard ' + cls), h = el('h3', 'scard__h'), badge = el('i', 'badge');
+      if (id) { c.id = id; }
       badge.appendChild(tileIcon(glyph));
       add(h, badge, el('span', '', title));
-      b.appendChild(document.createTextNode(big[0]));
-      if (big[1]) { b.appendChild(document.createTextNode(' ')); b.appendChild(el('small', '', big[1])); }
-      add(t, h, b, sub ? el('span', 'tile__sub', sub) : null);
-      if (mini) { var mm = el('div', 'tile__mini'); mm.appendChild(mini); t.appendChild(mm); }
-      return t;
+      c.appendChild(h);
+      if (big) { var b = el('p', 'scard__big'); b.appendChild(document.createTextNode(big[0])); if (big[1]) { b.appendChild(document.createTextNode(' ')); b.appendChild(el('small', '', big[1])); } c.appendChild(b); }
+      if (cap) { c.appendChild(el('p', 'scard__cap', nb(cap))); }
+      if (extra) { c.appendChild(extra); }
+      return c;
     }
+    function pair(a, b) { var g = el('div', 'kpis'); add(g, a, b); return g; }
     function steps(list) {
       var g = el('div', 'stat-funnel');
-      list.forEach(function (r) { var li = el('div', 'stat-step'), bar = el('i'), wrap = el('b'); bar.style.width = Math.max(0, Math.min(100, r[1])) + '%'; wrap.appendChild(bar); add(li, el('span', '', r[0]), wrap, el('em', '', r[1] + F.NB + '%')); g.appendChild(li); });
+      list.forEach(function (r) { var li = el('div', 'stat-step'), bar = el('i'), wrap = el('b'); bar.style.width = Math.max(0, Math.min(100, r[1])) + '%'; wrap.appendChild(bar); add(li, el('span', '', r[0]), wrap, el('em', '', r[2] || r[1] + NBP)); g.appendChild(li); });
       return g;
     }
-    var ret = j.retention, f = j.funnel, base = f.opened || 1;
-    var bars = el('div', 'stat-bars');
-    ret.forEach(function (r, i) { var c = el('i', 'stat-bar' + (i === 0 ? ' is-pick' : '')), b = el('b'); b.style.height = Math.max(3, r.pct) + '%'; add(c, el('em', '', r.pct + F.NB + '%'), b, el('span', '', ['через день', 'через неделю', 'через месяц'][i])); bars.appendChild(c); });
-    tiles.appendChild(tile('tile--in', 'up', 'Удержание', [ret[0].pct + F.NB + '%', 'вернулись на другой день'], '', bars, true));
-    tiles.appendChild(tile('tile--left', 'note', 'Новички', [Math.round(f.record / base * 100) + F.NB + '%'], f.opened ? 'внесли первую запись' : 'за этот период новых нет',
-      f.opened ? steps([['открыли', 100], ['категории', Math.round(f.cats / base * 100)], ['запись', Math.round(f.record / base * 100)], ['вернулись', Math.round(f.back / base * 100)]]) : null));
-    var pt = 0;
-    j.plats.forEach(function (p) { pt += p.n; });
-    if (j.plats.length) { tiles.appendChild(tile('tile--left', 'cal', 'Телефоны', [j.plats[0].name, Math.round(j.plats[0].n / pt * 100) + F.NB + '%'], '', steps(j.plats.slice(0, 3).map(function (p) { return [p.name, Math.round(p.n / pt * 100)]; })))); }
-    var adds = j.series.slice(-7).map(function (s) { return s.adds; });
-    tiles.appendChild(tile('tile--left', 'chg', 'Записи', [String(j.adds.perActive).replace('.', ','), 'в день'], 'на активного\nвсего сегодня ' + j.adds.today, miniCols(adds)));
-    if (j.tabs.length) { tiles.appendChild(tile('tile--left', 'bag', 'Разделы', [j.tabs[0].name, j.tabs[0].pct + F.NB + '%'], j.tabs.slice(1, 3).map(function (t) { return t.name.toLowerCase() + ' ' + t.pct + F.NB + '%'; }).join('\n') + (j.tabs.length > 1 ? '\n' : '') + 'Главная не в счёт', null)); }
-    if (j.feats.length) { tiles.appendChild(tile('tile--left', 'wallet', 'Функции', [j.feats[0].name, j.feats[0].pct + F.NB + '%'], j.feats.slice(1, 3).map(function (t) { return t.name.toLowerCase() + ' ' + t.pct + F.NB + '%'; }).join(' · ') || 'от активных', null)); }
-    tiles.appendChild(tile('tile--left', 'down', 'Сбои', [String(j.fails.week)], 'за неделю' + (j.fails.ver ? ' · версия ' + j.fails.ver : ''), null));
-    var all = tiles.children.length;
-    if ((all - 1) % 2 === 1) { tiles.lastChild.classList.add('tile--wide'); }
-    body.appendChild(tiles);
+    function rowsOf(list) { var d = el('dl', 'srows'); list.forEach(function (r) { add(d, el('dt', '', r[0]), el('dd', '', r[1])); }); return d; }
+    function empty(text) { pane.appendChild(el('p', 'pick__info stat-empty', nb(text))); }
+
+    function over() {
+      var hero = el('section', 'spent spent--sum stat-hero'), lab = el('p', 'spent__label', 'Пользователей'), sum = el('p', 'spent__sum'), num = el('span', '', String(j.total)), line = el('p', 'spent__day');
+      sum.id = 'statTotal';
+      add(sum, num);
+      add(hero, lab, sum, line);
+      function rest() { lab.textContent = 'Пользователей'; num.textContent = String(j.total); line.textContent = nb('+' + j.new7 + ' за неделю · +' + j.new30 + ' за месяц'); }
+      rest();
+      var duo = el('div', 'duo duo--3');
+      duo.id = 'statActive';
+      [['сегодня', j.active.day], ['за неделю', j.active.week], ['за месяц', j.active.month]].forEach(function (d) { var b = el('div', 'duo__b'); add(b, el('small', '', d[0]), el('b', '', String(d[1]))); duo.appendChild(b); });
+      add(pane, hero, el('p', 'stat-cap', 'Активных'), duo);
+      if (!j.total) { empty('Пока никого. Как только кто-то откроет приложение, здесь появятся цифры, а вам придёт сообщение от бота.'); return; }
+      pane.appendChild(statChart(j.series, function (p) {
+        if (!p) { duo.classList.remove('is-dim'); rest(); return; }
+        duo.classList.add('is-dim');
+        lab.textContent = 'Пользователей к' + F.NB + rangeText(p.d, p.d);
+        num.textContent = String(p.total);
+        line.textContent = 'активных ' + p.active + ' · новых ' + p['new'];
+      }));
+      var ret = j.retention, f = j.funnel, base = f.opened || 1;
+      pane.appendChild(pair(card('scard--kpi is-in', 'up', 'Вернулись', [ret[0].pct + NBP], 'на другой день'),
+        card('scard--kpi is-in', 'chg', 'Записи', [String(j.adds.perActive).replace('.', ',')], 'в день на активного\nсегодня всего ' + j.adds.today)));
+      var bars = el('div', 'stat-bars');
+      ret.forEach(function (r, i) { var c = el('i', 'stat-bar' + (i === 0 ? ' is-pick' : '')), b = el('b'); b.style.height = Math.max(3, r.pct) + '%'; add(c, el('em', '', r.pct + NBP), b, el('span', '', ['через день', 'через неделю', 'через месяц'][i])); bars.appendChild(c); });
+      pane.appendChild(card('is-in', 'up', 'Удержание', null, 'сколько вернулись после первого дня', bars, 'statRetention'));
+      pane.appendChild(card('is-in', 'note', 'Новички', f.opened ? [String(f.opened), 'за период'] : null, f.opened ? '' : 'за этот период новых нет',
+        f.opened ? steps([['открыли', 100], ['выбрали категории', Math.round(f.cats / base * 100)], ['внесли запись', Math.round(f.record / base * 100)], ['вернулись', Math.round(f.back / base * 100)]]) : null));
+      var m = bh.moment;
+      if (m && (m.with3 + m.less)) {
+        pane.appendChild(card('is-in', 'up', 'Момент', [m.with3Back + NBP, 'против ' + m.lessBack + NBP], 'вернулись на второй неделе: внёс 3+ записи в первую — и остальные',
+          steps([['3+ записи в первую неделю · ' + m.with3, m.with3Back], ['меньше трёх · ' + m.less, m.lessBack]])));
+      }
+      if (bh.from && bh.from.length) {
+        var fa = 0;
+        bh.from.forEach(function (x) { fa += x.n; });
+        pane.appendChild(card('is-in', 'chg', 'Откуда пришли', [bh.from[0].name, Math.round(bh.from[0].n / fa * 100) + NBP], 'новички за период', steps(bh.from.slice(0, 4).map(function (x) { return [x.name, Math.round(x.n / fa * 100)]; }))));
+      }
+    }
+    function how() {
+      if (!j.total) { empty('Пока никого.'); return; }
+      var hw = bh.how || {};
+      pane.appendChild(pair(card('scard--kpi is-out', 'note', 'С заметкой', [(hw.note || 0) + NBP], 'записей'),
+        card('scard--kpi is-out', 'chg', 'Передумали', [(hw.typed || 0) + NBP], 'набрали сумму\nи закрыли лист')));
+      if (bh.cats && bh.cats.length) { pane.appendChild(card('is-out', 'bag', 'Категории', [bh.cats[0].name], 'у ' + bh.cats[0].users + NBP + ' людей · ниже — доля записей', steps(bh.cats.slice(0, 6).map(function (c) { return [c.name, c.share]; })), 'statCats')); }
+      if (bh.hours && bh.hours.n) {
+        var hb = [['утром', bh.hours.morning], ['днём', bh.hours.day], ['вечером', bh.hours.evening], ['ночью', bh.hours.night]];
+        var top = hb.slice().sort(function (a, b) { return b[1] - a[1]; })[0];
+        pane.appendChild(card('is-out', 'cal', 'Когда вносят', [top[0]], 'сразу ' + bh.when.today + NBP + ' · вчерашнее ' + bh.when.yday + NBP + ' · задним числом ' + bh.when.older + NBP, steps(hb)));
+      }
+      pane.appendChild(card('is-out', 'note', 'Как правят', null, 'на 100 записей', steps([['в валюте', hw.fx || 0], ['правят', hw.edit || 0], ['удаляют', hw.del || 0], ['отменяют сразу', hw.undo || 0], ['закрыли пустой лист', hw.empty || 0]])));
+      if (j.tabs.length) { pane.appendChild(card('is-out', 'bag', 'Разделы', null, 'куда переходят · главная не в счёт', steps(j.tabs.map(function (t) { return [t.name, t.pct]; })))); }
+      if (j.feats.length) { pane.appendChild(card('is-out', 'wallet', 'Функции', null, 'у скольких активных заведено', steps(j.feats.map(function (t) { return [t.name, t.pct]; })))); }
+      var rs = bh.results || {}, rn = function (k) { return String(rs[k] ? rs[k].c : 0); };
+      pane.appendChild(card('is-out', 'wallet', 'Результаты', null, 'за период', rowsOf([['целей достигнуто', rn('goal:done')], ['долгов закрыто', rn('debt:closed')], ['лимит превышен', rn('limit:over')]])));
+      var su = bh.setup;
+      if (su && su.n) { pane.appendChild(card('is-out', 'cal', 'Первая настройка', null, 'сколько категорий выбирают', steps([['до пяти', su.few], ['шесть – десять', su.std], ['больше десяти', su.many], ['добавили свою', su.own]]))); }
+    }
+    function tech() {
+      if (!j.total) { empty('Пока никого.'); return; }
+      var pf = bh.perf || {};
+      pane.appendChild(pair(card('scard--kpi is-tech', 'up', 'Скорость', [(pf.n ? pf.fast : 0) + NBP], 'открылось\nбыстрее 1,5 с'),
+        card('scard--kpi is-tech', 'down', 'Сбои', [String(j.fails.week)], 'за неделю' + (j.fails.ver ? '\nверсия ' + j.fails.ver : ''))));
+      var pt = 0;
+      j.plats.forEach(function (p) { pt += p.n; });
+      if (j.plats.length) { pane.appendChild(card('is-tech', 'cal', 'Телефоны', null, 'у активных за период', steps(j.plats.map(function (p) { return [p.name, Math.round(p.n / pt * 100)]; })))); }
+      if (bh.eng && bh.eng.length) { pane.appendChild(card('is-tech', 'chg', 'Движок страниц', null, 'граница старых телефонов — Chrome 106', steps(bh.eng.map(function (x) { return [x.name, x.pct]; })))); }
+      if (bh.lang && bh.lang.length) { pane.appendChild(card('is-tech', 'note', 'Язык Telegram', null, '', steps(bh.lang.map(function (x) { return [x.name, x.pct]; })))); }
+      if (bh.scr && bh.scr.length) { pane.appendChild(card('is-tech', 'bag', 'Ширина экрана', null, 'в точках', steps(bh.scr.map(function (x) { return [x.name, x.pct]; })))); }
+      if (pf.n) { pane.appendChild(card('is-tech', 'up', 'Открытие', null, 'до первого экрана', steps([['быстрее 1,5 с', pf.fast], ['1,5 – 4 с', pf.mid], ['дольше 4 с', pf.slow]]))); }
+    }
+    function show() {
+      clear(pane);
+      range.hidden = statTab === 'ppl';
+      if (statTab === 'ppl') { paintPeople(pane); return; }
+      (statTab === 'how' ? how : statTab === 'tech' ? tech : over)();
+    }
+    show();
   }
+  // ---------- люди под номерами (14.11.2026): кто насколько активно пользуется — без имён, обещание «анонимно» не меняется ----------
+  var statPeople = null, pplSort = 'last';
+  function pplWhen(d, today) { var n = F.daysBetween(d, today); return n <= 0 ? 'сегодня' : n === 1 ? 'вчера' : n < 7 ? n + F.NB + 'дн. назад' : rangeText(d, d).replace(/ \d{4}$/, ''); }
+  function paintPeople(body) {
+    var sec = el('section', 'ppl'), head = el('div', 'ppl__head'), cap = el('p', 'stat-cap', 'Люди'), list = el('ul', 'ppl__list'), more = btn('btn btn--quiet ppl__all');
+    sec.id = 'statPeople';
+    add(head, cap, el('small', 'ppl__note', 'под номерами, без имён'));
+    add(sec, head, el('p', 'pick__info', 'Загружаем…'));
+    body.appendChild(sec);
+    function draw(j) {
+      if (!sec.isConnected) { return; }
+      clear(sec);
+      add(sec, head);
+      if (!j || !j.ok) { sec.appendChild(el('p', 'pick__info', nb('Не получилось загрузить список. Откройте статистику ещё раз.'))); return; }
+      var ppl = j.people.slice(), today = j.today, limit = 25;
+      cap.textContent = 'Люди' + F.NB + '·' + F.NB + ppl.length;
+      var sort = el('div', 'range ppl__sort');
+      sort.id = 'pplSort';
+      sort.setAttribute('role', 'group');
+      sort.setAttribute('aria-label', 'Порядок');
+      [['last', 'Недавние'], ['active', 'Активные'], ['new', 'Новые']].forEach(function (s) {
+        var b = btn('', s[1]);
+        b.setAttribute('data-sort', s[0]);
+        b.setAttribute('aria-pressed', String(pplSort === s[0]));
+        b.addEventListener('click', function () {
+          if (pplSort === s[0]) { return; }
+          pplSort = s[0];
+          haptic();
+          [].forEach.call(sort.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+          limit = 25;
+          fill();
+        });
+        sort.appendChild(b);
+      });
+      lq(sort);
+      add(sec, sort, list, more);
+      more.id = 'pplAll';
+      more.addEventListener('click', function () { limit = ppl.length; fill(); });
+      function order() {
+        var by = {
+          last: function (a, b) { return a.last < b.last ? 1 : a.last > b.last ? -1 : b.n - a.n; },
+          active: function (a, b) { return b.days30 - a.days30 || b.adds30 - a.adds30 || b.n - a.n; },
+          'new': function (a, b) { return a.first < b.first ? 1 : a.first > b.first ? -1 : b.n - a.n; }
+        };
+        ppl.sort(by[pplSort]);
+      }
+      function fill() {
+        order();
+        clear(list);
+        ppl.slice(0, limit).forEach(function (p) { list.appendChild(pplRow(p, today)); });
+        more.hidden = ppl.length <= limit;
+        more.textContent = 'Показать всех' + F.NB + '(' + ppl.length + ')';
+      }
+      fill();
+    }
+    if (statPeople) { draw(statPeople); } else { statPost({ t: 'people' }, function (j) { if (j && j.ok) { statPeople = j; } draw(j); }); }
+  }
+  function pplRow(p, today) {
+    var away = F.daysBetween(p.last, today), state = away <= 1 ? 'is-on' : away <= 7 ? 'is-week' : away > 30 ? 'is-gone' : '';
+    var li = el('li', 'ppl__item'), b = btn('ppl__row'), num = el('i', 'ppl__n ' + state), main = el('span', 'ppl__main'), k = el('span', 'ppl__k'), spark = el('span', 'ppl__spark'), more = el('dl', 'ppl__more');
+    b.setAttribute('aria-expanded', 'false');
+    b.setAttribute('data-n', String(p.n));
+    num.textContent = String(p.n);
+    add(main, el('b', '', '№' + p.n + F.NB + '·' + F.NB + p.plat),
+      el('small', '', nb('с' + F.NB + rangeText(p.first, p.first).replace(/ \d{4}$/, '') + ' · ' + (away > 30 ? 'не заходит с' + F.NB + pplWhen(p.last, today) : 'был' + F.NB + pplWhen(p.last, today)))));
+    add(k, el('b', '', String(p.days30)), el('small', '', 'дн. из' + F.NB + '30'));
+    spark.setAttribute('aria-label', 'Активность за 30 дней: заходил ' + p.days30 + ', записей ' + p.adds30);
+    p.a30.forEach(function (v) { var i = el('i', v === 0 ? '' : v === 1 ? 'is-open' : 'is-add'); if (v) { i.style.height = (v === 1 ? 35 : Math.min(100, 45 + (v - 1) * 9)) + '%'; } spark.appendChild(i); });
+    [['С приложением', p.days + F.NB + F.plural(p.days, 'день', 'дня', 'дней') + ' из' + F.NB + p.span],
+     ['Открытий', String(p.opens)],
+     ['Записей', p.adds + (p.adds30 !== p.adds ? ' · за 30 дней ' + p.adds30 : '')],
+     ['Первая настройка', p.setup ? 'пройдена' : 'не пройдена'],
+     ['Разделы', p.tabs.length ? p.tabs.map(function (t) { return t.name + F.NB + t.n; }).join(' · ') : 'только главная'],
+     ['Функции', p.feats.length ? p.feats.join(', ') : '—'],
+     ['Телефон', p.plat + (p.ver ? ' · версия ' + p.ver : '')],
+     ['Сбои', String(p.fails)]].forEach(function (r) { add(more, el('dt', '', r[0]), el('dd', '', nb(r[1]))); });
+    more.hidden = true;
+    add(b, num, main, k, spark);
+    b.addEventListener('click', function () { var open = more.hidden; more.hidden = !open; b.setAttribute('aria-expanded', String(open)); haptic(); });
+    add(li, b, more);
+    return li;
+  }
+
   /** график автора: активные по дням линией, новые столбиками у оси; ведёшь пальцем — onMove(точка), отпустил — onMove(null) */
   function statChart(series, onMove) {
     var n = series.length, w = 350, h = 150, pr = 30, top = 4;
@@ -3730,6 +3910,7 @@
     if (!ui.open) { if (after) { after(); } return; }
     ui.open = false;
     ui.back = null;
+    if (entry && !entry.saved && !entry.series && !entry.edit) { track(entry.digits ? 'sheet:typed' : 'sheet:empty'); } // лист записи закрыт без записи: набрал сумму и передумал или пустой
     entry = null;
     modal.setAttribute('aria-hidden', 'true');
     scrim.style.pointerEvents = 'none'; // уезжающий лист не забирает касания: «Добавить» и вкладки нажимаются сразу (QA 08.11.2026)
@@ -4189,17 +4370,18 @@
     if (e.edit && e.edit.u === e.cur && e.edit.r) { op.r = e.edit.r; } // правка не меняет курс, по которому запись была внесена
     e.busy = true;
     paintEntry();
-    if (e.edit) { store.update(op, F.monthOf(e.edit.d), function (err) { afterWrite(err, op.d, null, e); }); return; }
+    if (e.edit) { e.saved = true; track('edit'); store.update(op, F.monthOf(e.edit.d), function (err) { afterWrite(err, op.d, null, e); }); return; }
     if (more === true || e.series) { seriesAdd(op, more === true); return; } // серия: и последняя трата серии с главной кнопкой записывается так же, потом лист закрывается
     addOp(op);
   }
   /** запись в серии: лист остаётся, сумма и категория очищаются, дата и вид — те же; под суммой «Записано… Отменить», счёт на главной кнопке */
   function seriesAdd(op, stay) {
-    var e = entry;
+    var e = entry, res = resultOf(op);
     store.add(op, function (err) {
       if (!entry || entry !== e) { return; }
       if (err) { e.busy = false; paintEntry(); haptic('err'); toast(explain(err)); return; }
-      if (!F.isMoveOp(op)) { track('add'); }
+      if (!F.isMoveOp(op)) { trackAdd(op); }
+      if (res) { track(res); }
       haptic('ok');
       e.series++;
       e.done = op;
@@ -4251,10 +4433,13 @@
   }
   function addOp(op) {
     var from = entry;
+    if (from) { from.saved = true; } // лист закрывается после записи — это не «передумал»
+    var res = resultOf(op);
     store.add(op, function (err) {
-      if (!err && !F.isMoveOp(op)) { track('add'); }
+      if (!err && !F.isMoveOp(op)) { trackAdd(op); }
+      if (!err && res) { track(res); }
       afterWrite(err, op.d, function () { // случайную запись можно убрать сразу, не заходя в «Историю»
-        toast(F.isGoalOp(op) ? (op.k === 'e' ? 'Отложено на цель' : 'Снято из накоплений') : F.isDebtOp(op) ? (op.k === 'e' ? 'Записано: отдано' : 'Записано: получено') : F.isCreditOp(op) ? 'Платёж внесён' : op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { store.remove(op.id, F.monthOf(op.d), undone); });
+        toast(F.isGoalOp(op) ? (op.k === 'e' ? 'Отложено на цель' : 'Снято из накоплений') : F.isDebtOp(op) ? (op.k === 'e' ? 'Записано: отдано' : 'Записано: получено') : F.isCreditOp(op) ? 'Платёж внесён' : op.k === 'e' ? 'Трата добавлена' : 'Доход добавлен', 'Отменить', function () { track('undo'); store.remove(op.id, F.monthOf(op.d), undone); });
       }, from);
     });
   }
@@ -4445,6 +4630,8 @@
       store.patchCfg({ cats: on, catsOff: off.length ? off : null, seen: 1 }, function (err) {
         if (err) { f.busy = false; label(); haptic('err'); toast(err === 'too long' ? 'Список не помещается: сократите названия.' : explain(err)); return; }
         track('step:cats');
+        track(on.length <= 5 ? 'setup:few' : on.length <= 10 ? 'setup:std' : 'setup:many');
+        if (on.some(function (c) { return !BUILT['cat:' + c[0]]; })) { track('setup:own'); }
         var manual = !!f.manual;
         haptic('ok');
         st.first = null;
