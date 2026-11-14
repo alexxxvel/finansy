@@ -939,6 +939,16 @@ html { overflow: hidden; }
 .mood { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .mood__btn { display: grid; justify-items: center; gap: 2px; min-height: 64px; padding: 4px 0; font: 500 15px/1.15 var(--font); color: var(--ink); }
 .mood__btn svg { width: 40px; height: 40px; stroke-width: 1.6; }
+/* три вида вопроса (14.11.2026): звёзды 1–5 и цифры 1–5 — по пять в ряд */
+.mood--stars, .mood--nums { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding-top: 6px; }
+.mood--stars .mood__btn, .mood--nums .mood__btn { min-height: 52px; border-radius: 14px; background: var(--fill); place-items: center; }
+.mood--stars .mood__btn svg { width: 28px; height: 28px; fill: var(--quat); stroke: none; transition: fill 120ms var(--ease-out), transform 120ms var(--ease-out); }
+.mood--stars .mood__btn.is-on svg { fill: #FF9F0A; }
+.mood--stars .mood__btn:active svg, .mood--nums .mood__btn:active { transform: scale(.94); }
+.mood--nums .mood__btn { font: 700 20px/1 var(--font); font-variant-numeric: tabular-nums; transition: transform 120ms var(--ease-out); }
+.mood__ends { grid-column: 1 / -1; display: flex; justify-content: space-between; margin-top: 6px; }
+.mood__ends small { font: 500 12px/1.2 var(--font); color: var(--muted); }
+.remind--mood .mood__ends { display: flex; }
 
 /* ---------- «Аналитика» (решение разработчика 24.10.2026, макеты-26 «цвета Apple») ----------
    Сверху сумма выбранного потока и две мягкие плашки, живой график, ряд периода; ниже плитки (касание — подробный лист).

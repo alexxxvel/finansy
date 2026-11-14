@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'd077da1fbe'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '58931bbea1'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -1495,8 +1495,9 @@
   var IDEAS = [['fam', 'Общий учёт с семьёй', 'двое ведут одни траты'], ['rep', 'Повторяющиеся траты', 'каждый месяц записываются сами'],
     ['eve', 'Напоминание вечером', '«запишите траты за сегодня»'], ['rcpt', 'Фото чека', 'сумма из снимка']]; // тот же список — в relay/feedback.php
   // вопросы раз в месяц по очереди — про приложение, а не про деньги месяца (замечание разработчика 19.10.2026); у каждого свои подписи
-  var ASKS = [['Как вам приложение «Финансы»?', ['Хорошо', 'Так себе', 'Плохо']], ['Удобно пользоваться приложением?', ['Удобно', 'Так себе', 'Неудобно']],
-    ['Приложение вам помогает?', ['Помогает', 'Немного', 'Нет']]];
+  // вид у вопроса (14.11.2026, «все три вида по очереди»): звёзды 1–5, цифры 1–5, три лица — вопрос и его вид не меняются, ответы сравниваются по месяцам
+  var ASKS = [['Оцените «Финансы»', [], 'stars'], ['Насколько удобно пользоваться приложением?', ['совсем неудобно', 'очень удобно'], 'nums'],
+    ['Приложение вам помогает?', ['Помогает', 'Немного', 'Нет'], 'faces']];
   function lsGet(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
   function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* без памяти — до закрытия */ } }
   /** личный чат с автором; ?text= подставляет текст там, где Telegram это умеет */
@@ -1655,15 +1656,22 @@
     x.setAttribute('aria-label', 'Не спрашивать в этом месяце');
     x.appendChild(icon('close'));
     x.addEventListener('click', function () { haptic(); hide(); });
-    ['good', 'meh', 'bad'].forEach(function (k, v) {
+    function star() { var s = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }); s.appendChild(svgEl('path', { d: 'M12 3.3l2.6 5.5 6 .8-4.4 4.1 1.1 6L12 16.8l-5.3 2.9 1.1-6-4.4-4.1 6-.8z' })); return s; }
+    var kind = a[2], vals = kind === 'faces' ? [0, 1, 2] : [1, 2, 3, 4, 5];
+    faces.className = 'mood mood--' + kind;
+    vals.forEach(function (v) {
       var b = btn('mood__btn');
       b.setAttribute('data-mood', String(v));
-      add(b, icon('face-' + k), el('span', '', a[1][v]));
+      if (kind === 'faces') { add(b, icon('face-' + ['good', 'meh', 'bad'][v]), el('span', '', a[1][v])); }
+      else if (kind === 'stars') { b.setAttribute('aria-label', v + ' из 5'); b.appendChild(star()); b.addEventListener('pointerenter', function () { lit(v); }); }
+      else { b.textContent = String(v); b.setAttribute('aria-label', v + ' из 5'); }
       b.addEventListener('click', function () {
         lsSet('fin_mood', month);
         haptic('ok');
+        if (kind === 'stars') { lit(v); }
         relay({ t: 'mood', q: qi, v: v }, function () { /* оценка — без повторов: не ушла, так не ушла */ });
-        if (v < 2) { hide(); toast('Спасибо!'); return; }
+        var low = kind === 'faces' ? v > 0 : v < 5; // любая оценка ниже максимума — «Что мешает?» (слово разработчика 14.11.2026: «если что-то не идеально, есть нюансы, о которых мы должны узнать»)
+        if (!low) { hide(); toast('Спасибо!'); return; }
         // «плохо»: одной строкой «Что мешает?» и «Написать» — лист «Как улучшить приложение»
         clear(row);
         row.className = 'remind';
@@ -1679,7 +1687,10 @@
       });
       faces.appendChild(b);
     });
+    function lit(n) { [].forEach.call(faces.children, function (b, i) { b.classList.toggle('is-on', i < n); }); } // звёзды загораются до выбранной
+    faces.addEventListener('pointerleave', function () { lit(0); });
     add(row, q, x, faces);
+    if (kind === 'nums') { var ends = el('div', 'mood__ends'); add(ends, el('small', '', a[1][0]), el('small', '', a[1][1])); row.appendChild(ends); } // div: у span в карточке своя сетка (.remind > span)
     return row;
   }
   function homeCard() {
