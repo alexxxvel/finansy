@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '58931bbea1'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = 'ffd772d4d2'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -424,7 +424,7 @@
       bar.className = 'spent__bar spent__bar--saved';
       bar.appendChild(sv);
     }
-    var legend = el('div', 'spent__legend'), tip = noBase && s.spent && !st.budget.off && st.month === F.monthOf(F.today());
+    var legend = el('div', 'spent__legend'), tip = noBase && s.spent && !st.budget.off && st.month === F.monthOf(F.today()) && !startCount(); // первые дни новичка — путь к трём записям важнее подсказки про бюджет
     if (B) {
       var baseBtn = btn('spent__base');
       baseBtn.id = 'budgetLine';
@@ -512,6 +512,7 @@
       if (payNode) { spent.appendChild(payNode); }
       // напоминание о кредите включает сам человек; когда заведены платежи месяца, кредит — в их списке, и отдельной строки нет (о кредите одна строка, не две)
       if (!(st.pays.list || []).length) { F.CREDITS.forEach(function (k) { if (remindDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } }); }
+      if (!spent.querySelector('.remind')) { var startNode = startCard(); if (startNode) { spent.appendChild(startNode); } } // новичок: путь к трём записям — раньше остальных карточек
       if (!spent.querySelector('.remind')) { var saveNode = saveCard(); if (saveNode) { spent.appendChild(saveNode); } } // итог прошлого месяца — после платежей и кредитов
       if (!spent.querySelector('.remind')) { var homeNode = homeCard(); if (homeNode) { spent.appendChild(homeNode); } } // больше одной карточки сразу не бывает
       if (!spent.querySelector('.remind')) { var moodNode = moodCard(); if (moodNode) { spent.appendChild(moodNode); } } // вопрос про приложение — раз в месяц
@@ -1169,7 +1170,9 @@
     if (sizePref() === 'big') { track('feat:big'); }
     track(innerWidth < 360 ? 'scr:s' : innerWidth < 400 ? 'scr:m' : 'scr:l');
     var sp = inTg && tg.initDataUnsafe ? tg.initDataUnsafe.start_param || '' : '';
-    track(/[?&]go=/.test(location.search) ? 'from:remind' : sp ? (F.decodeShare(sp) ? 'from:share' : 'from:link') : 'from:direct'); // откуда открыли: тип ссылки, без её кода
+    var via = /^inv_(set|rate)$/.exec(sp);
+    track(/[?&]go=/.test(location.search) ? 'from:remind' : via ? 'from:invite' : sp ? (F.decodeShare(sp) ? 'from:share' : 'from:link') : 'from:direct'); // откуда открыли: тип ссылки, без её кода
+    if (via) { track('via:' + via[1]); } // по какому месту приглашения пришёл
     var lc = inTg && tg.initDataUnsafe && tg.initDataUnsafe.user ? String(tg.initDataUnsafe.user.language_code || '').slice(0, 2) : '';
     if (lc) { track('lang:' + (['ru', 'en', 'uk', 'be'].indexOf(lc) >= 0 ? lc : 'other')); }
     var cm = /Chrome\/(\d+)/.exec(navigator.userAgent), cv = cm ? +cm[1] : 0; // движок страниц: граница старых телефонов — Chrome 106
@@ -1309,6 +1312,16 @@
       if (m && (m.with3 + m.less)) {
         pane.appendChild(card('is-in', 'up', 'Момент', [m.with3Back + NBP, 'против ' + m.lessBack + NBP], 'вернулись на второй неделе: внёс 3+ записи в первую — и остальные',
           steps([['3+ записи в первую неделю · ' + m.with3, m.with3Back], ['меньше трёх · ' + m.less, m.lessBack]])));
+      }
+      var nd = bh.nudge;
+      if (nd && (nd['1'] || nd['2'] || nd['3'])) {
+        pane.appendChild(card('is-in', 'note', 'Путь к трём записям', [String(nd['3'] || 0), 'дошли'], 'карточка новичка: сколько людей увидели каждый шаг',
+          steps([['первая запись', 100], ['вторая', Math.round((nd['2'] || 0) / (nd['1'] || 1) * 100)], ['третья', Math.round((nd['3'] || 0) / (nd['1'] || 1) * 100)], ['перешли в «Аналитику»', Math.round((nd.go || 0) / (nd['1'] || 1) * 100)]])));
+      }
+      var iv = bh.invites;
+      if (iv && (iv.sentAll || iv.cameAll)) {
+        pane.appendChild(card('is-in', 'chg', 'Приглашения', [String(iv.cameAll), 'пришли'], 'отправили ' + iv.sentAll + F.NB + F.plural(iv.sentAll, 'раз', 'раза', 'раз') + ' · по местам:',
+          rowsOf([['настройки', iv.sent.set + ' → ' + iv.came.set], ['после оценки', iv.sent.rate + ' → ' + iv.came.rate]])));
       }
       if (bh.from && bh.from.length) {
         var fa = 0;
@@ -1671,7 +1684,20 @@
         if (kind === 'stars') { lit(v); }
         relay({ t: 'mood', q: qi, v: v }, function () { /* оценка — без повторов: не ушла, так не ушла */ });
         var low = kind === 'faces' ? v > 0 : v < 5; // любая оценка ниже максимума — «Что мешает?» (слово разработчика 14.11.2026: «если что-то не идеально, есть нюансы, о которых мы должны узнать»)
-        if (!low) { hide(); toast('Спасибо!'); return; }
+        if (!low) { // пик довольства: здесь и предложить поделиться — одной строкой, без давления
+          clear(row);
+          row.className = 'remind remind--invite';
+          var ti = el('span'), go = btn('capsule remind__pay'), xi = btn('remind__x');
+          add(ti, el('strong', '', 'Спасибо!'), el('small', '', 'Кому из друзей пригодится? Ссылка — в чат Telegram'));
+          go.id = 'moodInvite';
+          go.appendChild(el('span', '', 'Пригласить'));
+          go.addEventListener('click', function () { hide(); invite('rate'); });
+          xi.setAttribute('aria-label', 'Закрыть');
+          xi.appendChild(icon('close'));
+          xi.addEventListener('click', hide);
+          add(row, ti, go, xi);
+          return;
+        }
         // «плохо»: одной строкой «Что мешает?» и «Написать» — лист «Как улучшить приложение»
         clear(row);
         row.className = 'remind';
@@ -1691,6 +1717,43 @@
     faces.addEventListener('pointerleave', function () { lit(0); });
     add(row, q, x, faces);
     if (kind === 'nums') { var ends = el('div', 'mood__ends'); add(ends, el('small', '', a[1][0]), el('small', '', a[1][1])); row.appendChild(ends); } // div: у span в карточке своя сетка (.remind > span)
+    return row;
+  }
+  /** путь новичка к трём записям (16.11.2026): первые 7 дней, пока записей меньше трёх; на третьей — праздник и «Аналитика». Крестик — больше не показывать */
+  /** сколько записей у новичка, если карточка пути к трём записям уместна (первые 7 дней, 1–3 записи, не закрыта); иначе 0 */
+  function startCount() {
+    if (lsGet('fin_start3') === 'x') { return 0; }
+    var n = 0, first = '';
+    Object.keys(st.all).forEach(function (m) { st.all[m].forEach(function (op) { if (!F.isMoveOp(op)) { n++; if (!first || op.d < first) { first = op.d; } } }); });
+    if (!n || n > 3 || F.daysBetween(first, F.today()) > 6) { return 0; }
+    if (n === 3 && lsGet('fin_start3') === '3') { return 0; } // праздник — один раз
+    return n;
+  }
+  function startCard() {
+    var n = startCount();
+    if (!n) { return null; }
+    var row = el('div', 'remind remind--start'), text = el('span'), bar = el('span', 'start3'), x = btn('remind__x');
+    row.id = 'startCard';
+    for (var i = 0; i < 3; i++) { bar.appendChild(el('i', i < n ? 'is-on' : '')); }
+    var later = ntf().on && ntfCan() ? ' Вечером в' + F.NB + ntf().h + ':00 бот напомнит.' : '';
+    if (n === 1) { add(text, el('strong', '', 'Первая запись есть!'), el('small', '', nb('Ещё 2 — и «Аналитика» покажет, куда уходят деньги.' + later))); }
+    else if (n === 2) { add(text, el('strong', '', 'Ещё одна запись'), el('small', '', nb('и «Аналитика» соберёт картину месяца.' + later))); }
+    else { add(text, el('strong', '', 'Три записи!'), el('small', '', 'Картина сложилась — посмотрите, куда уходят деньги')); }
+    text.insertBefore(bar, text.firstChild);
+    x.id = 'startHide';
+    x.setAttribute('aria-label', n === 3 ? 'Закрыть' : 'Не показывать');
+    x.appendChild(icon('close'));
+    x.addEventListener('click', function () { lsSet('fin_start3', n === 3 ? '3' : 'x'); track('nudge:x'); haptic('ok'); if (row.parentNode) { row.parentNode.removeChild(row); } });
+    add(row, text);
+    if (n === 3) {
+      var go = btn('capsule remind__pay');
+      go.id = 'startGo';
+      go.appendChild(el('span', '', 'Аналитика'));
+      go.addEventListener('click', function () { lsSet('fin_start3', '3'); track('nudge:go'); var t = document.querySelector('.tabs button[data-tab="stats"]'); if (t) { t.click(); } });
+      row.appendChild(go);
+    }
+    row.appendChild(x);
+    if (startCard.shown !== n) { startCard.shown = n; track('nudge:' + n); }
     return row;
   }
   function homeCard() {
@@ -4849,6 +4912,16 @@
 
   // ---------- «Поделиться настройкой» (пункт 13, решение разработчика 18.10.2026: переключатели; кнопка-ссылка в сообщении) ----------
   var SHARE_BOT = 'umna_finance_bot';
+  // ---------- пригласить друга (16.11.2026): совет от первого лица, ни одной цифры человека; метка места в ссылке — какое место приводит людей ----------
+  var INVITE_TEXT = 'Пользуюсь «Финансами» — учёт трат прямо в Telegram. Записать трату — пара касаний, всё хранится в твоём Telegram, без регистрации и рекламы. Попробуй:'; // от первого лица без рода: «нашёл» звучит чужим у женщины
+  function invite(where) {
+    var link = 'https://t.me/' + SHARE_BOT + '?startapp=inv_' + where, url = 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(INVITE_TEXT);
+    track('inv:' + where);
+    haptic('ok');
+    if (inTg && tg.openTelegramLink) { tgTry(function () { tg.openTelegramLink(url); }); return; } // выбор чата Telegram
+    if (navigator.share) { navigator.share({ text: INVITE_TEXT + '\n' + link }).then(function () {}, function () {}); return; }
+    window.open(url, '_blank', 'noopener');
+  }
   function shareNames(list, n) { var names = list.map(function (c) { return c.name || c[1]; }); return names.slice(0, n).join(', ') + (names.length > n ? ' и ещё ' + (names.length - n) : ''); }
   function openShare(back) {
     var parts = { c: true, s: true, b: false, l: false, p: false };
@@ -5218,6 +5291,7 @@
       row('pasteBtn', 'download', 'purple', 'Вставить настройку', '', function () { openImport(openSettings, null); }, 'по коду от близкого');
       // обратная связь — последним разделом: анонимно и лично (пункт 17)
       section('Помощь');
+      row('inviteBtn', 'users', 'green', 'Пригласить друга', '', function () { invite('set'); }, 'ссылка на приложение в чат Telegram');
       row('tourBtn', 'play', 'teal', 'Как пользоваться', '', function () { openTour(true, null); }, 'обучение за полминуты');
       row('fbBtn', 'bulb', 'orange', 'Как улучшить приложение', '', function () { openFeedback(openSettings); }, 'анонимно');
       var auLi = el('li'), au = authorRow('menu__row--tile');

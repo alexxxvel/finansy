@@ -949,6 +949,15 @@ html { overflow: hidden; }
 .mood__ends { grid-column: 1 / -1; display: flex; justify-content: space-between; margin-top: 6px; }
 .mood__ends small { font: 500 12px/1.2 var(--font); color: var(--muted); }
 .remind--mood .mood__ends { display: flex; }
+.remind--invite > span, .remind--start > span { min-width: 0; }
+.remind--invite small, .remind--start small, .remind--start strong { white-space: normal; } /* две строки, а не обрезка и не наезд на кнопку */
+/* путь новичка к трём записям (16.11.2026): три деления над текстом, закрашенные — уже сделанное */
+.remind--start > span { display: grid; gap: 2px; }
+.start3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 96px; margin: 0 0 8px; }
+.remind--start, .remind--invite { padding-top: 12px; padding-bottom: 12px; } /* у карточек в две-три строки — воздух сверху и снизу, полоса не липнет к краю */
+.start3 i { height: 5px; border-radius: 3px; background: var(--fill); }
+.start3 i.is-on { background: var(--f-in); }
+.remind--start small { white-space: normal; }
 
 /* ---------- «Аналитика» (решение разработчика 24.10.2026, макеты-26 «цвета Apple») ----------
    Сверху сумма выбранного потока и две мягкие плашки, живой график, ряд периода; ниже плитки (касание — подробный лист).
