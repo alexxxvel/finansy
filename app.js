@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = '55785fbf3d'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '906a0ed5e5'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -500,12 +500,14 @@
     // подсказка один раз, когда появилась первая трата: что значит полоса (нажать — подробнее)
     var barTipSeen = '';
     try { barTipSeen = localStorage.getItem('fin_bartip') || ''; } catch (e) { barTipSeen = '1'; }
-    if (!noBase && !B && s.spent > 0 && !barTipSeen && st.month === F.monthOf(F.today())) {
+    var hardCard = st.month === F.monthOf(F.today()) ? mainCard(true) : null; // срочное, новичок, итог месяца — главнее подсказки про полосу
+    if (!hardCard && !noBase && !B && s.spent > 0 && !barTipSeen && st.month === F.monthOf(F.today())) {
       var bt = btn('tip tip--bar', nb('Полоса — всё, что можно потратить за месяц. Траты заполняют её. Нажмите, чтобы узнать подробнее'));
       bt.id = 'barTip';
       bt.addEventListener('click', function () { if (bt.parentNode) { bt.parentNode.removeChild(bt); } barInfo(); });
       spent.insertBefore(bt, spent.querySelector('.spent__legend') ? spent.querySelector('.spent__legend').nextSibling : null);
       try { localStorage.setItem('fin_bartip', '1'); } catch (e) { /* без памяти подсказка покажется ещё раз — не страшно */ }
+      lsSet('fin_soft', F.today()); // подсказка про полосу — мягкая подсказка этого дня: остальные завтра (16.11.2026)
     }
     if (B && left < 0) { // бюджет кончился: в какой день траты месяца его перешли
       var gone = budgetGone(B), goneEl = el('p', 'spent__day', gone ? nb('бюджет кончился ' + F.dayLabel(gone).toLowerCase()) : '');
@@ -513,7 +515,7 @@
       if (gone) { spent.appendChild(goneEl); }
     }
     if (st.month === F.monthOf(F.today())) {
-      var card = mainCard(); // одна карточка по старшинству (16.11.2026) — см. mainCard
+      var card = hardCard || mainCard(false); // одна карточка по старшинству (16.11.2026) — см. mainCard
       if (card) { spent.appendChild(card); }
     }
 
@@ -1721,7 +1723,7 @@
       1) срочное: не внесённый платёж месяца; без списка платежей — кредит (несколько — одна строка, ближайший, остальные после него);
       2) новичок — путь к трём записям; 3) итог прошлого месяца (1–7 число);
       4) мягкие подсказки — оценка месяца, бюджет, значок на экран — не больше одной в день: закрыл или ответил — следующая только завтра. */
-  function mainCard() {
+  function mainCard(hard) { // hard — только срочное, новичок и итог месяца, без мягких подсказок
     var pay = payCard();
     if (pay) { return pay; }
     if (!(st.pays.list || []).length) { // когда заведены платежи месяца, кредит — в их списке (о кредите одна строка, не две)
@@ -1730,6 +1732,7 @@
     }
     var start = startCard() || saveCard();
     if (start) { return start; }
+    if (hard) { return null; }
     var today = F.today();
     if (lsGet('fin_soft') === today) { return null; } // мягкая подсказка сегодня уже была — следующая завтра
     var soft = moodCard() || budgetHintCard() || homeCard();
