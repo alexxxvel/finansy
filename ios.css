@@ -65,6 +65,8 @@
 .tabs.ios-tabbar svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.9; }
 .tabs.ios-tabbar .ios-lq__items--lens svg { stroke-width: 2.6; } /* под линзой значок плотнее, как залитый символ выбранной вкладки в iOS: у кромки растекается пятном, а не ниткой (08.11.2026) */
 .tabs.ios-tabbar .ios-lq__lens { top: 4px; bottom: 4px; }
+.tabs.ios-tabbar.is-live .ios-lq__lens { animation: lq-in 200ms ease-out; } /* стекло включается после первого экрана (16.11.2026) — появляется мягко */
+@keyframes lq-in { from { opacity: 0; } to { opacity: 1; } }
 
 /* поднятая линза — чёткий тонкий край и тень, как у стекла Apple (08.11.2026: «края более линзовидные»; был мягкий белый край на белой панели) */
 .tabs.ios-tabbar .ios-lq__lens { box-shadow: 0 0 0 calc(.5px * var(--press, 0)) rgba(0, 0, 0, calc(.22 * var(--press, 0))), inset 0 1px 0 rgba(255, 255, 255, calc(var(--lg-rim) + .4 * var(--press, 0))), inset 0 0 0 1px rgba(255, 255, 255, calc(.7 * var(--press, 0))), inset 0 -6px 10px -6px rgba(0, 0, 0, calc(.12 * var(--press, 0))), 0 calc(4px + 8px * var(--press, 0)) calc(12px + 14px * var(--press, 0)) -8px rgba(0, 0, 0, calc(.12 + .16 * var(--press, 0))); }

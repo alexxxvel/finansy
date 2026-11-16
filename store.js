@@ -42,31 +42,11 @@
   function cloudAdapter(cs) {
     return {
       kind: 'cloud',
-      keys: function (cb) {
-        cb = once(cb);
-        function real() { try { cs.getKeys(function (err, keys) { cb(err, keys || []); }); } catch (e) { cb('cloud'); } }
-        var p = window.__finPre; // ранняя загрузка (app/prefetch.js) — только для первого показа, дальше всегда облако
-        if (p && !p.k) { p.k = 1; p.then(function () { if (!p.err && p.keys) { cb(null, p.keys.slice()); } else { real(); } }); return; }
-        real();
-      },
+      keys: function (cb) { cb = once(cb); try { cs.getKeys(function (err, keys) { cb(err, keys || []); }); } catch (e) { cb('cloud'); } },
       get: function (keys, cb) {
         cb = once(cb);
         if (!keys.length) { cb(null, {}); return; }
-        function real() { try { cs.getItems(keys, function (err, values) { cb(err, values || {}); }); } catch (e) { cb('cloud'); } }
-        var p = window.__finPre;
-        if (p && !p.g) {
-          p.g = 1;
-          p.then(function () {
-            var has = !p.err && p.values && keys.every(function (k) { return Object.prototype.hasOwnProperty.call(p.values, k); });
-            if (!has) { real(); return; }
-            var o = {};
-            keys.forEach(function (k) { o[k] = p.values[k]; });
-            p.used = 1;
-            cb(null, o);
-          });
-          return;
-        }
-        real();
+        try { cs.getItems(keys, function (err, values) { cb(err, values || {}); }); } catch (e) { cb('cloud'); }
       },
       set: function (key, value, cb) { cb = once(cb); try { cs.setItem(key, value, function (err, ok) { cb(err || (ok === false ? 'not stored' : null)); }); } catch (e) { cb('cloud'); } },
       del: function (keys, cb) { cb = once(cb); if (!keys.length) { cb(null); return; } try { cs.removeItems(keys, function (err) { cb(err); }); } catch (e) { cb('cloud'); } }

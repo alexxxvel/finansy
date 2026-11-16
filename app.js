@@ -11,7 +11,7 @@
   // окно Telegram есть, а его скрипт не загрузился: писать в память браузера нельзя, записи разойдутся с облаком
   var bridgeOnly = !inTg && !!(window.TelegramWebviewProxy && typeof window.TelegramWebviewProxy.postEvent === 'function');
   var reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  var VERSION = 'ffd772d4d2'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
+  var VERSION = '55785fbf3d'; // при выкладке сюда подставляется версия файлов: по ней видно, не показывает ли Telegram старую страницу
 
   var ICONS = {
     cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
@@ -92,10 +92,15 @@
       var b = row.querySelector('.ios-lq__items:not(.ios-lq__items--lens)').children[e.detail.index];
       if (e.detail.drag && b) { b.click(); } // касание кнопки и так нажимает её; линзу дотянули пальцем — нажимаем за человека
     });
-    (function wait(n) { // линзе нужна раскладка: включаем, когда ряд на странице
-      if (!window.IOS26) { return; }
-      if (row.isConnected && row.offsetWidth) { window.IOS26.liquid(row); } else if (n < 60) { requestAnimationFrame(function () { wait(n + 1); }); }
-    })(0);
+    function go() {
+      (function wait(n) { // линзе нужна раскладка: включаем, когда ряд на странице
+        if (!window.IOS26) { return; }
+        if (row.isConnected && row.offsetWidth) { window.IOS26.liquid(row); } else if (n < 60) { requestAnimationFrame(function () { wait(n + 1); }); }
+      })(0);
+    }
+    // 16.11.2026: стекло нижнего меню (WebGL) стоило ≈ 1 с до первого экрана на среднем телефоне — включаем после первого показа, в свободную минуту
+    if (row.classList.contains('ios-tabbar') && !painted) { afterPaint.push(go); return; }
+    go();
   }
   /** ручка тумблера iOS 26 в строку-переключатель (строка нажимается целиком, как раньше) */
   function swKnob(row) {
@@ -508,15 +513,8 @@
       if (gone) { spent.appendChild(goneEl); }
     }
     if (st.month === F.monthOf(F.today())) {
-      var payNode = payCard();
-      if (payNode) { spent.appendChild(payNode); }
-      // напоминание о кредите включает сам человек; когда заведены платежи месяца, кредит — в их списке, и отдельной строки нет (о кредите одна строка, не две)
-      if (!(st.pays.list || []).length) { F.CREDITS.forEach(function (k) { if (remindDue(k, F.creditState(k, st.all, st.month))) { spent.appendChild(remindRow(k, false)); } }); }
-      if (!spent.querySelector('.remind')) { var startNode = startCard(); if (startNode) { spent.appendChild(startNode); } } // новичок: путь к трём записям — раньше остальных карточек
-      if (!spent.querySelector('.remind')) { var saveNode = saveCard(); if (saveNode) { spent.appendChild(saveNode); } } // итог прошлого месяца — после платежей и кредитов
-      if (!spent.querySelector('.remind')) { var homeNode = homeCard(); if (homeNode) { spent.appendChild(homeNode); } } // больше одной карточки сразу не бывает
-      if (!spent.querySelector('.remind')) { var moodNode = moodCard(); if (moodNode) { spent.appendChild(moodNode); } } // вопрос про приложение — раз в месяц
-      if (!spent.querySelector('.remind')) { var bhNode = budgetHintCard(); if (bhNode) { spent.appendChild(bhNode); } } // бюджет — с 5-го дня, один раз; после вопроса месяца, чтобы обе не толкались
+      var card = mainCard(); // одна карточка по старшинству (16.11.2026) — см. mainCard
+      if (card) { spent.appendChild(card); }
     }
 
     var sheet = el('div', 'sheet');
@@ -1718,6 +1716,25 @@
     add(row, q, x, faces);
     if (kind === 'nums') { var ends = el('div', 'mood__ends'); add(ends, el('small', '', a[1][0]), el('small', '', a[1][1])); row.appendChild(ends); } // div: у span в карточке своя сетка (.remind > span)
     return row;
+  }
+  /** карточка на главной — всегда одна, по старшинству (16.11.2026, «чтобы не вылазили постоянно, была логика, не было каши и пустых моментов»):
+      1) срочное: не внесённый платёж месяца; без списка платежей — кредит (несколько — одна строка, ближайший, остальные после него);
+      2) новичок — путь к трём записям; 3) итог прошлого месяца (1–7 число);
+      4) мягкие подсказки — оценка месяца, бюджет, значок на экран — не больше одной в день: закрыл или ответил — следующая только завтра. */
+  function mainCard() {
+    var pay = payCard();
+    if (pay) { return pay; }
+    if (!(st.pays.list || []).length) { // когда заведены платежи месяца, кредит — в их списке (о кредите одна строка, не две)
+      var due = F.CREDITS.filter(function (k) { return remindDue(k, F.creditState(k, st.all, st.month)); });
+      if (due.length) { return remindRow(due[0], false); }
+    }
+    var start = startCard() || saveCard();
+    if (start) { return start; }
+    var today = F.today();
+    if (lsGet('fin_soft') === today) { return null; } // мягкая подсказка сегодня уже была — следующая завтра
+    var soft = moodCard() || budgetHintCard() || homeCard();
+    if (soft) { soft.addEventListener('click', function (e) { if (e.target.closest('button')) { lsSet('fin_soft', today); } }, true); } // любое касание по кнопке карточки — на сегодня хватит
+    return soft;
   }
   /** путь новичка к трём записям (16.11.2026): первые 7 дней, пока записей меньше трёх; на третьей — праздник и «Аналитика». Крестик — больше не показывать */
   /** сколько записей у новичка, если карточка пути к трём записям уместна (первые 7 дней, 1–3 записи, не закрыта); иначе 0 */
@@ -6161,7 +6178,16 @@
 
   // ---------- запуск ----------
   /** экран загрузки (index.html, решение разработчика 26.10.2026) уходит, когда нарисован первый экран или сообщение о сбое */
+  var painted = false, afterPaint = [];
+  /** первый экран показан: отложенное (стекло меню) — в свободную минуту, не позже 1,5 с */
+  function firstPainted() {
+    if (painted) { return; }
+    painted = true;
+    var run = function () { var q = afterPaint; afterPaint = []; q.forEach(function (f) { try { f(); } catch (e) { /* без стекла меню остаётся обычным */ } }); };
+    if (window.requestIdleCallback) { requestIdleCallback(run, { timeout: 1500 }); } else { setTimeout(run, 300); }
+  }
   function hideSplash() {
+    firstPainted();
     var s = document.getElementById('splash');
     if (!s || s.classList.contains('is-out')) { return; }
     s.classList.add('is-out');
